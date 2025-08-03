@@ -58,6 +58,7 @@ pub async fn create_map_art(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };
@@ -105,6 +106,7 @@ pub async fn create_map_art(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };
@@ -152,6 +154,7 @@ pub async fn create_map_art(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };
@@ -199,6 +202,7 @@ pub async fn create_map_art(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };

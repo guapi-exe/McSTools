@@ -18,6 +18,7 @@ pub struct Schematic {
     pub game_version: String,
     pub version_list: String,
     pub created_at: String,
+    pub schematic_tags: String,
     pub updated_at: String,
 }
 

@@ -99,6 +99,7 @@ pub async fn encode_uploaded_schematic(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
                 };
@@ -184,6 +185,7 @@ pub async fn encode_uploaded_schematic(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };
@@ -271,6 +273,7 @@ pub async fn encode_uploaded_schematic(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
                 };
@@ -365,6 +368,7 @@ pub async fn encode_uploaded_schematic(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
                 };
@@ -438,6 +442,7 @@ pub async fn encode_uploaded_schematic(
                     version: 0,
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
                 };
@@ -578,11 +583,12 @@ pub async fn update_schematic_name_description(
     db: State<'_, DatabaseState>,
     schematic_id: i64,
     name: String,
+    schematic_tags: String,
     description: String,
 ) -> Result<bool, String> {
     async move {
         let mut conn = db.0.get()?;
-        update_schematic_name(&mut conn, name, description, schematic_id)?;
+        update_schematic_name(&mut conn, name, description, schematic_tags, schematic_id)?;
         Ok(true)
     }
     .await

@@ -4,6 +4,7 @@ import {toast} from "./others.ts";
 export const update_schematic_name = async (
     id: number,
     name: string,
+    schematic_tags: string,
     description: string
 ): Promise<boolean> => {
     try {
@@ -12,6 +13,7 @@ export const update_schematic_name = async (
             {
                 schematicId: id,
                 name: name,
+                schematicTags: schematic_tags,
                 description: description,
             }
         )

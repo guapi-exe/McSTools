@@ -59,6 +59,7 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
             game_version TEXT DEFAULT '',
             version_list TEXT DEFAULT '', -- 版本控制器记录版本号id
             is_upload BLOB DEFAULT FALSE,
+            schematic_tags TEXT DEFAULT '{}', -- 元数据（JSON格式存储）
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -84,7 +85,7 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
 
         CREATE INDEX IF NOT EXISTS idx_schematics_history
         ON schematics_history(schematic_id);
-        
+
         CREATE TABLE IF NOT EXISTS schematic_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             schematic_id INTEGER NOT NULL,
@@ -95,13 +96,13 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
                 schematic_id
             ) REFERENCES schematics (
                 id
-            ) ON DELETE CASCADE, 
-            
+            ) ON DELETE CASCADE,
+
             UNIQUE(schematic_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_requirements_schematic 
+        CREATE INDEX IF NOT EXISTS idx_requirements_schematic
         ON schematic_data(schematic_id);
-        
+
         CREATE TABLE IF NOT EXISTS app_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -130,8 +131,22 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
         WHERE NOT EXISTS (SELECT 1 FROM user_data WHERE id = 1);
         "#,
     )?;
-
+    add_column_if_missing(&conn)?;
     Ok(DatabaseState(pool))
+}
+
+fn add_column_if_missing(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(schematics)")?;
+    let columns: Vec<String> = stmt.query_map([], |row| row.get(1))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+
+    if !columns.contains(&"schematic_tags".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE schematics ADD COLUMN schematic_tags TEXT DEFAULT '{}';"
+        )?;
+    }
+
+    Ok(())
 }
 
 pub fn drop_all_tables_in_transaction(conn: &Connection) -> Result<()> {

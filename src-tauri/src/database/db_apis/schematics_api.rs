@@ -66,6 +66,7 @@ pub fn update_schematic_name(
     conn: &mut PooledConnection<SqliteConnectionManager>,
     name: String,
     description: String,
+    schematic_tags: String,
     schematic_id: i64,
 ) -> Result<i64> {
     let tx = conn.transaction()?;
@@ -75,9 +76,10 @@ pub fn update_schematic_name(
         SET
             name = ?1,
             description = ?2,
+            schematic_tags = ?3,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?3"#,
-        params![name, description, schematic_id],
+        WHERE id = ?4"#,
+        params![name, description, schematic_tags, schematic_id],
     )?;
 
     tx.commit()?;
@@ -134,6 +136,7 @@ pub fn find_schematic(
                 version_list: row.get("version_list")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
+                schematic_tags: row.get("schematic_tags")?,
                 game_version: row.get("game_version")?,
             })
         },
@@ -204,7 +207,7 @@ pub fn get_schematics(
         SELECT * FROM schematics
         WHERE
             (?1 = '' OR
-            (name LIKE ?1 OR description LIKE ?1))
+            (name LIKE ?1 OR description LIKE ?1 OR schematic_tags LIKE ?1))
             AND is_deleted = FALSE
         ORDER BY created_at DESC
         LIMIT ?2 OFFSET ?3
@@ -230,6 +233,7 @@ pub fn get_schematics(
                     version_list: row.get("version_list")?,
                     created_at: row.get("created_at")?,
                     updated_at: row.get("updated_at")?,
+                    schematic_tags: row.get("schematic_tags")?,
                     game_version: row.get("game_version")?,
                 })
             },

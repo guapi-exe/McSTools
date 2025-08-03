@@ -86,7 +86,7 @@ const reload = async () => {
     toast.error(`加载失败:${error}`, {
       timeout: 3000
     });
-    console.error('加载失败:', error);
+    //console.error('加载失败:', error);
   } finally {
     isLoading.value = false;
   }
@@ -107,12 +107,10 @@ const schematic_load = async ({ done }: LoadParams) => {
       page: autoPage.value,
       page_size: 20
     });
-    console.log(page, page_size)
+    console.log(data, page, page_size)
     schematics.value = [...schematics.value, ...data];
     autoPage.value += 1;
-    console.log(data.length)
     hasMore.value = data.length == 20;
-    console.log(hasMore.value)
     done('ok')
   } catch (error) {
     console.error('加载失败:', error);
@@ -128,6 +126,17 @@ const openDeleteDialog = (bp: SchematicsData) => {
   showDeleteDialog.value = true
 }
 
+const schematicTags = (str: string) => {
+  let schematic_tags = [] as string[];
+  if ((str && typeof str === 'string') && str != "{}") {
+    schematic_tags = str
+        ? str.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        : [];
+  } else {
+    schematic_tags = [];
+  }
+  return schematic_tags
+}
 const confirmDelete = async () => {
   try {
     await delete_schematic(selectedBpId.value)
@@ -301,6 +310,32 @@ const formatTime = (time: any) => {
               <div class="d-flex align-center">
                 <v-icon icon="mdi-clock-outline" size="small" class="me-1"></v-icon>
                 <span class="text-caption">{{ formatTime(bp.updated_at) }}</span>
+              </div>
+
+              <!-- 标签展示 -->
+              <div class="d-flex align-center flex-wrap mt-1" v-if="schematicTags(bp.schematic_tags).length > 0">
+                <v-chip
+                    v-for="(tag, idx) in schematicTags(bp.schematic_tags).slice(0, 8)"
+                    :key="idx"
+                    color="primary"
+                    size="x-small"
+                    class="ma-1"
+                    variant="outlined"
+                >
+                  <v-icon start size="14">mdi-tag</v-icon>
+                  {{ tag }}
+                </v-chip>
+
+                <!-- 超出提示 -->
+                <v-chip
+                    v-if="schematicTags(bp.schematic_tags).length > 8"
+                    color="grey"
+                    size="x-small"
+                    class="ma-1"
+                    variant="outlined"
+                >
+                  +{{ schematicTags(bp.schematic_tags).length - 8 }}
+                </v-chip>
               </div>
             </div>
           </div>

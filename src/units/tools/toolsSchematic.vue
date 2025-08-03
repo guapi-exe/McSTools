@@ -18,6 +18,7 @@ const parseDimensions = (sizeStr: string) => {
 };
 const schematicEdit = reactive({
   name: '',
+  schematic_tags: [] as string[],
   description: ''
 })
 const formatTime = (time: any) => {
@@ -27,24 +28,40 @@ const saveEdit = async () => {
   editing.value = false
   editLoading.value = true
   try {
-    let result = await update_schematic_name(schematic_id.value, schematicEdit.name, schematicEdit.description);
+    const tagsString = schematicEdit.schematic_tags.join(',');
+    let result = await update_schematic_name(
+        schematic_id.value,
+        schematicEdit.name,
+        tagsString,
+        schematicEdit.description
+    );
     if (result){
-      toast.success(`数据已更新`, {
-        timeout: 3000
-      });
+      toast.success(`数据已更新`, { timeout: 3000 });
       props.data.name = schematicEdit.name
+      props.data.schematic_tags = tagsString;
       props.data.description = schematicEdit.description
     }
-  }catch (e) {
+  } catch (e) {
     console.log(e)
-  }finally {
+  } finally {
     editing.value = false
   }
 }
-onMounted(async ()=> {
+
+onMounted(() => {
   schematicEdit.name = props.data.name;
-  schematicEdit.description = props.data.description
-})
+
+  if ((props.data.schematic_tags && typeof props.data.schematic_tags === 'string') && props.data.schematic_tags != "{}") {
+    schematicEdit.schematic_tags = props.data.schematic_tags
+        ? props.data.schematic_tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        : [];
+  } else {
+    schematicEdit.schematic_tags = [];
+  }
+
+  schematicEdit.description = props.data.description;
+});
+
 </script>
 
 <template>
@@ -160,6 +177,34 @@ onMounted(async ()=> {
               <v-list-item-title>更新时间：{{ formatTime(props.data.updated_at) }}</v-list-item-title>
             </v-list-item>
           </v-list>
+        </v-col>
+        <v-col cols="12">
+          <v-combobox
+              v-model="schematicEdit.schematic_tags"
+              label="蓝图标签"
+              multiple
+              chips
+              clearable
+              variant="underlined"
+              hint="输入后按回车添加标签"
+              persistent-hint
+              :items="[]"
+              @update:model-value="saveEdit"
+          >
+            <template v-slot:chip="{ props, item, index }">
+              <v-chip
+                  v-bind="props"
+                  color="primary"
+                  size="small"
+                  class="ma-1"
+                  closable
+                  @click:close="schematicEdit.schematic_tags.splice(index, 1)"
+              >
+                <v-icon size="16">mdi-tag</v-icon>
+                {{ item.title }}
+              </v-chip>
+            </template>
+          </v-combobox>
         </v-col>
       </v-row>
 

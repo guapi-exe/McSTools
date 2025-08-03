@@ -35,7 +35,7 @@ export const fetchMcSchematics = async (
     try {
         const pageSize = 15;
         const pageNum = (params.page || 0) * pageSize;
-        const url = new URL('https://mcschematic.top/api/schematics');
+        const url = new URL('https://www.mcschematic.top/api/schematics');
 
         url.searchParams.append('begin', pageNum.toString());
         url.searchParams.append('filter', params.filter || '');
