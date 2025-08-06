@@ -86,10 +86,10 @@ const getBackgroundUrl = async (path: string) => {
         const buffer = await readFile(path, {
             baseDir: BaseDirectory.AppData
         });
-        return new Blob([buffer], {
+        const blob = new Blob([buffer], {
             type: getMimeType(path)
         });
-
+        return URL.createObjectURL(blob);
 
     } catch (error) {
         console.error('背景加载失败:', error);

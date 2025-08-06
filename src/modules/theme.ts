@@ -1,6 +1,6 @@
 import {ref} from "vue";
 import {appStore} from "./store.ts";
-import {getBackgroundBase64Url} from "./uploadImage.ts";
+import {getBackgroundUrl} from "./uploadImage.ts";
 import {toast} from "./others.ts";
 import {getFontUrl} from "./fonts.ts";
 
@@ -8,7 +8,7 @@ export const opacity = ref(1)
 export const backgroundOpacity = ref(1);
 export const layoutMode = ref('cover');
 export const backgroundStr = ref<string | null>(null)
-
+export const backgroundUrl = ref<string | null>(null)
 export const initTheme = async () => {
     const fontPath = await appStore.get('fontPath', '')
     const bgPath = await appStore.get('backgroundImage', '')
@@ -17,13 +17,13 @@ export const initTheme = async () => {
     opacity.value = await appStore.get('opacity', 0.8);
     if (bgPath != 'null' && bgPath != '') {
         try {
-            backgroundStr.value = await getBackgroundBase64Url(bgPath)
+            backgroundUrl.value = await getBackgroundUrl(bgPath)
         } catch (error) {
             toast.error(`发生了一个错误:${error}`, {
                 timeout: 3000
             });
             console.error('背景加载失败:', error)
-            backgroundStr.value = 'null'
+            backgroundUrl.value = null
         }
     }
     if (fontPath != 'null' && fontPath != '') {

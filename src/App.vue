@@ -111,7 +111,7 @@ import {nextTick, onMounted, onUnmounted, ref, watchEffect} from "vue";
 import {appStore} from "./modules/store.ts";
 import {useTheme} from "vuetify/framework";
 import {useI18n} from 'vue-i18n'
-import {backgroundOpacity, backgroundStr, initTheme, layoutMode} from "./modules/theme.ts";
+import {backgroundOpacity, backgroundUrl, initTheme, layoutMode} from "./modules/theme.ts";
 import {invoke} from "@tauri-apps/api/core";
 import {fetchJeBlocks, jeBlocks} from "./modules/je_blocks.ts";
 import {fetchUserData} from "./modules/user_data.ts";
@@ -184,13 +184,13 @@ onUnmounted(() => {
 
 
 watchEffect(() => {
-  if (backgroundStr.value) {
+  if (backgroundUrl.value) {
     backgroundStyle.value.backgroundImage = `
       linear-gradient(
         rgba(var(--v-theme-background), var(--gradient-opacity)),
         rgba(var(--v-theme-background), var(--gradient-opacity))
       ),
-      url(${backgroundStr.value})
+      url(${backgroundUrl.value})
     `;
     backgroundStyle.value.backgroundSize = layoutMode.value;
     backgroundStyle.value["--gradient-opacity"] = (1 - backgroundOpacity.value).toString()

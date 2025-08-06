@@ -6,7 +6,7 @@ import {appStore} from '../modules/store.ts';
 import {saveImage} from "../modules/uploadImage.ts";
 import router from "../../router";
 import {useTheme} from "vuetify/framework";
-import {backgroundOpacity, backgroundStr, initTheme, layoutMode, opacity} from "../modules/theme.ts";
+import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity} from "../modules/theme.ts";
 import { useI18n } from 'vue-i18n';
 import {saveFont} from "../modules/fonts.ts";
 
@@ -219,7 +219,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
                   :aspect-ratio="16/9"
                   :style="{
                     backgroundColor: `rgba(255,255,255, ${1 - backgroundOpacity})`,
-                    backgroundImage: `url(${backgroundStr})`,
+                    backgroundImage: `url(${backgroundUrl})`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     backgroundAttachment: 'fixed',

@@ -49,17 +49,20 @@ const saveEdit = async () => {
 }
 
 onMounted(() => {
-  schematicEdit.name = props.data.name;
+  if(props.data){
+    schematicEdit.name = props.data.name;
 
-  if ((props.data.schematic_tags && typeof props.data.schematic_tags === 'string') && props.data.schematic_tags != "{}") {
-    schematicEdit.schematic_tags = props.data.schematic_tags
-        ? props.data.schematic_tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
-        : [];
-  } else {
-    schematicEdit.schematic_tags = [];
+    if ((props.data.schematic_tags && typeof props.data.schematic_tags === 'string') && props.data.schematic_tags != "{}") {
+      schematicEdit.schematic_tags = props.data.schematic_tags
+          ? props.data.schematic_tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+          : [];
+    } else {
+      schematicEdit.schematic_tags = [];
+    }
+
+    schematicEdit.description = props.data.description;
   }
 
-  schematicEdit.description = props.data.description;
 });
 
 </script>
