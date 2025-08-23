@@ -52,6 +52,14 @@ impl LmSchematic {
         Ok(data_version)
     }
 
+    pub fn get_lm_version(&self) -> Result<i32, SchematicError> {
+        let Compound(root) = &self.nbt else {
+            return Err(SchematicError::InvalidFormat("Root is not a Compound"));
+        };
+        let lm_version = root.get_i32("Version")?;
+        Ok(lm_version)
+    }
+
     pub fn get_metadata(&self) -> Result<&HashMap<String, Value>, SchematicError> {
         if let Compound(root) = &self.nbt {
             root.get("Metadata")
@@ -123,6 +131,7 @@ impl LmSchematic {
             let size = region.get_pos("Size")?;
             let block_state_palette = region.get_list("BlockStatePalette")?;
             let tile_entities = region.get_list("TileEntities")?;
+            let entities = region.get_list("TileEntities")?;
             let palette_size = block_state_palette.len();
             let adjusted = if palette_size == 0 {
                 u32::MAX
@@ -139,6 +148,7 @@ impl LmSchematic {
                 size,
                 block_state_palette: block_state_palette.to_vec(),
                 tile_entities: tile_entities.to_vec(),
+                entities: entities.to_vec(),
                 bits,
             });
             regions_name_list.add(name.to_string());

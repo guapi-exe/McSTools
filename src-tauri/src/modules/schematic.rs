@@ -3,10 +3,7 @@ use crate::create::create_schematic::CreateSchematic;
 use crate::data_files::files::FileManager;
 use crate::database::db_apis::history_api::{new_history, update_history};
 use crate::database::db_apis::schematic_data_api::{new_schematic_data, update_schematic_data};
-use crate::database::db_apis::schematics_api::{
-    delete_schematic_data, find_schematic, get_schematic_version, new_schematic, update_schematic,
-    update_schematic_name,
-};
+use crate::database::db_apis::schematics_api::{delete_schematic_data, find_schematic, get_schematic_version, new_schematic, update_schematic, update_schematic_classification, update_schematic_name};
 use crate::database::db_apis::user_api::add_user_schematic;
 use crate::database::db_control::DatabaseState;
 use crate::database::db_data::Schematic;
@@ -100,8 +97,10 @@ pub async fn encode_uploaded_schematic(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
+                    lm_version: 0,
                 };
 
                 if update {
@@ -186,8 +185,10 @@ pub async fn encode_uploaded_schematic(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 0,
                 };
                 if update {
                     let version = get_schematic_version(&mut conn, update_id)?;
@@ -274,8 +275,10 @@ pub async fn encode_uploaded_schematic(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
+                    lm_version: 0,
                 };
 
                 if update {
@@ -346,6 +349,7 @@ pub async fn encode_uploaded_schematic(
                 let author = metadata.author;
                 let mut conn = db.0.get()?;
                 let data_version = schematic.get_data_version()?;
+                let lm_version = schematic.get_lm_version()?;
                 let game_version = versions_data
                     .get_name(data_version)
                     .map(|arc_str| arc_str.to_string())
@@ -369,8 +373,10 @@ pub async fn encode_uploaded_schematic(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version,
+                    lm_version,
                 };
                 if update {
                     let version = get_schematic_version(&mut conn, update_id)?;
@@ -443,8 +449,10 @@ pub async fn encode_uploaded_schematic(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 0,
                 };
                 if update {
                     let version = get_schematic_version(&mut conn, update_id)?;
@@ -593,4 +601,19 @@ pub async fn update_schematic_name_description(
     }
     .await
     .map_err(|e: anyhow::Error| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_schematic_classification_tauri(
+    db: State<'_, DatabaseState>,
+    schematic_id: i64,
+    classification: String,
+) -> Result<bool, String> {
+    async move {
+        let mut conn = db.0.get()?;
+        update_schematic_classification(&mut conn, classification, schematic_id)?;
+        Ok(true)
+    }
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())
 }

@@ -5,6 +5,7 @@ use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
 use tauri::State;
+use crate::database::db_apis::schematics_api::update_schematic_classification;
 
 pub fn add_user_schematic(
     conn: &mut PooledConnection<SqliteConnectionManager>,
@@ -24,6 +25,25 @@ pub fn add_user_schematic(
     tx.commit()?;
 
     Ok(new_value)
+}
+
+pub fn update_user_classification(
+    conn: &mut PooledConnection<SqliteConnectionManager>,
+    classification: String,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
+        r#"UPDATE user_data
+        SET
+            classification = ?1
+        WHERE id = 1"#,
+        params![classification],
+    )?;
+
+    tx.commit()?;
+
+    Ok(conn.last_insert_rowid())
 }
 
 pub fn add_cloud(conn: &mut PooledConnection<SqliteConnectionManager>) -> Result<i64> {
@@ -52,8 +72,33 @@ pub fn get_user_data(db: State<'_, DatabaseState>) -> Result<UserData, String> {
                 access_token: row.get("accessToken")?,
                 openid: row.get("openid")?,
                 schematics: row.get("schematics")?,
+                classification: row.get("classification")?,
                 cloud: row.get("cloud")?,
             })
         })
         .map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+pub fn get_user_classification(db: State<'_, DatabaseState>) -> Result<String, String> {
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+    Ok(conn
+        .query_row("SELECT * FROM user_data WHERE id = 1", [], |row| {
+            Ok(row.get("classification")?)
+        })
+        .map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+pub async fn update_user_classification_tauri(
+    db: State<'_, DatabaseState>,
+    classification: String,
+) -> Result<bool, String> {
+    async move {
+        let mut conn = db.0.get()?;
+        update_user_classification(&mut conn, classification)?;
+        Ok(true)
+    }
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())
 }

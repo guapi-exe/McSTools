@@ -15,10 +15,12 @@ pub struct Schematic {
     pub user: String,
     pub is_upload: bool,
     pub version: i32,
+    pub lm_version: i32,
     pub game_version: String,
     pub version_list: String,
     pub created_at: String,
     pub schematic_tags: String,
+    pub classification: String,
     pub updated_at: String,
 }
 
@@ -43,6 +45,7 @@ pub struct UserData {
     pub avatar: String,
     pub qq: String,
     pub access_token: String,
+    pub classification: String,
     pub openid: String,
     pub schematics: i32,
     pub cloud: i32,

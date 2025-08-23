@@ -25,6 +25,7 @@ const isLoading_MCS = ref(false);
 const isLoading_CMS = ref(false);
 const downLoading_MCS = ref(false)
 let schematics_MCS = ref<McSchematicData[]>([])
+const filterPanel = ref<InstanceType<typeof HTMLElement> | null>(null);
 let schematics_CMS = ref<CMSchematicData[]>([])
 const filters_MCS = ref({
   keyword: '',
@@ -277,6 +278,13 @@ const formatTime = (time: any) => {
 const getMcSchematicPreview = (uuid: string) => {
   return `https://www.mcschematic.top/api/preview?uuid=${uuid}`
 }
+const handleScroll = () => {
+
+  if (!panelExpanded_MCS.value || !panelExpanded_CMS.value) {
+    panelExpanded_MCS.value = false; // 折叠
+    panelExpanded_CMS.value = false; // 折叠
+  }
+}
 watch(
     [
       () => filters_MCS.value.keyword,
@@ -304,7 +312,7 @@ watch(
 </script>
 
 <template>
-  <v-expansion-panels  v-if="selectedSite == 'MCS'">
+  <v-expansion-panels v-model="panelExpanded_MCS"  v-if="selectedSite == 'MCS'">
     <v-expansion-panel>
       <v-expansion-panel-title>
         <div class="d-flex align-center gap-2" style="flex: 1">
@@ -388,7 +396,7 @@ watch(
       </v-expansion-panel-text>
     </v-expansion-panel>
   </v-expansion-panels>
-  <v-expansion-panels  v-if="selectedSite == 'CMS'">
+  <v-expansion-panels v-model="panelExpanded_CMS"  v-if="selectedSite == 'CMS'">
     <v-expansion-panel>
       <v-expansion-panel-title>
         <div class="d-flex align-center gap-2" style="flex: 1">
@@ -475,7 +483,12 @@ watch(
       </v-expansion-panel-text>
     </v-expansion-panel>
   </v-expansion-panels>
-  <v-list class="mc-blueprint-list" v-if="selectedSite == 'MCS'">
+  <v-list
+      class="mc-blueprint-list"
+      v-if="selectedSite == 'MCS'"
+      ref="filterPanel"
+      @scroll="handleScroll"
+  >
     <v-infinite-scroll
         :items="schematics_MCS"
         @load="schematic_load_MCS"
@@ -603,7 +616,12 @@ watch(
     </v-infinite-scroll>
 
   </v-list>
-  <v-list class="mc-blueprint-list" v-if="selectedSite == 'CMS'">
+  <v-list
+      class="mc-blueprint-list"
+      v-if="selectedSite == 'CMS'"
+      ref="filterPanel"
+      @scroll="handleScroll"
+  >
     <v-infinite-scroll
         :items="schematics_CMS"
         @load="schematic_load_CMS"

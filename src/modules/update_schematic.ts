@@ -24,3 +24,41 @@ export const update_schematic_name = async (
         throw new Error(`发生了一个错误: ${error}`);
     }
 }
+
+export const update_user_classification = async (
+    classification: string,
+): Promise<boolean> => {
+    try {
+        return await invoke<boolean>(
+            'update_user_classification_tauri',
+            {
+                classification: classification,
+            }
+        )
+    } catch (error) {
+        toast.error(`发生了一个错误:${error}`, {
+            timeout: 3000
+        });
+        throw new Error(`发生了一个错误: ${error}`);
+    }
+}
+
+export const update_schematic_classification = async (
+    id: number,
+    classification: string,
+): Promise<boolean> => {
+    try {
+        return await invoke<boolean>(
+            'update_schematic_classification_tauri',
+            {
+                schematicId: id,
+                classification: classification,
+            }
+        )
+    } catch (error) {
+        toast.error(`发生了一个错误:${error}`, {
+            timeout: 3000
+        });
+        throw new Error(`发生了一个错误: ${error}`);
+    }
+}

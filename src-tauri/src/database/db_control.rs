@@ -57,6 +57,8 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
             user TEXT DEFAULT '', -- 简单的记录用户名，个人存储应该不太需要详细记录
             version INTEGER DEFAULT 0,
             game_version TEXT DEFAULT '',
+            classification TEXT DEFAULT '',
+            lm_version INTEGER DEFAULT 0,
             version_list TEXT DEFAULT '', -- 版本控制器记录版本号id
             is_upload BLOB DEFAULT FALSE,
             schematic_tags TEXT DEFAULT '{}', -- 元数据（JSON格式存储）
@@ -120,6 +122,7 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
             nickname TEXT DEFAULT '',
             avatar TEXT DEFAULT '',
             qq TEXT DEFAULT '',
+            classification TEXT DEFAULT '',
             accessToken TEXT DEFAULT '', -- qq登录凭证
             openid TEXT DEFAULT '',-- qq登录唯一身份码
             schematics INTEGER DEFAULT 0,
@@ -131,11 +134,12 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
         WHERE NOT EXISTS (SELECT 1 FROM user_data WHERE id = 1);
         "#,
     )?;
-    add_column_if_missing(&conn)?;
+    add_column_if_missing_schematics(&conn)?;
+    add_column_if_missing_user(&conn)?;
     Ok(DatabaseState(pool))
 }
 
-fn add_column_if_missing(conn: &Connection) -> Result<()> {
+fn add_column_if_missing_schematics(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(schematics)")?;
     let columns: Vec<String> = stmt.query_map([], |row| row.get(1))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
@@ -143,6 +147,32 @@ fn add_column_if_missing(conn: &Connection) -> Result<()> {
     if !columns.contains(&"schematic_tags".to_string()) {
         conn.execute_batch(
             "ALTER TABLE schematics ADD COLUMN schematic_tags TEXT DEFAULT '{}';"
+        )?;
+    }
+
+    if !columns.contains(&"lm_version".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE schematics ADD COLUMN lm_version INTEGER DEFAULT 0;"
+        )?;
+    }
+
+    if !columns.contains(&"classification".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE schematics ADD COLUMN classification TEXT DEFAULT '';"
+        )?;
+    }
+
+    Ok(())
+}
+
+fn add_column_if_missing_user(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(user_data)")?;
+    let columns: Vec<String> = stmt.query_map([], |row| row.get(1))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+
+    if !columns.contains(&"classification".to_string()) {
+        conn.execute_batch(
+            "ALTER TABLE user_data ADD COLUMN classification TEXT DEFAULT '';"
         )?;
     }
 

@@ -86,6 +86,28 @@ pub fn update_schematic_name(
 
     Ok(schematic_id)
 }
+
+pub fn update_schematic_classification(
+    conn: &mut PooledConnection<SqliteConnectionManager>,
+    classification: String,
+    schematic_id: i64,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
+        r#"UPDATE schematics
+        SET
+            classification = ?1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?2"#,
+        params![classification, schematic_id],
+    )?;
+
+    tx.commit()?;
+
+    Ok(schematic_id)
+}
+
 pub fn new_schematic(
     mut conn: &mut PooledConnection<SqliteConnectionManager>,
     schematic: Schematic,
@@ -94,8 +116,8 @@ pub fn new_schematic(
     tx.execute(
         r#"INSERT INTO schematics (
             name, description, type, sub_type,
-            sizes, user, version_list, game_version
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            sizes, user, version_list, game_version, lm_version
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
         params![
             schematic.name,
             schematic.description,
@@ -104,7 +126,8 @@ pub fn new_schematic(
             schematic.sizes,
             schematic.user,
             schematic.version_list,
-            schematic.game_version
+            schematic.game_version,
+            schematic.lm_version
         ],
     )?;
     let rowid = tx.last_insert_rowid();
@@ -138,6 +161,8 @@ pub fn find_schematic(
                 updated_at: row.get("updated_at")?,
                 schematic_tags: row.get("schematic_tags")?,
                 game_version: row.get("game_version")?,
+                lm_version: row.get("lm_version")?,
+                classification: row.get("classification")?,
             })
         },
     );
@@ -188,6 +213,7 @@ pub fn get_schematic(db: State<'_, DatabaseState>, id: i64) -> Result<Schematic,
 pub fn get_schematics(
     db: State<'_, DatabaseState>,
     filter: &str,
+    classification_filter: &str,
     page: i32,
     page_size: i32,
 ) -> Result<PaginatedResponse<Schematic>, String> {
@@ -196,28 +222,36 @@ pub fn get_schematics(
     let page_size = page_size.clamp(1, 100);
 
     let offset = (page - 1) * page_size;
+
     let search_pattern = if filter.is_empty() {
         "".to_string()
     } else {
         format!("%{}%", filter)
     };
+
+    let classification_pattern = if classification_filter.is_empty() {
+        "".to_string()
+    } else {
+        format!("%{}%", classification_filter)
+    };
+
     let mut stmt = conn
         .prepare(
             r#"
         SELECT * FROM schematics
         WHERE
-            (?1 = '' OR
-            (name LIKE ?1 OR description LIKE ?1 OR schematic_tags LIKE ?1))
-            AND is_deleted = FALSE
+            is_deleted = FALSE
+            AND (?2 = '' OR schematic_tags LIKE ?2)
+            AND (?1 = '' OR name LIKE ?1 OR description LIKE ?1 OR schematic_tags LIKE ?1)
         ORDER BY created_at DESC
-        LIMIT ?2 OFFSET ?3
+        LIMIT ?3 OFFSET ?4
         "#,
         )
         .map_err(|e| e.to_string())?;
 
     let schematics = stmt
         .query_map(
-            rusqlite::params![search_pattern, page_size, offset],
+            rusqlite::params![search_pattern, classification_pattern, page_size, offset],
             |row| {
                 Ok(Schematic {
                     id: row.get("id")?,
@@ -235,6 +269,8 @@ pub fn get_schematics(
                     updated_at: row.get("updated_at")?,
                     schematic_tags: row.get("schematic_tags")?,
                     game_version: row.get("game_version")?,
+                    lm_version: row.get("lm_version")?,
+                    classification: row.get("classification")?,
                 })
             },
         )
@@ -249,6 +285,8 @@ pub fn get_schematics(
     })
 }
 
+
+
 #[tauri::command]
 pub fn delete_schematic_database(db: State<'_, DatabaseState>, id: i64) -> Result<i64, String> {
     let mut conn = db.0.get().map_err(|e| e.to_string())?;
@@ -256,3 +294,36 @@ pub fn delete_schematic_database(db: State<'_, DatabaseState>, id: i64) -> Resul
     let new = delete_schematic_data(&mut conn, id).map_err(|e| e.to_string())?;
     Ok(new)
 }
+
+#[tauri::command]
+pub fn count_schematics(
+    db: State<'_, DatabaseState>,
+    classification_filter: &str,
+) -> Result<i64, String> {
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+
+    // 如果传空字符串，就表示不过滤 classification
+    let filter_pattern = if classification_filter.is_empty() {
+        "".to_string()
+    } else {
+        format!("%{}%", classification_filter)
+    };
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT COUNT(*) FROM schematics
+            WHERE
+                (?1 = '' OR schematic_tags LIKE ?1)
+                AND is_deleted = FALSE
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let count: i64 = stmt
+        .query_row(rusqlite::params![filter_pattern], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    Ok(count)
+}
+

@@ -19,8 +19,8 @@ use crate::utils::schematic_data::SchematicError;
 use data_files::{config, config::get_config, config::update_config, files::FileManager};
 use database::db_apis::logs_api::{add_logs, get_logs};
 use database::db_apis::schematic_data_api::{get_schematic_requirements, get_unique_block};
-use database::db_apis::schematics_api::{add_schematic, get_schematic, get_schematics};
-use database::db_apis::user_api::get_user_data;
+use database::db_apis::schematics_api::{add_schematic, get_schematic, get_schematics, count_schematics};
+use database::db_apis::user_api::{get_user_data, update_user_classification_tauri, get_user_classification};
 use modules::convert::{convert, get_je_blocks, get_map_arts, get_schematic_convert_data};
 use modules::history::get_history;
 use modules::map_art::create_map_art;
@@ -28,7 +28,7 @@ use modules::modules_data;
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_str,
-    update_schematic_name_description, get_schematic_data
+    update_schematic_name_description, get_schematic_data, update_schematic_classification_tauri
 };
 use split_schematic::split_schematic::schematic_split;
 use std::time::Instant;
@@ -74,14 +74,18 @@ pub fn run() {
             update_config,
             open_dev,
             encode_uploaded_schematic,
+            count_schematics,
             create_map_art,
             update_schematic_name_description,
             get_user_data,
+            get_user_classification,
             copy_schematic,
             delete_schematic,
             add_logs,
             schematic_split,
             schematic_replacement,
+            update_user_classification_tauri,
+            update_schematic_classification_tauri,
             get_je_blocks,
             perform_search,
             get_map_arts,

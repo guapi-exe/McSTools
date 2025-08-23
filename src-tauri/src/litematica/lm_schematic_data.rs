@@ -23,6 +23,7 @@ pub struct RegionData {
     pub size: BlockPos,
     pub block_state_palette: Vec<Value>,
     pub tile_entities: Vec<Value>,
+    pub entities: Vec<Value>,
     pub bits: i32,
 }
 

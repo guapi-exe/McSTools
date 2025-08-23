@@ -3,13 +3,16 @@ import {defineProps, onMounted, reactive, ref} from "vue";
 import {SchematicsData, schematicTypeList} from "../../modules/schematics_data.ts";
 import dayjs from "dayjs";
 import {files, handleUpload, progressValue, uploadError, uploadStatus} from "../../modules/upload_schematic.ts";
-import {update_schematic_name} from "../../modules/update_schematic.ts";
+import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
 import {schematic_id} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
+import {userData} from "../../modules/user_data.ts";
 
 const props = defineProps<{
   data: SchematicsData | undefined,
 }>()
+const tags = ref<string[]>([])
+const lastTags = ref<string[]>([]);
 const editing = ref(false)
 const editLoading = ref(false)
 const parseDimensions = (sizeStr: string) => {
@@ -24,16 +27,23 @@ const schematicEdit = reactive({
 const formatTime = (time: any) => {
   return dayjs(time).format('YYYY/MM/DD HH:mm')
 }
-const saveEdit = async () => {
+const saveEdit = async (newTags: string[]) => {
   editing.value = false
   editLoading.value = true
+  const added = newTags.filter(tag => !lastTags.value.includes(tag));
+  //const removed = lastTags.value.filter(tag => !newTags.includes(tag));
   try {
+    tags.value.push(...added);
     const tagsString = schematicEdit.schematic_tags.join(',');
+    const allTagsString = tags.value.join(',');
     let result = await update_schematic_name(
         schematic_id.value,
         schematicEdit.name,
         tagsString,
         schematicEdit.description
+    );
+    await update_user_classification(
+        allTagsString
     );
     if (result){
       toast.success(`数据已更新`, { timeout: 3000 });
@@ -46,6 +56,7 @@ const saveEdit = async () => {
   } finally {
     editing.value = false
   }
+  lastTags.value = [...newTags];
 }
 
 onMounted(() => {
@@ -62,7 +73,14 @@ onMounted(() => {
 
     schematicEdit.description = props.data.description;
   }
-
+  if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
+    tags.value = userData.value.classification
+        ? userData.value.classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        : [];
+    lastTags.value = tags.value
+  } else {
+    tags.value = [];
+  }
 });
 
 </script>
@@ -144,6 +162,22 @@ onMounted(() => {
                   </div>
                 </v-chip>
               </v-list-item-title>
+            </v-list-item>
+            <v-list-item v-if="props.data.schematic_type == 2">
+              <v-list-item-title class="d-flex align-center">
+                <span>投影格式版本：{{ props.data.lm_version }}</span>
+              </v-list-item-title>
+              <template v-slot:append>
+
+                <v-list-item-action class="ml-2">
+                  <v-btn
+                      variant="text"
+                      size="x-small"
+                      icon="mdi-pencil"
+                      @click=""
+                  ></v-btn>
+                </v-list-item-action>
+              </template>
             </v-list-item>
           </v-list>
         </v-col>

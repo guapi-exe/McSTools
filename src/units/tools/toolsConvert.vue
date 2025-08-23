@@ -202,7 +202,6 @@ const convertSchematic = async (schematicType: number) => {
     </v-row>
     <v-row class="conversion-flow" justify="center">
       <v-col cols="6"
-             v-if="!(props.data?.schematic_type_id == 2)"
              @mouseenter="showSubVersions2 = true;"
              @mouseleave="showSubVersions2 = false"
       >
@@ -337,7 +336,6 @@ const convertSchematic = async (schematicType: number) => {
         </v-card>
       </v-col>
       <v-col cols="6"
-             v-if="!(props.data?.schematic_type_id == 1)"
              @mouseenter="showSubVersions1 = true;"
              @mouseleave="showSubVersions1 = false"
       >
@@ -467,7 +465,6 @@ const convertSchematic = async (schematicType: number) => {
         </v-card>
       </v-col>
       <v-col cols="6"
-             v-if="!(props.data?.schematic_type_id == 3)"
              @mouseenter="showSubVersions3 = true;"
              @mouseleave="showSubVersions3 = false"
       >
@@ -637,7 +634,6 @@ const convertSchematic = async (schematicType: number) => {
         </v-card>
       </v-col>
       <v-col cols="6"
-             v-if="!(props.data?.schematic_type_id == 4)"
              @mouseenter="showSubVersions4 = true;"
              @mouseleave="showSubVersions4 = false"
       >
@@ -847,7 +843,6 @@ const convertSchematic = async (schematicType: number) => {
         </v-card>
       </v-col>
       <v-col cols="6"
-             v-if="!(props.data?.schematic_type_id == 5)"
              @mouseenter="showSubVersions5 = true;"
              @mouseleave="showSubVersions5 = false"
       >

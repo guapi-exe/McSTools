@@ -59,8 +59,10 @@ pub async fn create_map_art(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 0,
                 };
                 let new_id = new_schematic(&mut conn, schematic.clone())?;
                 new_schematic_data(
@@ -107,8 +109,10 @@ pub async fn create_map_art(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 6,
                 };
                 let new_id = new_schematic(&mut conn, schematic.clone())?;
                 new_schematic_data(
@@ -155,8 +159,10 @@ pub async fn create_map_art(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 0,
                 };
                 let new_id = new_schematic(&mut conn, schematic.clone())?;
                 new_schematic_data(
@@ -203,8 +209,10 @@ pub async fn create_map_art(
                     version_list: "0".parse()?,
                     created_at: "".parse()?,
                     schematic_tags: "".to_string(),
+                    classification: "".to_string(),
                     updated_at: now.clone(),
                     game_version: "".parse()?,
+                    lm_version: 0,
                 };
                 let new_id = new_schematic(&mut conn, schematic.clone())?;
                 new_schematic_data(
