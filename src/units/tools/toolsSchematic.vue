@@ -42,9 +42,12 @@ const saveEdit = async (newTags: string[]) => {
         tagsString,
         schematicEdit.description
     );
-    await update_user_classification(
-        allTagsString
-    );
+    if (!tags.value.includes(added[0])) {
+      await update_user_classification(
+          allTagsString
+      );
+    }
+
     if (result){
       toast.success(`数据已更新`, { timeout: 3000 });
       props.data.name = schematicEdit.name

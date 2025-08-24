@@ -20,11 +20,14 @@ import bgImg from "../../static/img/bg.jpg";
 import weImg from "../../static/img/wordEdit.png";
 import beImg from "../../static/img/grass_block.png";
 import {selectClassification, selectLoading, toast} from "../../modules/others.ts";
+import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
 const router = useRouter()
 const loadState = ref()
 const autoPage = ref(1)
 const showDeleteDialog = ref(false)
+const showDeleteDialog2 = ref(false)
 const selectedBpId = ref(null)
+const draggingOverId = ref<number | null>(null)
 const selectedBpName = ref('')
 const hasMore = ref(true);
 const rail_e = ref(true) // rail 折叠状态
@@ -113,16 +116,27 @@ const loadCounts = async () => {
   countMap.value = map;
 };
 
-function openCreateTagDialog() {
+const openCreateTagDialog = async () => {
   showCreateTagDialog.value = true;
 }
 
-function createTag() {
-  if (!newTagName.value.trim()) return;
-  console.log('创建标签:', newTagName.value);
-  newTagName.value = '';
-  showCreateTagDialog.value = false;
+const createTag = async () => {
+  const name = newTagName.value.trim()
+  if (!name) return
+
+  if (tags.value.includes(name)) {
+    toast.error(`分类「${name}」已存在！`, { timeout: 2000 })
+    return
+  }
+
+  tags.value.push(name)
+  const allTagsString = tags.value.join(',')
+  await update_user_classification(allTagsString)
+
+  newTagName.value = ''
+  showCreateTagDialog.value = false
 }
+
 const schematic_load = async ({ done }: LoadParams) => {
   loadState.value = done
   if (!hasMore.value) {
@@ -177,6 +191,62 @@ const handleScroll = () => {
     panelExpanded.value = false; // 折叠
   }
 }
+
+const handleDragStart = (event: DragEvent, tag: string) => {
+  if (!event.dataTransfer) return
+  event.dataTransfer.setData('tag', tag)
+}
+
+const handleDragEnter = (bp: SchematicsData) => {
+  draggingOverId.value = bp.id
+}
+
+const handleDragLeave = (bp: SchematicsData) => {
+  console.log(bp.id)
+  if (draggingOverId.value === bp.id) {
+  }
+}
+
+const handleDrop = async (event: DragEvent, bp: SchematicsData) => {
+  draggingOverId.value = null
+  if (!event.dataTransfer) return
+  const tag = event.dataTransfer.getData('tag')
+  if (!tag) return
+
+  let currentTags = schematicTags(bp.schematic_tags)
+
+  if (currentTags.includes(tag)) {
+    toast.error(`蓝图「${bp.name}」已有标签「${tag}」`, { timeout: 3000 })
+    return
+  }
+
+  currentTags.push(tag)
+
+  const tagsString = currentTags.join(',');
+  await update_schematic_name(
+      bp.id,
+      bp.name,
+      tagsString,
+      bp.description
+  );
+
+  bp.schematic_tags = currentTags.join(',')
+  toast.success(`已为蓝图「${bp.name}」添加标签「${tag}」`, { timeout: 3000 })
+}
+const confirmDeleteClassification = async () => {
+  try {
+    tags.value = tags.value.filter(t => t != selectClassification.value)
+
+    const allTagsString = tags.value.join(',')
+    await update_user_classification(allTagsString)
+
+    showDeleteDialog2.value = false
+    selectClassification.value = ''
+  } catch (error) {
+    console.error('删除失败:', error)
+  }
+}
+
 const confirmDelete = async () => {
   try {
     await delete_schematic(selectedBpId.value)
@@ -197,6 +267,7 @@ const confirmDelete = async () => {
     console.error('删除失败:', error)
   }
 }
+
 watch(
     [
       () => filters.value.keyword,
@@ -284,11 +355,22 @@ onMounted(async () => {
           :rail-width="120"
           :width="200"
       >
-        <v-list density="compact" nav style="padding-inline:0; flex: 1; overflow-y: auto;">
-          <v-list-item link>
+        <v-list
+            density="compact"
+            nav
+            class="nav-list"
+            style="padding-inline:0; flex: 1; overflow-y: auto;"
+            v-model:selected="selectClassification"
+        >
+          <v-list-item
+              link
+              class="nav-item"
+              :class="{ 'active-item': selectClassification === '' }"
+          >
             <v-list-item-title
                 class="font-medium mt-2"
-                @click="selectClassification = '';reload();">
+                @click="selectClassification = '';reload();"
+            >
               <v-icon size="20">mdi-cube-outline</v-icon>
               全部蓝图
             </v-list-item-title>
@@ -301,8 +383,13 @@ onMounted(async () => {
           <v-list-item
               v-for="(tag, idx) in tags"
               :key="idx"
+              :value="tag"
               link
+              class="nav-item"
+              :class="{ 'active-item': selectClassification == tag }"
               @click="selectClassification = tag;reload();"
+              draggable="true"
+              @dragstart="handleDragStart($event, tag)"
           >
             <v-list-item-title class="font-medium mt-2">
               <v-icon size="20">mdi-bookmark-box-multiple-outline</v-icon>
@@ -310,6 +397,14 @@ onMounted(async () => {
             </v-list-item-title>
             <template #append>
               <v-badge v-if="!rail_e" color="primary" :content="countMap[tag] ?? 0" inline></v-badge>
+              <v-btn
+                  v-if="selectClassification == tag"
+                  icon="mdi-close"
+                  variant="text"
+                  color="red"
+                  density="comfortable"
+                  @click.stop="showDeleteDialog2 = true"
+              />
             </template>
           </v-list-item>
         </v-list>
@@ -332,7 +427,8 @@ onMounted(async () => {
         <v-list
             class="mc-blueprint-list"
             ref="filterPanel"
-            @scroll="handleScroll">
+            @scroll="handleScroll"
+        >
           <v-infinite-scroll
               :items="schematics"
               @load="schematic_load"
@@ -342,9 +438,13 @@ onMounted(async () => {
             <v-list-item
                 v-for="(bp) in schematics"
                 :key="bp.id"
-                class="py-2"
+                class="py-2 blueprint-item"
+                :class="{ 'drag-over': draggingOverId == bp.id }"
                 :title="bp.name"
-
+                @drop="handleDrop($event, bp)"
+                @dragover.prevent
+                @dragenter="handleDragEnter(bp)"
+                @dragleave="handleDragLeave(bp)"
             >
               <template v-slot:prepend>
                 <v-icon
@@ -561,6 +661,34 @@ onMounted(async () => {
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <v-dialog v-model="showDeleteDialog2" max-width="600" persistent>
+    <v-card>
+      <v-card-title class="headline">
+        <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+        确认删除
+      </v-card-title>
+
+      <v-card-text>
+        确定要删除分类 <strong>{{ selectClassification }}</strong> 吗？此操作不可恢复！
+      </v-card-text>
+
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            @click="showDeleteDialog2 = false"
+        >
+          取消
+        </v-btn>
+        <v-btn
+            color="error"
+            @click="confirmDeleteClassification"
+        >
+          确认删除
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
@@ -570,4 +698,47 @@ onMounted(async () => {
   max-height: calc(93vh - 64px);
   overflow-y: auto;
 }
+.nav-list {
+  padding: 0 8px;
+}
+
+.nav-item {
+  min-height: 56px;
+  margin: 4px 0;
+  transition: all 0.2s ease;
+}
+
+.nav-item[draggable="true"] {
+  cursor: grab;
+}
+.nav-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+
+
+.nav-item.active-item {
+  background: rgba(8, 0, 238, 0.06);
+  position: relative;
+}
+
+.nav-item.active-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 24px;
+  width: 3px;
+  background: #6200ee;
+  border-radius: 0 2px 2px 0;
+}
+.blueprint-item.drag-over {
+  border: 2px dashed #1976d2;   /* 蓝色高亮边框 */
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(25, 118, 210, 0.6); /* 蓝色发光效果 */
+  transition: 0.2s;
+}
+
+
 </style>
