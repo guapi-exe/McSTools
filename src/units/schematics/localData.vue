@@ -21,6 +21,7 @@ import weImg from "../../static/img/wordEdit.png";
 import beImg from "../../static/img/grass_block.png";
 import {selectClassification, selectLoading, toast} from "../../modules/others.ts";
 import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
+import {opacity} from "../../modules/theme.ts";
 const router = useRouter()
 const loadState = ref()
 const autoPage = ref(1)
@@ -563,9 +564,9 @@ onMounted(async () => {
                 <div class="d-flex flex-column align-center ga-2">
                   <v-btn
                       variant="tonal"
-                      color="primary"
                       prepend-icon="mdi-download"
                       size="small"
+                      color="info"
                       @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"
                   >
                     导出
@@ -617,7 +618,10 @@ onMounted(async () => {
 
   </v-card>
   <v-dialog v-model="showCreateTagDialog" max-width="600" persistent>
-    <v-card>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
       <v-card-title>创建新分类</v-card-title>
       <v-card-text>
         <v-text-field
@@ -628,13 +632,21 @@ onMounted(async () => {
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
-        <v-btn text @click="showCreateTagDialog = false">取消</v-btn>
-        <v-btn color="primary" @click="createTag">创建</v-btn>
+        <v-btn
+            text
+            @click="showCreateTagDialog = false"
+        >取消</v-btn>
+        <v-btn color="info"
+               @click="createTag"
+        >创建</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
   <v-dialog v-model="showDeleteDialog" max-width="600" persistent>
-    <v-card>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
         确认删除
@@ -662,7 +674,10 @@ onMounted(async () => {
     </v-card>
   </v-dialog>
   <v-dialog v-model="showDeleteDialog2" max-width="600" persistent>
-    <v-card>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
         确认删除

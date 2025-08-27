@@ -699,8 +699,8 @@ onBeforeMount(async() => {
         <v-btn
             :disabled="schematicType == null"
             class="ms-auto"
+            color="info"
             text="确认导出"
-            color="primary"
             :loading="exportLoading"
             @click="exportSchematicData"
         >

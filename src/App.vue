@@ -17,7 +17,10 @@
       </div>
     </v-theme-provider>
     <v-dialog v-model="updateDialog" max-width="500">
-      <v-card>
+      <v-card
+          class="v-theme--custom"
+          :style="{ '--surface-alpha': opacity }"
+      >
         <v-card-title class="headline">
           <v-icon class="mr-2">mdi-update</v-icon>
           发现新版本 {{ updateInfo?.version }}
@@ -111,7 +114,7 @@ import {nextTick, onMounted, onUnmounted, ref, watchEffect} from "vue";
 import {appStore} from "./modules/store.ts";
 import {useTheme} from "vuetify/framework";
 import {useI18n} from 'vue-i18n'
-import {backgroundOpacity, backgroundUrl, initTheme, layoutMode} from "./modules/theme.ts";
+import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity} from "./modules/theme.ts";
 import {invoke} from "@tauri-apps/api/core";
 import {fetchJeBlocks, jeBlocks} from "./modules/je_blocks.ts";
 import {fetchUserData} from "./modules/user_data.ts";
