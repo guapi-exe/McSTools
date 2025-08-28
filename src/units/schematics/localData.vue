@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import {copySchematic} from "../../modules/copy_file.ts";
+import {batchExportSchematics, copySchematic} from "../../modules/copy_file.ts";
 import {
   fetchSchematicCount,
   fetchSchematics,
@@ -34,7 +34,10 @@ const hasMore = ref(true);
 const rail_e = ref(true) // rail 折叠状态
 const panelExpanded = ref(false)
 const isLoading = ref(false);
+const open = ref(false);
+const checks = ref(false);
 const tags = ref<string[]>([])
+const selectedIds = ref<number[]>([])
 let schematics = ref<SchematicsData[]>([])
 const showCreateTagDialog = ref(false);
 const newTagName = ref('');
@@ -295,6 +298,24 @@ onMounted(async () => {
 
   await loadCounts();
 });
+const selectAll = () => {
+  selectedIds.value = schematics.value.map(bp => bp.id)
+}
+const clearAll = () => {
+  selectedIds.value = []
+}
+
+const isSelected = (id: number) => selectedIds.value.includes(id)
+
+const batchExport = async () => {
+  if (selectedIds.value.length === 0) {
+    toast.error("请至少选择一个蓝图！", { timeout: 2000 })
+    return
+  }
+  const selectedBps = schematics.value.filter(b => selectedIds.value.includes(b.id))
+  await batchExportSchematics(selectedBps)
+}
+
 </script>
 
 <template>
@@ -440,7 +461,7 @@ onMounted(async () => {
                 v-for="(bp) in schematics"
                 :key="bp.id"
                 class="py-2 blueprint-item"
-                :class="{ 'drag-over': draggingOverId == bp.id }"
+                :class="{ 'drag-over': draggingOverId == bp.id, 'selected-item': isSelected(bp.id) }"
                 :title="bp.name"
                 @drop="handleDrop($event, bp)"
                 @dragover.prevent
@@ -448,6 +469,13 @@ onMounted(async () => {
                 @dragleave="handleDragLeave(bp)"
             >
               <template v-slot:prepend>
+                <v-checkbox
+                    v-if="checks"
+                    v-model="selectedIds"
+                    :value="bp.id"
+                    density="compact"
+                    hide-details
+                ></v-checkbox>
                 <v-icon
                     icon="mdi-cube-scan"
                     size="60"
@@ -704,6 +732,57 @@ onMounted(async () => {
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <v-fab
+      :app="true"
+      size="large"
+      :color="open ? 'info' : 'success'"
+      icon
+  >
+    <v-icon>{{ open ? 'mdi-close' : 'mdi-folder-multiple-plus-outline' }}</v-icon>
+    <v-speed-dial
+        v-model="open"
+        location="top center"
+        activator="parent"
+        transition="slide-y-reverse-transition"
+    >
+      <v-btn
+          prepend-icon="mdi-filter-multiple-outline"
+          size="small"
+          :color="checks? 'error' : 'success'"
+          @click.stop="checks = !checks"
+      >
+        {{ checks ? '退出多选' : '多选' }}
+      </v-btn>
+
+      <v-btn
+          prepend-icon="mdi-download"
+          size="small"
+          color="success"
+          @click="batchExport"
+          :disabled="selectedIds.length === 0"
+      >
+        批量导出
+      </v-btn>
+      <v-btn
+          prepend-icon="mdi-check-all"
+          size="small"
+          color="success"
+          @click="selectAll"
+      >
+        全选
+      </v-btn>
+
+      <v-btn
+          prepend-icon="mdi-close-circle-multiple-outline"
+          size="small"
+          color="error"
+          @click="clearAll"
+      >
+        取消全选
+      </v-btn>
+    </v-speed-dial>
+  </v-fab>
+
 </template>
 
 <style scoped>
@@ -755,5 +834,9 @@ onMounted(async () => {
   transition: 0.2s;
 }
 
+.blueprint-item.selected-item {
+  background-color: rgba(25, 118, 210, 0.08); /* 选中高亮 */
+  border-left: 4px solid #1976d2;
+}
 
 </style>
