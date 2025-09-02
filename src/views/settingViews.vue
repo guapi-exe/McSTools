@@ -113,7 +113,7 @@ const clearData = async () => {
               <template #append>
                 <v-switch
                     v-model="autoUpdateEnabled"
-                    color="primary"
+                    color="info"
                     class="text-medium-emphasis"
                     @update:model-value="updateData"
                 ></v-switch>
@@ -169,7 +169,7 @@ const clearData = async () => {
               <template #append>
                 <v-switch
                     v-model="devMode"
-                    color="primary"
+                    color="info"
                     @update:model-value="updateData"
                 ></v-switch>
               </template>
@@ -218,7 +218,7 @@ const clearData = async () => {
               <template #append>
                 <v-switch
                     v-model="autoTheme"
-                    color="primary"
+                    color="info"
                     @update:model-value="updateData"
                 ></v-switch>
               </template>
@@ -336,7 +336,7 @@ const clearData = async () => {
         <v-btn
             class="ms-auto"
             text="再次确认"
-            color="primary"
+            color="info"
             @click="clearData()"
         ></v-btn>
       </template>

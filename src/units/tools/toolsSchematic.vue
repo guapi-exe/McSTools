@@ -234,7 +234,7 @@ onMounted(() => {
             <template v-slot:chip="{ props, item, index }">
               <v-chip
                   v-bind="props"
-                  color="primary"
+                  color="info"
                   size="small"
                   class="ma-1"
                   closable
@@ -263,7 +263,7 @@ onMounted(() => {
             v-model="files"
             class="custom-file-input"
             variant="solo-filled"
-            color="primary"
+            color="info"
             bg-color="grey-lighten-3"
             label="更新蓝图文件"
             multiple

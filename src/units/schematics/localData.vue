@@ -397,7 +397,7 @@ const batchExport = async () => {
               全部蓝图
             </v-list-item-title>
             <template #append>
-              <v-badge v-if="!rail_e" color="primary" :content="userData?.schematics ?? 0" inline></v-badge>
+              <v-badge v-if="!rail_e" color="info" :content="userData?.schematics ?? 0" inline></v-badge>
             </template>
           </v-list-item>
           <v-divider class="my-2"></v-divider>
@@ -418,7 +418,7 @@ const batchExport = async () => {
               {{ tag }}
             </v-list-item-title>
             <template #append>
-              <v-badge v-if="!rail_e" color="primary" :content="countMap[tag] ?? 0" inline></v-badge>
+              <v-badge v-if="!rail_e" color="info" :content="countMap[tag] ?? 0" inline></v-badge>
               <v-btn
                   v-if="selectClassification == tag"
                   icon="mdi-close"
@@ -564,7 +564,7 @@ const batchExport = async () => {
                       <v-chip
                           v-for="(tag, idx) in schematicTags(bp.schematic_tags).slice(0, 8)"
                           :key="idx"
-                          color="primary"
+                          color="info"
                           size="x-small"
                           class="ma-1"
                           variant="outlined"
@@ -625,7 +625,7 @@ const batchExport = async () => {
               <div class="text-center py-4">
                 <v-progress-circular
                     indeterminate
-                    color="primary"
+                    color="info"
                     size="24"
                 ></v-progress-circular>
                 <span class="ml-2 text-caption">正在加载更多数据...</span>
@@ -733,17 +733,19 @@ const batchExport = async () => {
     </v-card>
   </v-dialog>
   <v-fab
-      :app="true"
+      key="fixed"
       size="large"
+      location="right bottom"
+      :app="true"
       :color="open ? 'info' : 'success'"
       icon
   >
     <v-icon>{{ open ? 'mdi-close' : 'mdi-folder-multiple-plus-outline' }}</v-icon>
     <v-speed-dial
         v-model="open"
-        location="top center"
+        location="left center"
         activator="parent"
-        transition="slide-y-reverse-transition"
+        transition="slide-x-reverse-transition"
     >
       <v-btn
           prepend-icon="mdi-filter-multiple-outline"

@@ -107,7 +107,7 @@ const downloadFile = async (file: File) => {
           <span>切割数量</span>
           <v-btn-toggle
               v-model="splitNumber"
-              color="primary"
+              color="info"
               class="d-flex align-center"
               mandatory
           >
@@ -263,7 +263,7 @@ const downloadFile = async (file: File) => {
                     </v-list-item-subtitle>
 
                     <template v-slot:append>
-                      <v-btn color="primary" variant="tonal" size="small" @click="downloadFile(file.file)">
+                      <v-btn color="info" variant="tonal" size="small" @click="downloadFile(file.file)">
                         <v-icon left>mdi-download</v-icon>
                         下载
                       </v-btn>

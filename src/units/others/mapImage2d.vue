@@ -291,7 +291,7 @@ onBeforeMount(async() => {
           <v-icon color="blue" icon="mdi-arrow-expand" class="mt-1"></v-icon>
           <v-btn-toggle
               v-model="resize"
-              color="primary"
+              color="info"
               class="d-flex align-center"
               mandatory
               @update:model-value="updateSize"
@@ -314,7 +314,7 @@ onBeforeMount(async() => {
           <v-icon color="blue" icon="mdi-rotate-right"  class="mt-1"></v-icon>
           <v-btn-toggle
               v-model="exportSettings.targetRotation"
-              color="primary"
+              color="info"
               mandatory
               class="d-flex align-center"
           >
@@ -396,7 +396,7 @@ onBeforeMount(async() => {
             class="ml-4"
             v-model="exportSettings.dithering"
             label="启用抖动算法"
-            color="primary"
+            color="info"
             density="compact"
             hint="通过颜色抖动提升画面细节表现"
             persistent-hint
@@ -420,7 +420,7 @@ onBeforeMount(async() => {
             class="ml-4"
             v-model="replaceAir"
             label="空气方块"
-            color="primary"
+            color="info"
             density="compact"
             hint="将透明SRGBA替换为空气方块"
             persistent-hint
@@ -493,7 +493,7 @@ onBeforeMount(async() => {
                 <template v-slot:prepend>
                   <v-checkbox
                       :model-value="isCategorySelected(category.name)"
-                      color="primary"
+                      color="info"
                       hide-details
                       @click="toggleCategory(category.name)"
                   ></v-checkbox>
@@ -512,7 +512,7 @@ onBeforeMount(async() => {
               <template v-slot:prepend>
                 <v-checkbox
                     :model-value="selectedBlocks.includes(block.id)"
-                    color="primary"
+                    color="info"
                     hide-details
                 ></v-checkbox>
               </template>
@@ -570,7 +570,7 @@ onBeforeMount(async() => {
           <v-progress-circular
               indeterminate
               size="64"
-              color="primary"
+              color="info"
           ></v-progress-circular>
           <div class="text-caption mt-2">正在处理图像...</div>
         </div>
@@ -646,7 +646,7 @@ onBeforeMount(async() => {
             <v-icon color="blue" icon="mdi-axis-arrow" class="mt-1"></v-icon>
             <v-btn-toggle
                 v-model="exportSettings.axios"
-                color="primary"
+                color="info"
                 class="d-flex align-center"
                 mandatory
             >
@@ -666,7 +666,7 @@ onBeforeMount(async() => {
                 class="ml-4"
                 v-model="threeD"
                 label="导出立体地图画"
-                color="primary"
+                color="info"
                 density="compact"
                 hint="再地图上表现更加细节"
                 persistent-hint

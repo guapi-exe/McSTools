@@ -320,7 +320,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end" style="position: relative">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions2 = true;"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -450,7 +450,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions1 = true"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -580,7 +580,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions3 = true; weVersion = 0"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -619,7 +619,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions3 = true; weVersion = 1"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -749,7 +749,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions4 = true; bgVersion = 0"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -788,7 +788,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions4 = true; bgVersion = 1"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -827,7 +827,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions4 = true; bgVersion = 2"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -958,7 +958,7 @@ const convertSchematic = async (schematicType: number) => {
                     <v-col cols="12" class="justify-end">
                       <v-btn
                           variant="text"
-                          color="primary"
+                          color="info"
                           @click="dialogVersions5 = true"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
@@ -1010,7 +1010,7 @@ const convertSchematic = async (schematicType: number) => {
             v-if="props.data?.schematics?.Create == undefined"
             class="ms-auto"
             text="确认开始"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="convertSchematic(1)"
         ></v-btn>
@@ -1018,7 +1018,7 @@ const convertSchematic = async (schematicType: number) => {
             v-else
             class="ms-auto"
             text="确认导出"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 1)"
         >
@@ -1071,7 +1071,7 @@ const convertSchematic = async (schematicType: number) => {
             v-if="props.data?.schematics?.Litematic == undefined"
             class="ms-auto"
             text="确认开始"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="convertSchematic(2)"
         ></v-btn>
@@ -1079,7 +1079,7 @@ const convertSchematic = async (schematicType: number) => {
             v-else
             class="ms-auto"
             text="确认导出"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 2)"
         >
@@ -1122,7 +1122,7 @@ const convertSchematic = async (schematicType: number) => {
             v-if="props.data?.schematics?.We?.[weVersion] == undefined"
             class="ms-auto"
             text="确认开始"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="convertSchematic(3)"
         ></v-btn>
@@ -1130,7 +1130,7 @@ const convertSchematic = async (schematicType: number) => {
             v-else
             class="ms-auto"
             text="确认导出"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, weVersion, props.data.version, 3)"
         >
@@ -1173,7 +1173,7 @@ const convertSchematic = async (schematicType: number) => {
             v-if="props.data?.schematics?.Bg?.[bgVersion] == undefined"
             class="ms-auto"
             text="确认开始"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="convertSchematic(4)"
         ></v-btn>
@@ -1181,7 +1181,7 @@ const convertSchematic = async (schematicType: number) => {
             v-else
             class="ms-auto"
             text="确认导出"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, bgVersion, props.data.version, 4)"
         >
@@ -1217,7 +1217,7 @@ const convertSchematic = async (schematicType: number) => {
             v-if="props.data?.schematics?.Be == undefined"
             class="ms-auto"
             text="确认开始"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="convertSchematic(5)"
         ></v-btn>
@@ -1225,7 +1225,7 @@ const convertSchematic = async (schematicType: number) => {
             v-else
             class="ms-auto"
             text="确认导出"
-            color="primary"
+            color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 5)"
         >

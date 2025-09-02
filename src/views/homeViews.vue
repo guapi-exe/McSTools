@@ -287,7 +287,7 @@ onBeforeRouteLeave(navigationGuard)
                 v-model="files"
                 class="custom-file-input"
                 variant="solo-filled"
-                color="primary"
+                color="info"
                 bg-color="grey-lighten-3"
                 :label="t('home.upload.selectFile')"
                 multiple

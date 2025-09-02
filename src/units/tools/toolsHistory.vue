@@ -90,7 +90,7 @@ const showDiff = (index: number) => {
             size="x-small"
             fill-dot
             icon="mdi-cube-scan"
-            dot-color="primary"
+            dot-color="info"
         >
           <template #opposite>
             <span class="text-caption text-grey-darken-1">{{ formatTime(bp.updated_at) }}</span>
@@ -157,7 +157,7 @@ const showDiff = (index: number) => {
             <div class="d-flex flex-column align-center ga-2 ml-4">
               <v-btn
                   variant="tonal"
-                  color="primary"
+                  color="info"
                   prepend-icon="mdi-download"
                   size="small"
                   @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"

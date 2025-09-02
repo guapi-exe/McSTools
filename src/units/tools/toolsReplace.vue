@@ -610,7 +610,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
           <v-spacer/>
           <v-btn @click="state.showConfirmDialog = false">取消</v-btn>
           <v-btn
-              color="primary"
+              color="info"
               :loading="state.isLoading"
               @click="executeReplacement"
           >

@@ -29,13 +29,13 @@
         <v-card-text>
           <div v-if="updateState === UpdateState.Pending">
             <p>发布日期: {{ updateInfo?.date }}</p>
-            <pre class="update-notes">{{ updateInfo?.body }}</pre>
+            <pre>{{ updateInfo?.body }}</pre>
           </div>
 
           <div v-else-if="updateState === UpdateState.Downloading">
             <v-progress-linear
                 :value="updateProgress"
-                color="primary"
+                color="info"
                 height="25"
                 striped
             >
@@ -50,7 +50,7 @@
         <v-card-actions>
           <v-btn
               v-if="updateState === UpdateState.Pending"
-              color="primary"
+              color="info"
               @click="confirmUpdate"
           >
             立即更新
@@ -78,7 +78,7 @@
 
         <v-card-actions>
           <v-btn
-              color="primary"
+              color="info"
               @click="relaunch()"
           >
             立即重启
@@ -96,7 +96,7 @@
     <v-fab-transition>
       <v-fab
           v-show="showBackToTop"
-          color="primary"
+          color="info"
           :absolute="true"
           icon="mdi-up"
           size="large"

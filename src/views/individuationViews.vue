@@ -233,7 +233,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
                     <v-slider
                         v-model="backgroundOpacity"
                         :max="1"
-                        color="primary"
+                        color="info"
                         thumb-label
                     >
                       <template #prepend>

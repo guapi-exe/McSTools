@@ -575,7 +575,7 @@ watch(
           <div class="d-flex flex-column align-center ga-2">
             <v-btn
                 variant="tonal"
-                color="primary"
+                color="info"
                 prepend-icon="mdi-download"
                 size="small"
                 :loading="downLoading_MCS"
@@ -601,7 +601,7 @@ watch(
         <div class="text-center py-4">
           <v-progress-circular
               indeterminate
-              color="primary"
+              color="info"
               size="24"
           ></v-progress-circular>
           <span class="ml-2 text-caption">正在加载更多数据...</span>
@@ -716,7 +716,7 @@ watch(
           <div class="d-flex flex-column align-center ga-2">
             <v-btn
                 variant="tonal"
-                color="primary"
+                color="info"
                 prepend-icon="mdi-download"
                 size="small"
                 :disabled="true"
@@ -741,7 +741,7 @@ watch(
         <div class="text-center py-4">
           <v-progress-circular
               indeterminate
-              color="primary"
+              color="info"
               size="24"
           ></v-progress-circular>
           <span class="ml-2 text-caption">正在加载更多数据...</span>
