@@ -576,7 +576,7 @@ const batchExport = async () => {
                       <!-- 超出提示 -->
                       <v-chip
                           v-if="schematicTags(bp.schematic_tags).length > 8"
-                          color="grey"
+                          color="info"
                           size="x-small"
                           class="ma-1"
                           variant="outlined"
