@@ -56,7 +56,8 @@ impl Size {
     }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SchematicData {
+pub struct
+SchematicData {
     pub blocks: BlockStatePosList,
     pub tile_entities_list: TileEntitiesList,
     pub size: Size,
