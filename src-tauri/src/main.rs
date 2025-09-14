@@ -1,28 +1,59 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::File;
 use crate::building_gadges::bg_schematic::BgSchematic;
-use crate::building_gadges::to_bg_schematic::ToBgSchematic;
+use crate::be_schematic::be_schematic::BESchematic;
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 use crate::create::create_schematic::CreateSchematic;
 use crate::create::to_create_schematic::ToCreateSchematic;
 use crate::litematica::lm_schematic::LmSchematic;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
-use crate::utils::minecraft_data::je_blocks_data::BlocksData;
 use crate::utils::schematic_data::SchematicError;
 use crate::word_edit::we_schematic::WeSchematic;
-use std::fs::File;
-use std::io::BufWriter;
 use std::time::Instant;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use utils::extend_write::to_writer_gzip;
 use utils::requirements::get_requirements;
+use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
+
 pub mod building_gadges;
 pub mod create;
+pub mod be_schematic;
 pub mod litematica;
 pub mod utils;
 pub mod word_edit;
 fn main() {
     rust_lib::run()
+}
+#[test]
+fn test_be_schematic() -> Result<(), SchematicError> {
+    let mut sys = System::new_all();
+    let pid = Pid::from(std::process::id() as usize);
+
+    sys.refresh_processes(ProcessesToUpdate::All, false);
+    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let start_time = Instant::now();
+    let schematic2 =
+        BESchematic::new("./schematic/test.mcstructure")?;
+    let schem2 = schematic2.get_blocks_pos()?;
+    //print!("{:?}", schem2);
+    let to = ToBESchematic::new(&schem2)?;
+    println!("{:?},{:?}", to.start_pos, to.end_pos);
+    let requirements = get_requirements(&schem2.blocks)?;
+    //print!("{:?}", requirements);
+    sys.refresh_processes(ProcessesToUpdate::All, false);
+    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let duration = start_time.elapsed();
+
+    println!("执行时间: {:.2} 秒", duration.as_secs_f64());
+    println!(
+        "内存消耗: {} KB → {} KB (增量: {} KB)",
+        start_mem / 1024,
+        end_mem / 1024,
+        (end_mem - start_mem) / 1024
+    );
+    Ok(())
 }
 #[test]
 fn test_lm_schematic() -> Result<(), SchematicError> {
@@ -154,6 +185,39 @@ fn lm_big_schematic_write() -> Result<(), SchematicError> {
     let output_path = "./schematic/out.nbt";
     to_writer_gzip(&data, output_path)?;
 
+    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let duration = start_time.elapsed();
+
+    println!("执行时间: {:.2} 秒", duration.as_secs_f64());
+    println!(
+        "内存消耗: {} KB → {} KB (增量: {} KB)",
+        start_mem / 1024,
+        end_mem / 1024,
+        (end_mem - start_mem) / 1024
+    );
+    Ok(())
+}
+#[test]
+fn be_schematic_write() -> Result<(), SchematicError> {
+    let mut sys = System::new_all();
+    let pid = Pid::from(std::process::id() as usize);
+
+    sys.refresh_processes(ProcessesToUpdate::All, false);
+    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let start_time = Instant::now();
+    let schematic2 =
+        BESchematic::new("./schematic/out6.mcstructure")?;
+    let schem2 = schematic2.get_blocks_pos()?;
+    //print!("{:?}", schem2);
+    let to = ToBESchematic::new(&schem2)?;
+    println!("{:?},{:?},{:?}", to.height, to.length, to.width);
+    //let requirements = get_requirements(&schem2.blocks)?;
+    //print!("{:?}", requirements);
+    let root = to.to_be_value();
+    let output_path = "./schematic/out8.mcstructure";
+    let file = File::create(output_path)?;
+    save_nbt_le(file, "Schematic", &root)?;
+    sys.refresh_processes(ProcessesToUpdate::All, false);
     let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
     let duration = start_time.elapsed();
 

@@ -13,11 +13,11 @@ use fastnbt::Value;
 #[derive(Debug)]
 pub struct ToBESchematic {
     blocks: VecDeque<BlockStatePos>,
-    start_pos: BlockPos,
-    end_pos: BlockPos,
-    width: i32,
-    height: i32,
-    length: i32,
+    pub start_pos: BlockPos,
+    pub end_pos: BlockPos,
+    pub width: i32,
+    pub height: i32,
+    pub length: i32,
     pub unique_block_states: Vec<Arc<BlockData>>,
     pub block_state_to_index: HashMap<Arc<BlockData>, usize>,
 }
@@ -106,12 +106,12 @@ impl ToBESchematic {
         })
     }
 
-    fn build_size(&self) -> Value::List {
-        Value::List(vec![
+    fn build_size(&self) -> Vec<Value> {
+        vec![
             Value::Int(self.width),
             Value::Int(self.height),
             Value::Int(self.length),
-        ])
+        ]
     }
 
     /// 构建 `block_palette`
@@ -122,9 +122,12 @@ impl ToBESchematic {
 
             if !block.properties.is_empty() {
                 let mut states_map = HashMap::new();
-                for (k, v) in &block.properties {
-                    states_map.insert(k.to_string(), Value::String(v.to_string()));
-                }
+                //for (k, v) in &block.properties {
+                    //states_map.insert(k.to_string(), Value::String(v.to_string()));
+                //}
+                map.insert("states".to_string(), Value::Compound(states_map));
+            }else {
+                let mut states_map = HashMap::new();
                 map.insert("states".to_string(), Value::Compound(states_map));
             }
 
@@ -134,7 +137,7 @@ impl ToBESchematic {
         Value::List(block_palette)
     }
 
-    /// 构建 `block_indices` (Z → Y → X)
+    /// 构建 `block_indices` (Y → Z → X)
     fn build_block_indices(&self) -> Value {
         let total_blocks = (self.length * self.width * self.height) as usize;
 
@@ -147,7 +150,7 @@ impl ToBESchematic {
             let dy = block.pos.y - self.start_pos.y;
             let dz = block.pos.z - self.start_pos.z;
 
-            let id = (dy * self.width * self.length) + (dz * self.width) + dx;
+            let id = (dx * self.height * self.length) + (dy * self.length) + dz;
 
             if id >= 0 && (id as usize) < atomic_block_list.len() {
                 let state_id = self
@@ -176,7 +179,7 @@ impl ToBESchematic {
     }
 
     /// 转换为 Bedrock `.mcstructure` NBT 结构
-    pub fn to_be_value(&self) -> Value {
+    pub fn to_be_value(&self) -> HashMap<String, Value> {
         let mut default_map = HashMap::new();
         default_map.insert("block_palette".to_string(), self.build_palette());
         default_map.insert("block_position_data".to_string(), Value::Compound(HashMap::new()));
@@ -191,7 +194,7 @@ impl ToBESchematic {
 
         let mut root = HashMap::new();
         root.insert("format_version".to_string(), Value::Int(1));
-        root.insert("size".to_string(), self.build_size());
+        root.insert("size".to_string(), Value::List(self.build_size()));
         root.insert("structure".to_string(), Value::Compound(structure_map));
         root.insert("structure_world_origin".to_string(), Value::List(vec![
             Value::Int(0),
@@ -199,6 +202,6 @@ impl ToBESchematic {
             Value::Int(0),
         ]));
 
-        Value::Compound(root)
+        root
     }
 }
