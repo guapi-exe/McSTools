@@ -4,7 +4,7 @@ import createImg from '../../static/img/create.jpg'
 import lmImg from '../../static/img/Litematica.jpg'
 import weImg from '../../static/img/wordEdit.png'
 import beImg from '../../static/img/grass_block.png'
-import {defineProps, computed, ref} from "vue";
+import {defineProps, computed, ref, onMounted} from "vue";
 import {ConvertData, fetchConvertData} from "../../modules/convert_data.ts";
 import {toast} from "../../modules/others.ts";
 import {invoke} from "@tauri-apps/api/core";
@@ -108,6 +108,9 @@ const convertSchematic = async (schematicType: number) => {
     isLoading.value = false;
   }
 }
+onMounted(() => {
+  console.log(props.data);
+})
 </script>
 
 <template>
@@ -846,7 +849,7 @@ const convertSchematic = async (schematicType: number) => {
              @mouseenter="showSubVersions5 = true;"
              @mouseleave="showSubVersions5 = false"
       >
-        <v-card class="format-card elevation-3" hover :disabled="true">
+        <v-card class="format-card elevation-3" hover>
           <v-row no-gutters align="center">
             <v-col cols="4">
               <v-img
@@ -1201,6 +1204,13 @@ const convertSchematic = async (schematicType: number) => {
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
         转换到目标版本
+        <v-chip
+            v-if="props.data?.schematics?.Be != undefined"
+            color="green"
+        >
+          <v-icon start icon="mdi-check-circle"></v-icon>
+          已存在
+        </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
         转换到.mcstructure MC BE蓝图.

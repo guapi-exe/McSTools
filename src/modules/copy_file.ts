@@ -9,7 +9,7 @@ const getExtensions = (type: number): string[] => {
         case 2: return ['litematic'];
         case 3: return ['schem'];
         case 4: return ['json'];
-        case 5: return ['mcstruct'];
+        case 5: return ['mcstructure'];
         default: return ['unknown'];
     }
 };

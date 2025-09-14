@@ -11,6 +11,7 @@ use crate::word_edit::to_we_schematic::ToWeSchematic;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 
 #[tauri::command]
 pub async fn get_schematic_convert_data(
@@ -103,7 +104,16 @@ pub async fn convert(
                     schematic_type as i32,
                 )?;
             }
-            //5 => {}
+            5 => {
+                let data = ToBESchematic::new(&data)?.to_be_value();
+                file_manager.save_nbt_le_value(
+                    id,
+                    data,
+                    version,
+                    -1,
+                    schematic_type as i32,
+                )?;
+            }
             _ => {
                 anyhow::bail!("unknown schematic type: {}", schematic_type);
             }

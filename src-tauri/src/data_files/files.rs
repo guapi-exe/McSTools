@@ -17,7 +17,11 @@ use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Cursor, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use fastnbt::Value::Compound;
 use tauri::{AppHandle, Manager};
+use crate::be_schematic::be_schematic::BESchematic;
+use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
+use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -196,7 +200,6 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
-            5 => "mcstruct",
             _ => "unknown",
         };
 
@@ -223,6 +226,35 @@ impl FileManager {
         Ok(out_path)
     }
 
+    pub fn save_nbt_le_value(
+        &self,
+        id: i64,
+        data: HashMap<String, Value>,
+        version: i32,
+        sub_version: i32,
+        v_type: i32,
+    ) -> Result<PathBuf> {
+        let schematic_dir = self.schematic_dir(id)?;
+
+        let file_ext = match v_type {
+            5 => "mcstructure",
+            _ => "unknown",
+        };
+
+        let final_filename = format!(
+            "schematic_{}.{}.{}.{}",
+            version, sub_version, v_type, file_ext
+        );
+
+        let final_path = schematic_dir.join(final_filename);
+        let out_path = final_path.clone();
+
+        let mut file = File::create(final_path)?;
+        save_nbt_le(file, "Schematic", &data)?;
+
+        Ok(out_path)
+    }
+
     pub fn save_nbt_value_temp(
         &self,
         data: Value,
@@ -235,7 +267,6 @@ impl FileManager {
             2 => ".litematic",
             3 => ".schem",
             4 => ".json",
-            5 => ".mcstruct",
             _ => ".unknown",
         };
 
@@ -258,6 +289,29 @@ impl FileManager {
 
         Ok(temp_file)
     }
+
+    pub fn save_nbt_value_le_temp(
+        &self,
+        data: HashMap<String, Value>,
+        v_type: i32,
+    ) -> Result<NamedTempFile> {
+
+        let file_ext = match v_type {
+            5 => ".mcstructure",
+            _ => ".unknown",
+        };
+
+        let mut temp_file = tempfile::Builder::new()
+            .prefix("schematic_")
+            .suffix(file_ext)
+            .tempfile()?;
+
+        save_nbt_le(&temp_file, "Schematic", &data)?;
+
+        temp_file.seek(SeekFrom::Start(0))?;
+
+        Ok(temp_file)
+    }
     pub fn read_schematic_str(
         &self,
         id: i64,
@@ -271,7 +325,7 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
-            5 => "mcstruct",
+            5 => "mcstructure",
             _ => "unknown",
         };
         let filename = format!(
@@ -328,8 +382,9 @@ impl FileManager {
                 if data.len() > 8 * 1024 * 1024 {
                     return Ok(String::new());
                 }
-                let nbt: Value = fastnbt::from_bytes(&data)?;
-                let ser = fastsnbt::to_string(&nbt)?;
+                let nbt = load_nbt_le(&data[..])?;
+                let value = Compound(nbt);
+                let ser = fastsnbt::to_string(&value)?;
                 Ok(ser)
             }
             _ => Err(anyhow!("UNK: {}", v_type)),
@@ -350,7 +405,7 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
-            5 => "mcstruct",
+            5 => "mcstructure",
             _ => "unknown",
         };
         let filename = format!(
@@ -450,7 +505,7 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
-            5 => "mcstruct",
+            5 => "mcstructure",
             _ => "unknown",
         };
         let filename = format!(
@@ -479,6 +534,11 @@ impl FileManager {
             }
             4 => {
                 let schematic = BgSchematic::new_from_data(data)?;
+                let blocks = schematic.get_blocks_pos();
+                Ok(blocks?)
+            }
+            5 => {
+                let schematic = BESchematic::new_from_bytes(data)?;
                 let blocks = schematic.get_blocks_pos();
                 Ok(blocks?)
             }

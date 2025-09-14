@@ -16,6 +16,7 @@ use crate::word_edit::to_we_schematic::ToWeSchematic;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tauri::State;
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 
 #[tauri::command]
 pub async fn schematic_replacement(
@@ -204,7 +205,31 @@ pub async fn schematic_replacement(
                 )?;
                 file_manager.save_json_value(new_id, data, 0, sub_version, v_type)?;
             }
-            //5 => {}
+            5 => {
+                let requirement = get_requirements(&data.blocks)?;
+                let requirements_str = RequirementStr::from_requirements(&requirement, &je_blocks)
+                    .export_to_string()?;
+                let unique_blocks = get_unique_block_str(&data.blocks)?;
+                let data = ToBESchematic::new(&data)?.to_be_value();
+                schematic.name = format!("replace_schematic_{}", schematic_id);
+                let new_id = new_schematic(&mut conn, schematic.clone())?;
+                new_schematic_data(
+                    &mut conn,
+                    new_id,
+                    requirements_str.clone(),
+                    unique_blocks.clone(),
+                )?;
+                add_user_schematic(&mut conn, 1)?;
+                let schematic_str = serde_json::to_string(&schematic)?;
+                new_history(
+                    &mut conn,
+                    new_id,
+                    schematic_str,
+                    requirements_str,
+                    unique_blocks,
+                )?;
+                file_manager.save_nbt_le_value(new_id, data, 0, sub_version, v_type)?;
+            }
             _ => return Err(anyhow::anyhow!("unknow type: {}", v_type)),
         }
         Ok(true)

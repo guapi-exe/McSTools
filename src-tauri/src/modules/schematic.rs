@@ -21,6 +21,7 @@ use rusqlite::version;
 use std::path::Path;
 use tauri::State;
 use tauri_plugin_updater::target;
+use crate::be_schematic::be_schematic::BESchematic;
 
 #[tauri::command]
 pub async fn encode_uploaded_schematic(
@@ -428,6 +429,91 @@ pub async fn encode_uploaded_schematic(
                         0,
                         -1,
                         2,
+                        file_ext_str,
+                    )?
+                }
+            }
+            "mcstructure" => {
+                let original_data = data.clone();
+                let schematic = BESchematic::new_from_bytes(data)?;
+                let schematic_data = schematic.get_blocks_pos()?;
+                let requirement = get_requirements(&schematic_data.blocks)?;
+                let unique_blocks = get_unique_block_str(&schematic_data.blocks)?;
+                let requirements_str = RequirementStr::from_requirements(&requirement, &je_blocks)
+                    .export_to_string()?;
+                let size = schematic.get_size()?;
+
+                let mut conn = db.0.get()?;
+                let mut schematic = Schematic {
+                    id: 0,
+                    name: file_name_str,
+                    description: "".parse()?,
+                    schematic_type: 5,
+                    sub_type: -1,
+                    is_deleted: false,
+                    sizes: size.to_string(),
+                    user: "your".parse()?,
+                    is_upload: false,
+                    version: 0,
+                    version_list: "0".parse()?,
+                    created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
+                    classification: "".to_string(),
+                    updated_at: now.clone(),
+                    game_version:"".parse()?,
+                    lm_version: 0,
+                };
+
+                if update {
+                    let version = get_schematic_version(&mut conn, update_id)?;
+                    schematic.id = update_id;
+                    schematic.version = version + 1;
+                    let schematic_id = update_schematic(&mut conn, schematic.clone())?;
+                    update_schematic_data(
+                        &mut conn,
+                        schematic_id,
+                        requirements_str.clone(),
+                        unique_blocks.clone(),
+                    )?;
+                    let schematic_str = serde_json::to_string(&schematic)?;
+                    update_history(
+                        &mut conn,
+                        schematic_id,
+                        schematic_str,
+                        requirements_str,
+                        unique_blocks,
+                    )?;
+                    file_manager.save_schematic_data(
+                        schematic_id,
+                        original_data,
+                        version + 1,
+                        -1,
+                        5,
+                        file_ext_str,
+                    )?
+                } else {
+                    let schematic_id = new_schematic(&mut conn, schematic.clone())?;
+                    new_schematic_data(
+                        &mut conn,
+                        schematic_id,
+                        requirements_str.clone(),
+                        unique_blocks.clone(),
+                    )?;
+                    add_user_schematic(&mut conn, 1)?;
+                    let schematic_str = serde_json::to_string(&schematic)?;
+                    new_history(
+                        &mut conn,
+                        schematic_id,
+                        schematic_str,
+                        requirements_str,
+                        unique_blocks,
+                    )?;
+                    file_manager.save_schematic_data(
+                        schematic_id,
+                        original_data,
+                        0,
+                        -1,
+                        5,
                         file_ext_str,
                     )?
                 }

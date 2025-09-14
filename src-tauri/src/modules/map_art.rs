@@ -19,6 +19,7 @@ use chrono::Local;
 use rusqlite::version;
 use std::collections::VecDeque;
 use tauri::State;
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 
 #[tauri::command]
 pub async fn create_map_art(
@@ -238,7 +239,55 @@ pub async fn create_map_art(
                     schematic_type as i32,
                 )?;
             }
-            //5 => {}
+            5 => {
+                let requirement = get_requirements(&data.blocks)?;
+                let requirements_str = RequirementStr::from_requirements(&requirement, &je_blocks)
+                    .export_to_string()?;
+                let unique_blocks = get_unique_block_str(&data.blocks)?;
+                let data = ToBESchematic::new(&data)?.to_be_value();
+                let mut schematic = Schematic {
+                    id: 0,
+                    name: format!("map_art_{}", file_name),
+                    description: "".parse()?,
+                    schematic_type: 5,
+                    sub_type: -1,
+                    is_deleted: false,
+                    sizes: size.to_string(),
+                    user: "your".parse()?,
+                    is_upload: false,
+                    version: 0,
+                    version_list: "0".parse()?,
+                    created_at: "".parse()?,
+                    schematic_tags: "".to_string(),
+                    classification: "".to_string(),
+                    updated_at: now.clone(),
+                    game_version: "".parse()?,
+                    lm_version: 0,
+                };
+                let new_id = new_schematic(&mut conn, schematic.clone())?;
+                new_schematic_data(
+                    &mut conn,
+                    new_id,
+                    requirements_str.clone(),
+                    unique_blocks.clone(),
+                )?;
+                add_user_schematic(&mut conn, 1)?;
+                let schematic_str = serde_json::to_string(&schematic)?;
+                new_history(
+                    &mut conn,
+                    new_id,
+                    schematic_str,
+                    requirements_str,
+                    unique_blocks,
+                )?;
+                file_manager.save_nbt_le_value(
+                    new_id,
+                    data,
+                    0,
+                    sub_version as i32,
+                    schematic_type as i32,
+                )?;
+            }
             _ => {
                 anyhow::bail!("unknown schematic type: {}", schematic_type);
             }

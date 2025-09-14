@@ -25,6 +25,7 @@ export let schematicTypeList = {
     2: "投影蓝图",
     3: "创世神",
     4: "建筑小帮手",
+    5: "MC BE",
 }
 export let schematicTypeListWeb = {
     0: "香草结构",

@@ -267,7 +267,7 @@ onMounted(() => {
             bg-color="grey-lighten-3"
             label="更新蓝图文件"
             multiple
-            accept=".nbt, .json, .schem, .litematic"
+            accept=".nbt, .json, .schem, .litematic, .mcstructure"
             :max-file-size="100 * 1024 * 1024"
             :loading="uploadStatus === 'uploading'"
             :error-messages="uploadError"

@@ -8,6 +8,7 @@ use crate::database::db_control::DatabaseState;
 use crate::utils::block_state_pos_list::{BlockStatePos, BlockStatePosList};
 use crate::utils::schematic_data::{SchematicData, Size};
 use anyhow::{anyhow, Result};
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 use crate::building_gadges::to_bg_schematic::ToBgSchematic;
 use crate::create::to_create_schematic::ToCreateSchematic;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
@@ -59,6 +60,10 @@ pub async fn schematic_split(
                 4 => {
                     let data = ToBgSchematic::new(&schematic)?.bg_schematic(sub_version)?;
                     file_manager.save_json_value_temp(data)?
+                }
+                5 => {
+                    let data = ToBESchematic::new(&schematic)?.to_be_value();
+                    file_manager.save_nbt_value_le_temp(data, v_type)?
                 }
                 _ => {
                     anyhow::bail!("unknown schematic type: {}", v_type);

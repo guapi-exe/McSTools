@@ -57,7 +57,7 @@ impl SchematicType {
             SchematicType::Litematic => "litematic",
             SchematicType::We => "schem",
             SchematicType::Bg => "json",
-            SchematicType::Be => "mcstruct",
+            SchematicType::Be => "mcstructure",
         }
     }
     pub fn type_id(&self) -> &'static i32 {

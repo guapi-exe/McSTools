@@ -48,14 +48,14 @@ const schematicTypes = ref([
       { value: 1, label: '1.16+' },
       { value: 2, label: '1.12+' }
     ]
-  }//,
-  //{
-    //value: 5,
-    //label: 'MC BE',
-    //subtypes: [
-      //{ value: 1, label: '默认格式' },
-    //]
-  //}
+  },
+  {
+    value: 5,
+    label: 'MC BE',
+    subtypes: [
+      { value: -1, label: '默认格式' },
+    ]
+  }
 ])
 const hasImage = ref(false)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
