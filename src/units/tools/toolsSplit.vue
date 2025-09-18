@@ -3,6 +3,8 @@ import {computed, ref} from "vue";
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {splitSchematicParts} from "../../modules/split_data.ts";
 import {toast} from "../../modules/others.ts";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 const spiltType = ref(1);
 const splitFiles = ref([]);
@@ -16,17 +18,28 @@ const splitTypes = ref([
   {
     value: 2,
     label: '水平区域'
+  },
+  {
+    value: 3,
+    label: '网格划分'
   }
 ]);
 
 const isSplitNumberDisabled = (num: number) => {
   if (!schematicData.value.sizes) return true;
 
-  const [x, y] = schematicData.value.sizes.split(',').map(Number);
+  const [x, y, z] = schematicData.value.sizes.split(',').map(Number);
 
-  return spiltType.value === 1
-      ? x < num
-      : y < num;
+  if (spiltType.value === 1) {
+    return x < num; // 垂直分层 → 宽度不足
+  } else if (spiltType.value === 2) {
+    return y < num; // 水平区域 → 高度不足
+  } else if (spiltType.value === 3) {
+    const sqrt = Math.sqrt(num);
+    if (!Number.isInteger(sqrt)) return true; // 必须是平方数
+    return x < sqrt || z < sqrt; // X 或 Y 尺寸不足
+  }
+  return true;
 };
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
@@ -34,13 +47,31 @@ const parseDimensions = (sizeStr: string) => {
 };
 
 const dimensionLabel = computed(() => {
-  return spiltType.value === 1 ? '长度(X)' : '宽度(Y)';
+  if (spiltType.value === 1) return '长度(X)';
+  if (spiltType.value === 2) return '宽度(Y)';
+  if (spiltType.value === 3) return 'X×Z';
+  return '';
 });
 
 const parseSplitDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
-  return [`X${spiltType.value == 1? Math.floor(length / splitNumber.value) : length}`, `Y${spiltType.value == 2?Math.floor(width / splitNumber.value) : width}`, `Z${height}`]
+
+  if (spiltType.value === 1) {
+    return [`X${Math.floor(length / splitNumber.value)}`, `Y${width}`, `Z${height}`];
+  } else if (spiltType.value === 2) {
+    return [`X${length}`, `Y${Math.floor(width / splitNumber.value)}`, `Z${height}`];
+  } else if (spiltType.value === 3) {
+    const sqrt = Math.sqrt(splitNumber.value);
+    return [
+      `X${Math.floor(length / sqrt)}`,
+      `Y${width}`,
+      `Z${Math.floor(height / sqrt)}`
+    ];
+  }
+
+  return [`X${length}`, `Y${width}`, `Z${height}`];
 };
+
 
 const SplitDimensions = async () => {
   try {
@@ -74,6 +105,20 @@ const downloadFile = async (file: File) => {
     URL.revokeObjectURL(url);
   }, 100);
 }
+
+const downloadAll = async () => {
+  if (!splitFiles.value.length) return;
+
+  const zip = new JSZip();
+
+  splitFiles.value.forEach(file => {
+    zip.file(file.file.name, file.file);
+  });
+
+  const content = await zip.generateAsync({ type: "blob" });
+  saveAs(content, `schematic_parts_${Date.now()}.zip`);
+};
+
 </script>
 
 <template>
@@ -109,6 +154,79 @@ const downloadFile = async (file: File) => {
               v-model="splitNumber"
               color="info"
               class="d-flex align-center"
+              v-if="spiltType == 3"
+              mandatory
+          >
+            <v-btn
+                :value="4"
+                size="large"
+                class="px-6"
+                :disabled="isSplitNumberDisabled(4)"
+            >
+              <span class="font-weight-bold">4</span>
+              <v-tooltip
+                  v-if="isSplitNumberDisabled(4)"
+                  activator="parent"
+                  location="bottom"
+              >
+                原始尺寸{{ dimensionLabel }}不足，无法分割为4份
+              </v-tooltip>
+            </v-btn>
+
+            <v-btn
+                :value="9"
+                size="large"
+                class="px-6"
+                :disabled="isSplitNumberDisabled(9)"
+            >
+              <span class="font-weight-bold">9</span>
+              <v-tooltip
+                  v-if="isSplitNumberDisabled(9)"
+                  activator="parent"
+                  location="bottom"
+              >
+                原始尺寸{{ dimensionLabel }}不足，无法分割为9份
+              </v-tooltip>
+            </v-btn>
+
+            <v-btn
+                :value="16"
+                size="large"
+                class="px-6"
+                :disabled="isSplitNumberDisabled(16)"
+            >
+              <span class="font-weight-bold">16</span>
+              <v-tooltip
+                  v-if="isSplitNumberDisabled(16)"
+                  activator="parent"
+                  location="bottom"
+              >
+                原始尺寸{{ dimensionLabel }}不足，无法分割为16份
+              </v-tooltip>
+            </v-btn>
+
+            <v-btn
+                :value="25"
+                size="large"
+                class="px-6"
+                :disabled="isSplitNumberDisabled(25)"
+            >
+              <span class="font-weight-bold">25</span>
+              <v-tooltip
+                  v-if="isSplitNumberDisabled(25)"
+                  activator="parent"
+                  location="bottom"
+              >
+                原始尺寸{{ dimensionLabel }}不足，无法分割为25份
+              </v-tooltip>
+            </v-btn>
+          </v-btn-toggle>
+
+          <v-btn-toggle
+              v-model="splitNumber"
+              color="info"
+              class="d-flex align-center"
+              v-else
               mandatory
           >
             <v-btn
@@ -235,6 +353,16 @@ const downloadFile = async (file: File) => {
                 <v-toolbar color="blue-lighten-5" density="compact">
                   <v-toolbar-title>分割结果</v-toolbar-title>
                   <v-spacer></v-spacer>
+                  <v-btn
+                      color="green"
+                      variant="tonal"
+                      size="small"
+                      class="ml-2"
+                      @click="downloadAll"
+                  >
+                    <v-icon left>mdi-archive</v-icon>
+                    打包下载
+                  </v-btn>
                   <v-chip color="green" variant="tonal" size="small">
                     {{ splitFiles.length }} 个文件
                   </v-chip>

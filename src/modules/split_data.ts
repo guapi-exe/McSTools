@@ -32,24 +32,34 @@ export const splitSchematicParts = async (
     params: SchematicReplacementParams
 ): Promise<SchematicPartFile[]> => {
     try {
-        const parts = await invoke<[]>('schematic_split', {
+        const parts = await invoke<[]>(`schematic_split`, {
             schematicId: params.schematicId,
             splitType: params.splitType,
             splitNumber: params.splitNumber,
             vType: params.vType,
         });
-        console.log(parts);
+
+        const sqrt = Math.sqrt(params.splitNumber);
+        const extension = getExtensions(params.vType);
+
         return parts.map(part => {
+            const index = part[0];
             const uint8Array = new Uint8Array(part[2]);
 
-            const extension = getExtensions(params.vType);
+            let fileName: string;
 
-            const fileName = `schematic_part_${part[0]}${extension}`;
+            if (params.splitType === 3 && Number.isInteger(sqrt)) {
+                const row = Math.floor(index / sqrt) + 1;
+                const col = (index % sqrt) + 1;
+                fileName = `schematic_part_${row}*${col}${extension}`;
+            } else {
+                fileName = `schematic_part_${index}${extension}`;
+            }
 
             const file = new File([uint8Array], fileName);
 
             return {
-                index: part[0],
+                index,
                 size: part[1],
                 file,
             };

@@ -94,79 +94,167 @@ fn split_block_positions(
         return Err(anyhow!("Split number must be at least 1"));
     }
 
-    let (dim_size, axis_idx) = match split_type {
-        1 => (size.width, 0),
-        2 => (size.height, 1),
-        _ => return Err(anyhow!("Invalid split type: {}", split_type)),
-    };
-
-    if dim_size < split_number as i32 {
-        return Err(anyhow!(
-            "Dimension size {} is smaller than split count {}",
-            dim_size,
-            split_number
-        ));
-    }
-
-    let step = dim_size / split_number as i32;
-    let remainder = dim_size % split_number as i32;
-
-    let part_sizes: Vec<Size> = (0..split_number)
-        .map(|i| {
-            let part_length = if i == split_number - 1 {
-                step + remainder
-            } else {
-                step
-            };
-            match split_type {
-                1 => Size { width: part_length, height: size.height, length: size.length },
-                2 => Size { width: size.width, height: part_length, length: size.length },
+    match split_type {
+        1 | 2 => {
+            // 原有单轴切割
+            let (dim_size, axis_idx) = match split_type {
+                1 => (size.width, 0),
+                2 => (size.height, 1),
                 _ => unreachable!(),
+            };
+
+            if dim_size < split_number as i32 {
+                return Err(anyhow!(
+                    "Dimension size {} is smaller than split count {}",
+                    dim_size,
+                    split_number
+                ));
             }
-        })
-        .collect();
 
-    let result = blocks.par_iter().fold(
-        || vec![VecDeque::new(); split_number], // 每个线程初始分组
-        |mut local_groups, block| {
-            let pos = match axis_idx {
-                0 => block.pos.x,
-                1 => block.pos.y,
-                _ => unreachable!(),
-            };
-            let mut cumulative = 0;
-            let mut group_idx = split_number - 1; // 默认为最后一组
-            for i in 0..split_number {
-                cumulative += if i == split_number - 1 {
-                    step + remainder
-                } else {
-                    step
-                };
-                if pos < cumulative {
-                    group_idx = i;
-                    break;
+            let step = dim_size / split_number as i32;
+            let remainder = dim_size % split_number as i32;
+
+            let part_sizes: Vec<Size> = (0..split_number)
+                .map(|i| {
+                    let part_length = if i == split_number - 1 {
+                        step + remainder
+                    } else {
+                        step
+                    };
+                    match split_type {
+                        1 => Size { width: part_length, height: size.height, length: size.length },
+                        2 => Size { width: size.width, height: part_length, length: size.length },
+                        _ => unreachable!(),
+                    }
+                })
+                .collect();
+
+            let result = blocks.par_iter().fold(
+                || vec![VecDeque::new(); split_number],
+                |mut local_groups, block| {
+                    let pos = match axis_idx {
+                        0 => block.pos.x,
+                        1 => block.pos.y,
+                        _ => unreachable!(),
+                    };
+                    let mut cumulative = 0;
+                    let mut group_idx = split_number - 1;
+                    for i in 0..split_number {
+                        cumulative += if i == split_number - 1 {
+                            step + remainder
+                        } else {
+                            step
+                        };
+                        if pos < cumulative {
+                            group_idx = i;
+                            break;
+                        }
+                    }
+                    local_groups[group_idx].push_back(block.clone());
+                    local_groups
+                },
+            ).reduce(
+                || vec![VecDeque::new(); split_number],
+                |mut global_groups, local_groups| {
+                    for (i, mut group) in local_groups.into_iter().enumerate() {
+                        global_groups[i].append(&mut group);
+                    }
+                    global_groups
+                },
+            );
+
+            Ok(result.into_iter()
+                .enumerate()
+                .map(|(i, elements)| (
+                    BlockStatePosList { elements },
+                    part_sizes[i].clone()
+                ))
+                .collect())
+        }
+
+        3 => {
+            let sqrt = (split_number as f64).sqrt() as usize;
+            if sqrt * sqrt != split_number {
+                return Err(anyhow!("For grid split, split_number must be a perfect square (e.g. 4, 9, 16)"));
+            }
+
+            let x_parts = sqrt;
+            let z_parts = sqrt;
+
+            if size.width < x_parts as i32 || size.length < z_parts as i32 {
+                return Err(anyhow!(
+                    "Grid split count ({x_parts}x{z_parts}) is too large for size ({}x{})",
+                    size.width,
+                    size.length
+                ));
+            }
+
+            let x_step = size.width / x_parts as i32;
+            let x_rem = size.width % x_parts as i32;
+
+            let z_step = size.length / z_parts as i32;
+            let z_rem = size.length % z_parts as i32;
+
+            // 每块区域的 size
+            let mut part_sizes = Vec::with_capacity(split_number);
+            for xi in 0..x_parts {
+                let w = if xi == x_parts - 1 { x_step + x_rem } else { x_step };
+                for zi in 0..z_parts {
+                    let l = if zi == z_parts - 1 { z_step + z_rem } else { z_step };
+                    part_sizes.push(Size {
+                        width: w,
+                        height: size.height,
+                        length: l,
+                    });
                 }
             }
-            local_groups[group_idx].push_back(block.clone());
-            local_groups
-        },
-    ).reduce(
-        || vec![VecDeque::new(); split_number],
-        |mut global_groups, local_groups| {
-            for (i, mut group) in local_groups.into_iter().enumerate() {
-                global_groups[i].append(&mut group);
-            }
-            global_groups
-        },
-    );
 
-    let parts_with_size = result.into_iter()
-        .enumerate()
-        .map(|(i, elements)| (
-            BlockStatePosList { elements },
-            part_sizes[i].clone()
-        ))
-        .collect();
+            let result = blocks.par_iter().fold(
+                || vec![VecDeque::new(); split_number],
+                |mut local_groups, block| {
+                    let mut x_cum = 0;
+                    let mut xi = x_parts - 1;
+                    for i in 0..x_parts {
+                        x_cum += if i == x_parts - 1 { x_step + x_rem } else { x_step };
+                        if block.pos.x < x_cum {
+                            xi = i;
+                            break;
+                        }
+                    }
 
-    Ok(parts_with_size)
+                    let mut z_cum = 0;
+                    let mut zi = z_parts - 1;
+                    for j in 0..z_parts {
+                        z_cum += if j == z_parts - 1 { z_step + z_rem } else { z_step };
+                        if block.pos.z < z_cum {
+                            zi = j;
+                            break;
+                        }
+                    }
+
+                    let group_idx = xi * z_parts + zi;
+                    local_groups[group_idx].push_back(block.clone());
+                    local_groups
+                },
+            ).reduce(
+                || vec![VecDeque::new(); split_number],
+                |mut global_groups, local_groups| {
+                    for (i, mut group) in local_groups.into_iter().enumerate() {
+                        global_groups[i].append(&mut group);
+                    }
+                    global_groups
+                },
+            );
+
+            Ok(result.into_iter()
+                .enumerate()
+                .map(|(i, elements)| (
+                    BlockStatePosList { elements },
+                    part_sizes[i].clone()
+                ))
+                .collect())
+        }
+
+        _ => Err(anyhow!("Invalid split type: {}", split_type)),
+    }
 }
