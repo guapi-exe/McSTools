@@ -108,6 +108,27 @@ pub fn update_schematic_classification(
     Ok(schematic_id)
 }
 
+pub fn update_schematic_lm_version(
+    conn: &mut PooledConnection<SqliteConnectionManager>,
+    lm_version: i32,
+    schematic_id: i64,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
+        r#"UPDATE schematics
+        SET
+            lm_version = ?1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?2"#,
+        params![lm_version, schematic_id],
+    )?;
+
+    tx.commit()?;
+
+    Ok(schematic_id)
+}
+
 pub fn new_schematic(
     mut conn: &mut PooledConnection<SqliteConnectionManager>,
     schematic: Schematic,

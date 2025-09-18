@@ -21,7 +21,7 @@ use database::db_apis::logs_api::{add_logs, get_logs};
 use database::db_apis::schematic_data_api::{get_schematic_requirements, get_unique_block};
 use database::db_apis::schematics_api::{add_schematic, get_schematic, get_schematics, count_schematics};
 use database::db_apis::user_api::{get_user_data, update_user_classification_tauri, get_user_classification};
-use modules::convert::{convert, get_je_blocks, get_map_arts, get_schematic_convert_data};
+use modules::convert::{convert, convert_lm, get_je_blocks, get_map_arts, get_schematic_convert_data};
 use modules::history::get_history;
 use modules::map_art::create_map_art;
 use modules::modules_data;
@@ -70,6 +70,7 @@ pub fn run() {
             close_splashscreen,
             get_config,
             convert,
+            convert_lm,
             get_history,
             update_config,
             open_dev,

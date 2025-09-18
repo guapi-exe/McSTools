@@ -14,7 +14,7 @@ use crate::utils::tile_entities::TileEntitiesList;
 
 #[derive(Debug)]
 pub struct BESchematic {
-    nbt: Value,
+    pub nbt: Value,
 }
 
 impl BESchematic {

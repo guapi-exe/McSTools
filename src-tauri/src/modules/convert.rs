@@ -1,7 +1,7 @@
 use crate::building_gadges::to_bg_schematic::ToBgSchematic;
 use crate::create::to_create_schematic::ToCreateSchematic;
 use crate::data_files::files::FileManager;
-use crate::database::db_apis::schematics_api::find_schematic;
+use crate::database::db_apis::schematics_api::{find_schematic, update_schematic_lm_version};
 use crate::database::db_control::DatabaseState;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
 use crate::modules::modules_data::convert_data::ConvertData;
@@ -10,8 +10,10 @@ use crate::utils::minecraft_data::map_art_data::{BlockColorData, MapArtsData};
 use crate::word_edit::to_we_schematic::ToWeSchematic;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use fastnbt::Value::Compound;
 use tauri::State;
 use crate::be_schematic::to_be_schematic::ToBESchematic;
+use crate::utils::schematic_data::SchematicError;
 
 #[tauri::command]
 pub async fn get_schematic_convert_data(
@@ -122,4 +124,38 @@ pub async fn convert(
     }
     .await
     .map_err(|e: anyhow::Error| e.to_string())
+}
+
+
+#[tauri::command]
+pub async fn convert_lm(
+    db: State<'_, DatabaseState>,
+    file_manager: State<'_, FileManager>,
+    id: i64,
+    lm_version: i64,
+) -> anyhow::Result<bool, String> {
+    async move {
+        let mut conn = db.0.get()?;
+        let schematic = find_schematic(&mut conn, id)?;
+        let version = schematic.version;
+        let sub_version = schematic.sub_type;
+        let v_type = schematic.schematic_type;
+        let mut data = file_manager.get_schematic_value(id, version, sub_version, v_type)?;
+
+        if let Compound(ref mut nbt_map) = data {
+            nbt_map.insert("Version".to_string(), fastnbt::Value::Int(lm_version as i32));
+        }
+        update_schematic_lm_version(&mut conn, lm_version as i32, id)?;
+        file_manager.save_nbt_value(
+            id,
+            data,
+            0,
+            sub_version,
+            v_type,
+            true,
+        )?;
+        Ok(true)
+    }
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())
 }

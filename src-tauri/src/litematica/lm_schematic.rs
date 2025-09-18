@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct LmSchematic {
-    nbt: Value,
+    pub nbt: Value,
 }
 
 impl LmSchematic {

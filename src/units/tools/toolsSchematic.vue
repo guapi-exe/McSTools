@@ -7,13 +7,17 @@ import {update_schematic_name, update_user_classification} from "../../modules/u
 import {schematic_id} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import {userData} from "../../modules/user_data.ts";
+import {opacity} from "../../modules/theme.ts";
+import {invoke} from "@tauri-apps/api/core";
 
 const props = defineProps<{
   data: SchematicsData | undefined,
 }>()
 const tags = ref<string[]>([])
+const showDeleteDialog = ref(false)
 const lastTags = ref<string[]>([]);
 const editing = ref(false)
+const lmVersion = ref(6)
 const editLoading = ref(false)
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
@@ -62,6 +66,20 @@ const saveEdit = async (newTags: string[]) => {
   lastTags.value = [...newTags];
 }
 
+const setLmVersion = async () => {
+  props.data.lm_version = lmVersion.value;
+  const result = await invoke<boolean>('convert_lm', {
+    id: schematic_id.value,
+    lmVersion: lmVersion.value,
+  });
+  if (result) {
+    toast.success(`版本修改完毕`, {
+      timeout: 3000
+    });
+  }
+  showDeleteDialog.value = false;
+}
+
 onMounted(() => {
   if(props.data){
     schematicEdit.name = props.data.name;
@@ -75,6 +93,8 @@ onMounted(() => {
     }
 
     schematicEdit.description = props.data.description;
+
+    lmVersion.value = props.data.lm_version;
   }
   if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
     tags.value = userData.value.classification
@@ -177,7 +197,7 @@ onMounted(() => {
                       variant="text"
                       size="x-small"
                       icon="mdi-pencil"
-                      @click=""
+                      @click="showDeleteDialog = true;"
                   ></v-btn>
                 </v-list-item-action>
               </template>
@@ -357,6 +377,52 @@ onMounted(() => {
       未选取蓝图
     </v-alert>
   </div>
+
+  <v-dialog v-model="showDeleteDialog" max-width="600" persistent>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
+      <v-card-title class="headline">
+        <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+        修改投影版本
+      </v-card-title>
+
+      <v-card-subtitle class="text-caption text-grey-darken-1">
+        修改建筑投影，自身版本控制器
+      </v-card-subtitle>
+      <v-card-text>
+        <v-row no-gutters>
+          <v-col cols="12">
+            <v-combobox
+                v-model="lmVersion"
+                :items="[3, 4, 5, 6, 7]"
+                density="compact"
+                label="目标输出版本"
+            ></v-combobox>
+          </v-col>
+        </v-row>
+        <span class="text-caption text-grey-darken-1">
+          修改前确认你想要的目标版本
+        </span>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            @click="showDeleteDialog = false"
+        >
+          取消
+        </v-btn>
+        <v-btn
+            color="info"
+            @click="setLmVersion"
+        >
+          确认修改
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>

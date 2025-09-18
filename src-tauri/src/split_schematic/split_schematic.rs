@@ -50,7 +50,7 @@ pub async fn schematic_split(
                     file_manager.save_nbt_value_temp(data, v_type, true)?
                 }
                 2 => {
-                    let data = ToLmSchematic::new(&schematic)?.lm_schematic(sub_version);
+                    let data = ToLmSchematic::new(&schematic)?.lm_schematic(6);
                     file_manager.save_nbt_value_temp(data, v_type, true)?
                 }
                 3 => {

@@ -10,7 +10,7 @@ use std::io::{BufReader, Cursor};
 use std::sync::Arc;
 #[derive(Debug)]
 pub struct CreateSchematic {
-    nbt: Value,
+    pub nbt: Value,
 }
 
 impl CreateSchematic {

@@ -545,6 +545,49 @@ impl FileManager {
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
     }
+    pub fn get_schematic_value(
+        &self,
+        id: i64,
+        version: i32,
+        sub_version: i32,
+        v_type: i32,
+    ) -> Result<Value> {
+        let schematic_dir = self.schematic_dir(id)?;
+        let file_ext = match v_type {
+            1 => "nbt",
+            2 => "litematic",
+            3 => "schem",
+            5 => "mcstructure",
+            _ => "unknown",
+        };
+        let filename = format!(
+            "schematic_{}.{}.{}.{}",
+            version, sub_version, v_type, file_ext
+        );
+
+        let file_path = schematic_dir.join(filename);
+        let data = fs::read(&file_path)
+            .with_context(|| format!("Unable to read blueprint file: {}", file_path.display()))?;
+        match v_type {
+            1 => {
+                let schematic = CreateSchematic::new_from_bytes(data)?;
+                Ok(schematic.nbt)
+            }
+            2 => {
+                let schematic = LmSchematic::new_from_bytes(data)?;
+                Ok(schematic.nbt)
+            }
+            3 => {
+                let schematic = WeSchematic::new_from_bytes(data)?;
+                Ok(schematic.nbt)
+            }
+            5 => {
+                let schematic = BESchematic::new_from_bytes(data)?;
+                Ok(schematic.nbt)
+            }
+            _ => Err(anyhow!("UNK: {}", v_type)),
+        }
+    }
 }
 
 fn remove_dir_all_safe<P: AsRef<Path>>(path: P) -> Result<()> {
