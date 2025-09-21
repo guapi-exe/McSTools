@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Arc;
+use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct WeSchematic {
@@ -249,6 +250,7 @@ impl WeSchematic {
         Ok(SchematicData::new(
             block_list,
             tile_entities,
+            EntitiesList::default(),
             Size {
                 width,
                 height,

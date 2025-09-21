@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Error as JsonError;
 use std::io::Error as IoError;
 use thiserror::Error;
+use crate::utils::entities::{EntitiesList};
 
 #[derive(Debug, Error)]
 pub enum SchematicError {
@@ -16,7 +17,7 @@ pub enum SchematicError {
     Io(#[from] IoError),
     #[error("JsonError error: {0}")]
     Json(#[from] JsonError),
-    #[error("JsonError error: {0}")]
+    #[error("SQLError error: {0}")]
     SQL(#[from] rusqlite::Error),
     #[error("NBT error: {0}")]
     Nbt(#[from] fastnbt::error::Error),
@@ -60,6 +61,7 @@ pub struct
 SchematicData {
     pub blocks: BlockStatePosList,
     pub tile_entities_list: TileEntitiesList,
+    pub entities_list: EntitiesList,
     pub size: Size,
 }
 
@@ -67,11 +69,13 @@ impl SchematicData {
     pub fn new(
         blocks: BlockStatePosList,
         tile_entities_list: TileEntitiesList,
+        entities_list: EntitiesList,
         size: Size,
     ) -> Self {
         Self {
             blocks,
             tile_entities_list,
+            entities_list,
             size,
         }
     }

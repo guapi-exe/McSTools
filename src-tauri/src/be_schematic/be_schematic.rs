@@ -10,6 +10,7 @@ use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
 use crate::utils::extend_value::NbtExt;
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
+use crate::utils::entities::EntitiesList;
 use crate::utils::tile_entities::TileEntitiesList;
 
 #[derive(Debug)]
@@ -176,7 +177,7 @@ impl BESchematic {
          */
 
         let tile_entities = TileEntitiesList::default();
-        Ok(SchematicData::new(block_list, tile_entities, size))
+        Ok(SchematicData::new(block_list, tile_entities, EntitiesList::default(), size))
     }
 
     fn parse_block_layer(

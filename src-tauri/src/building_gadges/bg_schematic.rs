@@ -15,6 +15,7 @@ use std::fs;
 use std::io::Read;
 use std::sync::Arc;
 use serde::Deserializer;
+use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct BgSchematic {
@@ -378,6 +379,7 @@ impl BgSchematic {
         Ok(SchematicData::new(
             block_list,
             tile_entities,
+            EntitiesList::default(),
             Size {
                 width: size.x,
                 height: size.y,

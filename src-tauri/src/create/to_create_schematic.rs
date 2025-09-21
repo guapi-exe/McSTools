@@ -8,6 +8,8 @@ use rayon::iter::ParallelIterator;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use anyhow::Result;
+use crate::utils::entities::EntitiesList;
+use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
 
 #[derive(Debug)]
 pub struct ToCreateSchematic {
@@ -19,6 +21,8 @@ pub struct ToCreateSchematic {
     length: i32,
     pub unique_block_states: Vec<Arc<BlockData>>,
     pub block_state_to_index: HashMap<Arc<BlockData>, usize>,
+    pub tile_entities: TileEntitiesList,
+    pub entities: EntitiesList,
 }
 
 impl ToCreateSchematic {
@@ -92,6 +96,8 @@ impl ToCreateSchematic {
 
             (unique, index_map)
         };
+        let tile_entities = schematic.tile_entities_list.clone();
+        let entities = schematic.entities_list.clone();
 
         Ok(Self {
             blocks,
@@ -102,6 +108,8 @@ impl ToCreateSchematic {
             length,
             unique_block_states,
             block_state_to_index,
+            tile_entities,
+            entities,
         })
     }
 
@@ -125,8 +133,20 @@ impl ToCreateSchematic {
 
         Value::List(palette)
     }
+    fn build_entities_list(&self) -> Vec<Value> {
+        if self.entities.original_type != 1 {
+            return vec![];
+        }
 
+        self.entities.elements.iter().map(|e| e.nbt.clone()).collect()
+    }
     pub fn create_blocks(&self, air: bool) -> Value {
+        let tile_entity_map: HashMap<(i32, i32, i32), &TileEntities> =
+            self.tile_entities
+                .elements
+                .iter()
+                .map(|te| ((te.pos.x, te.pos.y, te.pos.z), te))
+                .collect();
         let block_list: Vec<Value> = self
             .blocks
             .par_iter()
@@ -150,7 +170,11 @@ impl ToCreateSchematic {
                 let mut block_tag = HashMap::new();
                 block_tag.insert("state".to_string(), Value::Int(*state_id as i32));
                 block_tag.insert("pos".to_string(), pos);
-
+                if self.tile_entities.original_type == 1 {
+                    if let Some(tile_entity) = tile_entity_map.get(&(block_pos.pos.x, block_pos.pos.y, block_pos.pos.z)) {
+                        block_tag.insert("nbt".to_string(), tile_entity.nbt.clone());
+                    }
+                }
                 Some(Compound(block_tag))
             })
             .collect();
@@ -169,7 +193,7 @@ impl ToCreateSchematic {
         tag.insert("size".to_string(), size);
         tag.insert("blocks".to_string(), self.create_blocks(air));
         tag.insert("palette".to_string(), self.create_palette());
-        tag.insert("entities".to_string(), Value::List(vec![]));
+        tag.insert("entities".to_string(), Value::List(self.build_entities_list()));
         tag.insert("DataVersion".to_string(), Value::Int(3465)); // 你说的对别问我这里为什么写固定值
 
         Compound(tag)

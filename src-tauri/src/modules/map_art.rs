@@ -16,7 +16,7 @@ use crate::utils::schematic_data::{SchematicData, Size};
 use crate::utils::tile_entities::TileEntitiesList;
 use crate::word_edit::to_we_schematic::ToWeSchematic;
 use chrono::Local;
-use rusqlite::version;
+use crate::utils::entities::{EntitiesList};
 use std::collections::VecDeque;
 use tauri::State;
 use crate::be_schematic::to_be_schematic::ToBESchematic;
@@ -38,7 +38,7 @@ pub async fn create_map_art(
         let block_data = BlockStatePosList {
             elements: VecDeque::from(blocks),
         };
-        let data = SchematicData::new(block_data, TileEntitiesList::default(), size);
+        let data = SchematicData::new(block_data, TileEntitiesList::default(), EntitiesList::default(), size);
         match schematic_type {
             1 => {
                 let requirement = get_requirements(&data.blocks)?;

@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Arc;
+use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct LmSchematic {
@@ -116,22 +117,52 @@ impl LmSchematic {
         })
     }
 
-    pub fn process_regions(&self) -> Result<(RegionList, RegionNameList), SchematicError> {
+    pub fn process_regions(&self) -> Result<(RegionList, RegionNameList, HashMap<String, TileEntitiesList>, HashMap<String, EntitiesList>), SchematicError> {
         let regions = self.get_regions()?;
         let mut regions_list = RegionList::default();
         let mut regions_name_list = RegionNameList::default();
+        let mut region_tile_entities: HashMap<String, TileEntitiesList> = HashMap::new();
+        let mut region_entities: HashMap<String, EntitiesList> = HashMap::new();
 
         for (name, region_value) in regions {
             let region = match region_value {
                 Compound(r) => r,
-                _ => return Err(SchematicError::InvalidFormat("null")),
+                _ => return Err(SchematicError::InvalidFormat("Region is not a Compound")),
             };
+
             let block_states = region.get_long_array("BlockStates")?;
             let position = region.get_pos("Position")?;
             let size = region.get_pos("Size")?;
             let block_state_palette = region.get_list("BlockStatePalette")?;
-            let tile_entities = region.get_list("TileEntities")?;
-            let entities = region.get_list("TileEntities")?;
+
+            let tile_entities_raw: Vec<Value> = region
+                .get("TileEntities")
+                .and_then(|v| match v {
+                    Value::List(list) => Some(list.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| vec![]);
+
+            let tile_entities = if tile_entities_raw.is_empty() {
+                TileEntitiesList::new()
+            } else {
+                TileEntitiesList::from_nbt_lm(&tile_entities_raw, 2)?
+            };
+
+            let entities_raw: Vec<Value> = region
+                .get("Entities")
+                .and_then(|v| match v {
+                    Value::List(list) => Some(list.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| vec![]);
+
+            let entities = if entities_raw.is_empty() {
+                EntitiesList::new()
+            } else {
+                EntitiesList::from_nbt(&entities_raw, 2)?
+            };
+
             let palette_size = block_state_palette.len();
             let adjusted = if palette_size == 0 {
                 u32::MAX
@@ -141,20 +172,26 @@ impl LmSchematic {
             let leading_zeros = adjusted.leading_zeros();
             let bits_unclamped = 32u32.saturating_sub(leading_zeros);
             let bits = (bits_unclamped as f64).max(2.0) as i32;
+
             regions_list.add(RegionData {
                 region_name: name.to_string(),
                 block_states: block_states.clone().into_inner(),
                 position,
                 size,
                 block_state_palette: block_state_palette.to_vec(),
-                tile_entities: tile_entities.to_vec(),
-                entities: entities.to_vec(),
+                tile_entities: tile_entities_raw.to_vec(), // 保持原始
+                entities: entities_raw.to_vec(),
                 bits,
             });
+
             regions_name_list.add(name.to_string());
+            region_tile_entities.insert(name.to_string(), tile_entities);
+            region_entities.insert(name.to_string(), entities);
         }
-        Ok((regions_list, regions_name_list))
+
+        Ok((regions_list, regions_name_list, region_tile_entities, region_entities))
     }
+
 
     pub fn parse_palette(
         &self,
@@ -229,10 +266,10 @@ impl LmSchematic {
     }
 
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
-        let (regions_list, regions_name_list) = self.process_regions()?;
-        let tile_entities = TileEntitiesList::default();
+        let (regions_list, regions_name_list, region_tile_entities, region_entities) = self.process_regions()?;
         let metadata = self.read_metadata()?;
         let size = metadata.enclosing_size;
+
         let region_blocks: Vec<BlockStatePosList> = regions_name_list
             .names
             .par_iter()
@@ -250,6 +287,7 @@ impl LmSchematic {
                 let width = size.x.unsigned_abs() as usize;
                 let height = size.y.unsigned_abs() as usize;
                 let length = size.z.unsigned_abs() as usize;
+
                 let y_blocks: Vec<BlockStatePosList> = (0..height)
                     .into_par_iter()
                     .map(|y| {
@@ -295,9 +333,22 @@ impl LmSchematic {
                     acc
                 });
 
+        let mut all_tile_entities = TileEntitiesList::default();
+        for list in region_tile_entities.values() {
+            all_tile_entities.elements.extend(list.elements.clone());
+        }
+        all_tile_entities.original_type = 2;
+
+        let mut all_entities = EntitiesList::default();
+        for list in region_entities.values() {
+            all_entities.elements.extend(list.elements.clone());
+        }
+        all_entities.original_type = 2;
+
         Ok(SchematicData::new(
             final_block_list,
-            tile_entities,
+            all_tile_entities,
+            all_entities,
             Size {
                 width: size.x,
                 height: size.y,
@@ -305,4 +356,5 @@ impl LmSchematic {
             },
         ))
     }
+
 }

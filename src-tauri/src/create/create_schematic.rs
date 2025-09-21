@@ -1,13 +1,15 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
 use crate::utils::extend_value::NbtExt;
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
-use crate::utils::tile_entities::TileEntitiesList;
+use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
 use fastnbt::{self, Value, Value::Compound};
 use flate2::read::GzDecoder;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Arc;
+use crate::utils::entities::EntitiesList;
+
 #[derive(Debug)]
 pub struct CreateSchematic {
     pub nbt: Value,
@@ -93,22 +95,16 @@ impl CreateSchematic {
             Err(SchematicError::InvalidFormat("Root is not a Compound"))
         }
     }
-
-    pub fn get_entities(&self) -> Result<&Vec<Value>, SchematicError> {
+    pub fn get_entities(&self) -> Option<&Vec<Value>> {
         if let Compound(root) = &self.nbt {
-            root.get("entities")
-                .and_then(|v| match v {
-                    Value::List(list) => Some(list),
-                    _ => None,
-                })
-                .ok_or(SchematicError::InvalidFormat(
-                    "NotFound Size is not a IntArray",
-                ))
+            root.get("entities").and_then(|v| match v {
+                Value::List(list) => Some(list),
+                _ => None,
+            })
         } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
+            None
         }
     }
-
     fn parse_palette(&self) -> Result<Vec<Arc<BlockData>>, SchematicError> {
         let palette_list = self.get_palette()?;
 
@@ -143,10 +139,12 @@ impl CreateSchematic {
 
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
         let mut block_list = BlockStatePosList::default();
-        let tile_entities = TileEntitiesList::default();
+        let mut tile_entities = TileEntitiesList::default();
+        tile_entities.original_type = 1;
         let blocks = self.get_pos_list()?;
         let palette = self.parse_palette()?;
         let size = self.get_size()?;
+
         let sizes = match size {
             list => list
                 .iter()
@@ -156,61 +154,69 @@ impl CreateSchematic {
                 })
                 .collect::<Vec<i32>>(),
         };
+
         for block in blocks.iter() {
-            let pos = if let Compound(compound) = block {
-                let pos_values = compound
-                    .get("pos")
-                    .ok_or(SchematicError::InvalidFormat("Missing pos field"))?;
-
-                let coords = match pos_values {
-                    Value::List(list) => list
-                        .iter()
-                        .filter_map(|v| match v {
-                            Value::Int(n) => Some(*n as i32),
-                            _ => None,
-                        })
-                        .collect::<Vec<i32>>(),
-                    Value::IntArray(arr) => arr.to_vec(),
-                    _ => return Err(SchematicError::InvalidFormat("Invalid pos type")),
-                };
-
-                if coords.len() != 3 {
-                    return Err(SchematicError::InvalidFormat(
-                        "Position requires 3 coordinates",
-                    ));
-                }
-
-                BlockPos {
-                    x: coords[0],
-                    y: coords[1],
-                    z: coords[2],
-                }
-            } else {
-                return Err(SchematicError::InvalidFormat(
-                    "Block entry is not a compound",
-                ));
+            let compound = match block {
+                Compound(c) => c,
+                _ => return Err(SchematicError::InvalidFormat("Block entry is not a compound")),
             };
 
-            let state_id_value = if let Compound(compound) = block {
-                compound
-                    .get("state")
-                    .ok_or(SchematicError::InvalidFormat("Missing state field"))?
-            } else {
-                return Err(SchematicError::InvalidFormat(
-                    "Block entry is not a compound",
-                ));
+            let pos_values = compound
+                .get("pos")
+                .ok_or(SchematicError::InvalidFormat("Missing pos field"))?;
+
+            let coords = match pos_values {
+                Value::List(list) => list
+                    .iter()
+                    .filter_map(|v| match v {
+                        Value::Int(n) => Some(*n as i32),
+                        _ => None,
+                    })
+                    .collect::<Vec<i32>>(),
+                Value::IntArray(arr) => arr.to_vec(),
+                _ => return Err(SchematicError::InvalidFormat("Invalid pos type")),
             };
+
+            if coords.len() != 3 {
+                return Err(SchematicError::InvalidFormat(
+                    "Position requires 3 coordinates",
+                ));
+            }
+
+            let pos = BlockPos {
+                x: coords[0],
+                y: coords[1],
+                z: coords[2],
+            };
+
+            let state_id_value = compound
+                .get("state")
+                .ok_or(SchematicError::InvalidFormat("Missing state field"))?;
             let state_id = match state_id_value {
                 Value::Int(n) => *n as usize,
                 _ => return Err(SchematicError::InvalidFormat("State ID must be integer")),
             };
             let block_data = &palette[state_id];
-            block_list.add(pos, Arc::clone(block_data))
+            block_list.add(pos, Arc::clone(block_data));
+
+            if let Some(nbt_value) = compound.get("nbt") {
+                tile_entities.elements.push(TileEntities {
+                    pos,
+                    nbt: nbt_value.clone(),
+                });
+            }
         }
+        let mut entities = if let Some(entities_raw) = self.get_entities() {
+            EntitiesList::from_nbt(entities_raw, 1)?
+        } else {
+            EntitiesList::new()
+        };
+        entities.original_type = 1;
 
         Ok(SchematicData::new(
             block_list,
             tile_entities,
+            entities,
             Size {
                 width: sizes[0],
                 height: sizes[1],
@@ -218,6 +224,7 @@ impl CreateSchematic {
             },
         ))
     }
+
 }
 
 pub fn extract_namespace(input: &str) -> Result<(&str, &str), SchematicError> {

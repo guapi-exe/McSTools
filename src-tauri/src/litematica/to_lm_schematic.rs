@@ -1,5 +1,5 @@
 use crate::utils::block_state_pos_list::{
-    BlockData, BlockId, BlockPos, BlockStatePos, BlockStatePosList,
+    BlockData, BlockId, BlockPos, BlockStatePos,
 };
 use crate::utils::schematic_data::{SchematicData, SchematicError};
 use chrono::Utc;
@@ -13,6 +13,8 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use anyhow::Result;
+use crate::utils::tile_entities::TileEntitiesList;
+use crate::utils::entities::{EntitiesList};
 
 #[derive(Debug)]
 pub struct ToLmSchematic {
@@ -25,6 +27,8 @@ pub struct ToLmSchematic {
     bits: i32,
     pub unique_block_states: Vec<Arc<BlockData>>,
     pub block_state_to_index: HashMap<Arc<BlockData>, usize>,
+    pub tile_entities: TileEntitiesList,
+    pub entities: EntitiesList,
 }
 
 impl ToLmSchematic {
@@ -152,6 +156,9 @@ impl ToLmSchematic {
         let bits_unclamped = 32u32.saturating_sub(leading_zeros);
         let bits = (bits_unclamped as f64).max(2.0) as i32;
         let blocks = block_list.elements;
+        let tile_entities = schematic.tile_entities_list.clone();
+        let entities = schematic.entities_list.clone();
+        println!("{:?}", blocks);
         Ok(Self {
             blocks,
             start_pos: min,
@@ -162,6 +169,8 @@ impl ToLmSchematic {
             bits,
             unique_block_states,
             block_state_to_index,
+            tile_entities,
+            entities,
         })
     }
     pub fn get_block_id_list(&self) -> Vec<i32> {
@@ -241,6 +250,44 @@ impl ToLmSchematic {
             .map(|a| a.into_inner())
             .collect()
     }
+    fn build_tile_entities_list(&self) -> Vec<Value> {
+        if self.tile_entities.original_type != 2 {
+            return vec![];
+        }
+        self.tile_entities.elements
+            .iter()
+            .map(|te| {
+                let nx = te.pos.x - self.start_pos.x;
+                let ny = te.pos.y - self.start_pos.y;
+                let nz = te.pos.z - self.start_pos.z;
+
+                match &te.nbt {
+                    Compound(map) => {
+                        let mut new_map = map.clone();
+                        new_map.insert("x".to_string(), Value::Int(nx));
+                        new_map.insert("y".to_string(), Value::Int(ny));
+                        new_map.insert("z".to_string(), Value::Int(nz));
+                        Compound(new_map)
+                    }
+                    other => {
+                        let mut new_map = HashMap::new();
+                        new_map.insert("x".to_string(), Value::Int(nx));
+                        new_map.insert("y".to_string(), Value::Int(ny));
+                        new_map.insert("z".to_string(), Value::Int(nz));
+                        new_map.insert("nbt".to_string(), other.clone());
+                        Compound(new_map)
+                    }
+                }
+            })
+            .collect()
+    }
+    fn build_entities_list(&self) -> Vec<Value> {
+        if self.entities.original_type != 2 {
+            return vec![];
+        }
+
+        self.entities.elements.iter().map(|e| e.nbt.clone()).collect()
+    }
     pub fn lm_palette(&self) -> Value {
         let mut palette = Vec::new();
 
@@ -311,7 +358,8 @@ impl ToLmSchematic {
         region.insert("Size".to_string(), Compound(size));
 
         region.insert("BlockStatePalette".to_string(), self.lm_palette());
-        region.insert("TileEntities".to_string(), Value::List(vec![]));
+        region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        region.insert("Entities".to_string(), Value::List(self.build_entities_list()));
         regions.insert("null".to_string(), Compound(region));
         Compound(regions)
     }
