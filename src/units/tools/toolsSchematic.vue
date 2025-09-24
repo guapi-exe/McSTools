@@ -34,8 +34,30 @@ const formatTime = (time: any) => {
 const saveEdit = async (newTags: string[]) => {
   editing.value = false
   editLoading.value = true
+
+  try {
+    const tagsString = schematicEdit.schematic_tags.join(',');
+    let result = await update_schematic_name(
+        schematic_id.value,
+        schematicEdit.name,
+        tagsString,
+        schematicEdit.description
+    );
+    if (result){
+      toast.success(`数据已更新`, { timeout: 3000 });
+      props.data.name = schematicEdit.name
+      props.data.schematic_tags = tagsString;
+      props.data.description = schematicEdit.description
+    }
+  } catch (e) {
+    console.log(e)
+  } finally {
+    editing.value = false
+  }
+  lastTags.value = [...newTags];
+}
+const saveTags = async (newTags: string[]) => {
   const added = newTags.filter(tag => !lastTags.value.includes(tag));
-  //const removed = lastTags.value.filter(tag => !newTags.includes(tag));
   try {
     tags.value.push(...added);
     const tagsString = schematicEdit.schematic_tags.join(',');
@@ -65,6 +87,7 @@ const saveEdit = async (newTags: string[]) => {
   }
   lastTags.value = [...newTags];
 }
+
 
 const setLmVersion = async () => {
   props.data.lm_version = lmVersion.value;
@@ -249,7 +272,7 @@ onMounted(() => {
               hint="输入后按回车添加标签"
               persistent-hint
               :items="[]"
-              @update:model-value="saveEdit"
+              @update:model-value="saveTags"
           >
             <template v-slot:chip="{ props, item, index }">
               <v-chip
