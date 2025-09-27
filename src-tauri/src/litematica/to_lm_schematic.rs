@@ -358,7 +358,8 @@ impl ToLmSchematic {
         region.insert("Size".to_string(), Compound(size));
 
         region.insert("BlockStatePalette".to_string(), self.lm_palette());
-        region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        //region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        region.insert("TileEntities".to_string(), Value::List(vec![]));
         region.insert("Entities".to_string(), Value::List(self.build_entities_list()));
         regions.insert("null".to_string(), Compound(region));
         Compound(regions)
