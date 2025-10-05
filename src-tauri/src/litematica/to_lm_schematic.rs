@@ -130,17 +130,15 @@ impl ToLmSchematic {
         let height = max.y - min.y;
         let length = max.z - min.z + 1;
         let (unique_block_states, block_state_to_index) = {
-            let mut seen = HashMap::new();
-            let mut unique = Vec::new();
             let mut index_map = HashMap::new();
-            for block_pos in &block_list.elements {
-                let block_data = block_pos.block.clone();
+            let mut unique = Vec::new();
 
-                if !seen.contains_key(&block_data) {
+            for block_pos in block_list.elements.iter() {
+                let block_data = &block_pos.block;
+                if let std::collections::hash_map::Entry::Vacant(e) = index_map.entry(block_data.clone()) {
                     let index = unique.len();
-                    seen.insert(block_data.clone(), index);
                     unique.push(block_data.clone());
-                    index_map.insert(block_data, index);
+                    e.insert(index);
                 }
             }
 
@@ -158,7 +156,7 @@ impl ToLmSchematic {
         let blocks = block_list.elements;
         let tile_entities = schematic.tile_entities_list.clone();
         let entities = schematic.entities_list.clone();
-        println!("{:?}", blocks);
+        //println!("{:?}", blocks);
         Ok(Self {
             blocks,
             start_pos: min,
@@ -257,9 +255,9 @@ impl ToLmSchematic {
         self.tile_entities.elements
             .iter()
             .map(|te| {
-                let nx = te.pos.x - self.start_pos.x;
-                let ny = te.pos.y - self.start_pos.y;
-                let nz = te.pos.z - self.start_pos.z;
+                let nx = te.pos.x + 1;
+                let ny = te.pos.y;
+                let nz = te.pos.z + 1;
 
                 match &te.nbt {
                     Compound(map) => {
@@ -358,8 +356,8 @@ impl ToLmSchematic {
         region.insert("Size".to_string(), Compound(size));
 
         region.insert("BlockStatePalette".to_string(), self.lm_palette());
-        //region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
-        region.insert("TileEntities".to_string(), Value::List(vec![]));
+        region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        //region.insert("TileEntities".to_string(), Value::List(vec![]));
         region.insert("Entities".to_string(), Value::List(self.build_entities_list()));
         regions.insert("null".to_string(), Compound(region));
         Compound(regions)

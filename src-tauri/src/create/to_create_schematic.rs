@@ -27,7 +27,7 @@ pub struct ToCreateSchematic {
 
 impl ToCreateSchematic {
     pub fn new(schematic: &SchematicData) -> Result<Self, SchematicError> {
-        let blocks = schematic.blocks.clone().elements;
+        let blocks = schematic.blocks.elements.clone();
         if blocks.is_empty() {
             return Err(SchematicError::InvalidFormat("Block list cannot be empty"));
         }
@@ -79,18 +79,15 @@ impl ToCreateSchematic {
         let length = max.z - min.z + 1;
 
         let (unique_block_states, block_state_to_index) = {
-            let mut seen = HashMap::new();
-            let mut unique = Vec::new();
             let mut index_map = HashMap::new();
+            let mut unique = Vec::new();
 
-            for block_pos in &blocks {
-                let block_data = block_pos.block.clone();
-
-                if !seen.contains_key(&block_data) {
+            for block_pos in blocks.iter() {
+                let block_data = &block_pos.block;
+                if let std::collections::hash_map::Entry::Vacant(e) = index_map.entry(block_data.clone()) {
                     let index = unique.len();
-                    seen.insert(block_data.clone(), index);
                     unique.push(block_data.clone());
-                    index_map.insert(block_data, index);
+                    e.insert(index);
                 }
             }
 

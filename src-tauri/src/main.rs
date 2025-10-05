@@ -11,6 +11,7 @@ use crate::litematica::lm_schematic::LmSchematic;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
 use crate::utils::schematic_data::SchematicError;
 use crate::word_edit::we_schematic::WeSchematic;
+use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, thread, time::Duration};
 use std::time::Instant;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use utils::extend_write::to_writer_gzip;
@@ -28,12 +29,9 @@ fn main() {
 }
 #[test]
 fn test_be_schematic() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let schematic2 =
         BESchematic::new("./schematic/test.mcstructure")?;
     let schem2 = schematic2.get_blocks_pos()?;
@@ -42,27 +40,18 @@ fn test_be_schematic() -> Result<(), SchematicError> {
     println!("{:?},{:?}", to.start_pos, to.end_pos);
     let requirements = get_requirements(&schem2.blocks)?;
     //print!("{:?}", requirements);
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
 
+    let duration = start_time.elapsed();
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
 #[test]
 fn test_lm_schematic() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let schematic2 =
         LmSchematic::new("./schematic/08baa20e-264d-41d4-8205-4611029936b0.litematic")?;
     let schem2 = schematic2.get_blocks_pos()?;
@@ -70,51 +59,33 @@ fn test_lm_schematic() -> Result<(), SchematicError> {
     println!("{:?},{:?}", to.start_pos, to.end_pos);
     let requirements = get_requirements(&schem2.blocks)?;
     //print!("{:?}", requirements);
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
 
+    let duration = start_time.elapsed();
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
 #[test]
 fn test_create_schematic() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let sichematic = CreateSchematic::new("./schematic/test.nbt")?;
     let schem = sichematic.get_blocks_pos()?;
     //print!("{:?}", schem);
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
 
+    let duration = start_time.elapsed();
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
 #[test]
 fn bg_schematic_write() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let mut schematic3 =
         BgSchematic::new("./schematic/384046fd-ac85-4d97-bfca-0d2d41482cab_type1.json")?;
     let schem3 = schematic3.get_blocks_pos()?;
@@ -126,27 +97,18 @@ fn bg_schematic_write() -> Result<(), SchematicError> {
     //let writer = BufWriter::new(file);
 
     //serde_json::to_writer_pretty(writer, &data)?;
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
 
+    let duration = start_time.elapsed();
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
 #[test]
 fn lm_schematic_write() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let mut schematic3 =
         WeSchematic::new("./schematic/3914ec1f-f457-428e-994f-957182d2c8c2.schem")?;
     let schem3 = schematic3.get_blocks_pos()?;
@@ -156,55 +118,40 @@ fn lm_schematic_write() -> Result<(), SchematicError> {
     let output_path = "./schematic/out2.litematic";
     to_writer_gzip(&data, output_path)?;
 
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
     let duration = start_time.elapsed();
-
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
 #[test]
 fn lm_big_schematic_write() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let mut schematic3 =
         LmSchematic::new("./schematic/36fbf6f4-5f07-4370-b4c5-cefdb12c4b92.litematic")?;
     let schem3 = schematic3.get_blocks_pos()?;
 
-    let bg = ToCreateSchematic::new(&schem3)?;
-    let data = bg.create_schematic(false);
-    let output_path = "./schematic/out.nbt";
-    to_writer_gzip(&data, output_path)?;
+    println!("加载方块: {}", schem3.blocks.elements.len());
+    //let bg = ToCreateSchematic::new(&schem3)?;
+    //let bg = ToCreateSchematic::new(&schem3)?;
+    //let data = bg.create_schematic(false);
+    //let output_path = "./schematic/out.nbt";
+    //to_writer_gzip(&data, output_path)?;
 
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
     let duration = start_time.elapsed();
-
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
+
     Ok(())
 }
 #[test]
 fn be_schematic_write() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
+
     let schematic2 =
         BESchematic::new("./schematic/out6.mcstructure")?;
     let schem2 = schematic2.get_blocks_pos()?;
@@ -217,16 +164,32 @@ fn be_schematic_write() -> Result<(), SchematicError> {
     let output_path = "./schematic/out8.mcstructure";
     let file = File::create(output_path)?;
     save_nbt_le(file, "Schematic", &root)?;
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
 
+    let duration = start_time.elapsed();
+    let peak_mem_kb = peak_watcher.load(Ordering::Relaxed) / 1024;
     println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
+    println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
+}
+
+
+fn start_memory_peak_watcher() -> Arc<AtomicU64> {
+    let peak = Arc::new(AtomicU64::new(0));
+    let peak_clone = Arc::clone(&peak);
+
+    thread::spawn(move || {
+        let pid = Pid::from(std::process::id() as usize);
+        let mut sys = System::new_all();
+
+        loop {
+            sys.refresh_processes(ProcessesToUpdate::All, false);
+            if let Some(proc) = sys.process(pid) {
+                let mem = proc.memory();
+                peak_clone.fetch_max(mem, Ordering::Relaxed);
+            }
+            thread::sleep(Duration::from_millis(50)); // 采样间隔
+        }
+    });
+
+    peak
 }

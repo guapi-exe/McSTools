@@ -109,7 +109,7 @@ fn split_schematic_parts(
 
     let mut results = Vec::with_capacity(split_number);
     for (i, (block_list, part_size, offset)) in split_blocks.into_iter().enumerate() {
-        let part_tile_entities = TileEntitiesList {
+        let mut part_tile_entities = TileEntitiesList {
             original_type: tile_entities.original_type,
             elements: tile_entities
                 .elements
@@ -123,7 +123,41 @@ fn split_schematic_parts(
                 .cloned()
                 .collect(),
         };
-        println!("{:?}", part_tile_entities);
+
+        if tile_entities.original_type == 2 {
+            use fastnbt::Value;
+            use fastnbt::Value::Compound;
+            use std::collections::HashMap;
+
+            part_tile_entities.elements.iter_mut().for_each(|te| {
+                let nx = te.pos.x - offset.x;
+                let ny = te.pos.y - offset.y;
+                let nz = te.pos.z - offset.z;
+
+                te.pos.x = nx;
+                te.pos.y = ny;
+                te.pos.z = nz;
+
+                match &te.nbt {
+                    Compound(map) => {
+                        let mut new_map = map.clone();
+                        new_map.insert("x".to_string(), Value::Int(nx));
+                        new_map.insert("y".to_string(), Value::Int(ny));
+                        new_map.insert("z".to_string(), Value::Int(nz));
+                        te.nbt = Compound(new_map);
+                    }
+                    other => {
+                        let mut new_map = HashMap::new();
+                        new_map.insert("x".to_string(), Value::Int(nx));
+                        new_map.insert("y".to_string(), Value::Int(ny));
+                        new_map.insert("z".to_string(), Value::Int(nz));
+                        new_map.insert("nbt".to_string(), other.clone());
+                        te.nbt = Compound(new_map);
+                    }
+                }
+            });
+        }
+
         let part_entities = if i == 0 {
             entities.clone()
         } else {
@@ -135,6 +169,7 @@ fn split_schematic_parts(
 
     Ok(results)
 }
+
 
 fn split_block_positions(
     blocks: &VecDeque<BlockStatePos>,
