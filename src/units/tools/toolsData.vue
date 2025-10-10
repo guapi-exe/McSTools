@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import VueJsonPretty from "vue-json-pretty";
-import {onMounted, onUnmounted, ref} from "vue";
-import {cleanLargeSNBT} from "../../modules/snbt_to_json.ts";
+import {onBeforeUnmount, onMounted, ref} from "vue";
+import {encodeJSON, parseSNBTWithBigIntToString, restoreStringToBigInt} from "../../modules/snbt_to_json.ts";
+import {Tag} from "../../modules/nbt/tag.ts";
 import {fetchSchematicStr, schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
+import JsonEditorVue from 'json-editor-vue3'
 import {data, json_data} from "../../modules/toolsData_data.ts"
 const isJson = ref(false)
 const isLoading = ref(false);
-const collapsedDepth = ref(1);
 const sureLoading = ref(false);
+const couldView = ref(["tree", "form", "view"])
 const get_schematicStr = async (id: number) => {
   try {
     isLoading.value = true
     data.value = await fetchSchematicStr(id)
-    json_data.value = await JSON.parse(cleanLargeSNBT(data.value))
+    json_data.value = parseSNBTWithBigIntToString(data.value)
     isJson.value = true;
   }catch (e){
     toast.error(`源数据读取失败:${e}`, {
@@ -25,15 +26,25 @@ const get_schematicStr = async (id: number) => {
 
 }
 onMounted(async()=>{
+
   let size = schematicData.value.sizes
   const [length, width, height] = size.split(',').map(Number);
   if (length * width * height >= 100*100*100) sureLoading.value = true
   else await get_schematicStr(schematic_id.value);
 })
-onUnmounted(async()=>{
-  json_data.value = undefined
-  isJson.value = false
-})
+
+const updateJsonData = () => {
+
+}
+const updateModelValue = (val: Tag) => {
+  const restored = restoreStringToBigInt(val);
+  const snbtStr = encodeJSON(restored);
+  console.log(snbtStr,"修改了值");
+}
+onBeforeUnmount(() => {
+  json_data.value = undefined;
+  isJson.value = false;
+});
 </script>
 
 <template>
@@ -70,22 +81,21 @@ onUnmounted(async()=>{
     </div>
 
     <div v-if="!isLoading" class="json-wrapper">
-      <vue-json-pretty
-          v-if="isJson"
-          :data="json_data"
-          :deep="collapsedDepth"
-          :height="800"
-          :item-height="24"
-          virtual
-          show-line
+      <json-editor-vue
+          class="editor"
+          v-model="json_data"
+          currentMode="tree"
+          :modeList="couldView"
+          @change="updateJsonData"
+          @update:modelValue="updateModelValue"
       />
-      <vue-json-pretty
-          v-else
-          :data="data"
-          :height="800"
-          :item-height="24"
-          virtual
-          show-line
+    </div>
+    <div v-else class="json-wrapper">
+      <json-editor-vue
+          class="editor"
+          v-model="data"
+          currentMode="code"
+          :modeList="couldView"
       />
     </div>
   </div>
@@ -99,7 +109,6 @@ onUnmounted(async()=>{
 }
 
 .json-wrapper {
-  height: calc(100% - 8px);
   margin: 4px;
   border: 1px solid #eee;
   border-radius: 4px;
@@ -145,4 +154,5 @@ onUnmounted(async()=>{
 .loader {
   text-align: center;
 }
+
 </style>

@@ -317,7 +317,7 @@ impl ToLmSchematic {
 
         metadata.insert(
             "Description".to_string(),
-            Value::String("来自蓝图站www.mcschematic.top自动转换,不保留实体".to_string()),
+            Value::String("来自MCSTOOLS转换".to_string()),
         );
         metadata.insert("RegionCount".to_string(), Value::Int(1));
         metadata.insert("Name".to_string(), Value::String("null".to_string()));
