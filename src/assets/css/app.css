@@ -34,3 +34,6 @@
     padding: 12px;
     border-radius: 4px;
 }
+.jsoneditor-poweredBy {
+    display: none !important;
+}

@@ -1,6 +1,7 @@
 import {parse, toSNBT} from './nbt/snbt.ts';
 import {toast} from "./others.ts";
 import {Tag, Byte, Float, Int, Short, TagObject} from "./nbt/tag.ts";
+
 export const parseSNBT = (snbt: string): Tag => {
     try {
         return parse(snbt)
@@ -31,7 +32,6 @@ export function parseSNBTWithBigIntToString(snbtStr: string) {
 export function replaceBigIntWithString(obj: Tag): any {
     if (obj === null || obj === undefined) return obj;
 
-    // 原始类型
     if (
         obj instanceof Byte ||
         obj instanceof Short ||
@@ -43,18 +43,15 @@ export function replaceBigIntWithString(obj: Tag): any {
         return obj;
     }
 
-    // bigint → 转为 "123l"
     if (typeof obj === "bigint") {
         return obj.toString() + "l";
     }
 
-    // TypedArray
     if (obj instanceof Uint8Array || obj instanceof Int8Array || obj instanceof Int32Array) {
         return [...obj];
     }
 
     if (obj instanceof BigInt64Array) {
-        // 包装成对象，保留类型信息
         return {
             _nbtType: "BigInt64Array",
             _values: Array.from(obj, v => v.toString() + "l")
@@ -92,7 +89,6 @@ export function restoreStringToBigInt(obj: any): Tag {
         return BigInt(obj.slice(0, -1));
     }
 
-    // BigInt64Array 包装对象
     if (obj && obj._nbtType === "BigInt64Array" && Array.isArray(obj._values)) {
         return new BigInt64Array(obj._values.map((v: string) => BigInt(v.slice(0, -1))));
     }

@@ -6,10 +6,13 @@ import {fetchSchematicStr, schematic_id, schematicData} from "../../modules/tool
 import {toast} from "../../modules/others.ts";
 import JsonEditorVue from 'json-editor-vue3'
 import {data, json_data} from "../../modules/toolsData_data.ts"
+import {opacity} from "../../modules/theme.ts";
 const isJson = ref(false)
+const change_data = ref(false);
 const isLoading = ref(false);
 const sureLoading = ref(false);
-const couldView = ref(["tree", "form", "view"])
+const showSaveDialog = ref(false);
+const couldView = ref(["tree", "form", "view", "code"])
 const get_schematicStr = async (id: number) => {
   try {
     isLoading.value = true
@@ -38,8 +41,8 @@ const updateJsonData = () => {
 }
 const updateModelValue = (val: Tag) => {
   const restored = restoreStringToBigInt(val);
-  const snbtStr = encodeJSON(restored);
-  console.log(snbtStr,"修改了值");
+  encodeJSON(restored);
+  change_data.value = true;
 }
 onBeforeUnmount(() => {
   json_data.value = undefined;
@@ -99,6 +102,45 @@ onBeforeUnmount(() => {
       />
     </div>
   </div>
+  <v-fab v-if="change_data"
+      icon="mdi-content-save-all-outline"
+      location="right bottom"
+      size="large"
+      :app="true"
+      color="info"
+      @click="showSaveDialog = true"
+  ></v-fab>
+  <v-dialog v-model="showSaveDialog" max-width="600" persistent>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
+      <v-card-title class="headline">
+        <v-icon color="error" class="mr-2">mdi-content-save-all-outline</v-icon>
+        确认保存
+      </v-card-title>
+
+      <v-card-text>
+        确定要保存更改，更改不会校验数据正确，请自行确认！
+      </v-card-text>
+
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            @click="showSaveDialog = false"
+        >
+          取消
+        </v-btn>
+        <v-btn
+            color="info"
+            @click=""
+        >
+          确认保存更改
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
