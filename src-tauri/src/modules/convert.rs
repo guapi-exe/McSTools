@@ -9,11 +9,9 @@ use crate::utils::minecraft_data::je_blocks_data::{BlocksData, SubData};
 use crate::utils::minecraft_data::map_art_data::{BlockColorData, MapArtsData};
 use crate::word_edit::to_we_schematic::ToWeSchematic;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use fastnbt::Value::Compound;
 use tauri::State;
 use crate::be_schematic::to_be_schematic::ToBESchematic;
-use crate::utils::schematic_data::SchematicError;
 
 #[tauri::command]
 pub async fn get_schematic_convert_data(
@@ -159,3 +157,4 @@ pub async fn convert_lm(
         .await
         .map_err(|e: anyhow::Error| e.to_string())
 }
+

@@ -105,6 +105,14 @@
           @click="scrollToTop"
       />
     </v-fab-transition>
+    <v-fab v-if="change_data"
+           icon="mdi-content-save-all-outline"
+           location="right bottom"
+           size="large"
+           :app="true"
+           color="info"
+           @click="showSaveDialog = true"
+    ></v-fab>
   </v-app>
 </template>
 
@@ -133,6 +141,7 @@ import {
 } from "./modules/chuck_update.ts";
 import {resources_Init} from "./modules/deepslateInit.ts";
 import {detectTheme, toast} from "./modules/others.ts";
+import {change_data, showSaveDialog} from "./modules/snbt_to_json.ts";
 
 const theme = useTheme()
 const selectedTheme = ref('grey')

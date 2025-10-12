@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{BufWriter, Cursor, Seek, SeekFrom, Write};
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use fastnbt::Value::Compound;
 use tauri::{AppHandle, Manager};
@@ -226,6 +226,77 @@ impl FileManager {
         Ok(out_path)
     }
 
+    pub fn save_snbt_value(
+        &self,
+        id: i64,
+        data: &str,
+        version: i32,
+        sub_version: i32,
+        v_type: i32,
+        compress: bool,
+    ) -> Result<PathBuf> {
+        let schematic_dir = self.schematic_dir(id)?;
+
+        let file_ext = match v_type {
+            1 => "nbt",
+            2 => "litematic",
+            3 => "schem",
+            4 => "json",
+            _ => "unknown",
+        };
+
+        let final_filename = format!(
+            "schematic_{}.{}.{}.{}",
+            version, sub_version, v_type, file_ext
+        );
+
+        let final_path = schematic_dir.join(final_filename);
+        let out_path = final_path.clone();
+
+        let value: Value = fastsnbt::from_str(data)?;
+        let bytes = fastnbt::to_bytes(&value)?;
+
+        if compress {
+            let file = File::create(final_path)?;
+            let mut encoder = GzEncoder::new(file, Compression::default());
+            encoder.write_all(&bytes)?;
+            encoder.finish()?;
+        } else {
+            let mut file = File::create(final_path)?;
+            file.write_all(&bytes)?;
+        }
+
+        Ok(out_path)
+    }
+
+    pub fn save_snbt_le_value(
+        &self,
+        id: i64,
+        data: &str,
+        version: i32,
+        sub_version: i32,
+        v_type: i32,
+    ) -> Result<PathBuf> {
+        let schematic_dir = self.schematic_dir(id)?;
+
+        let file_ext = match v_type {
+            5 => "mcstructure",
+            _ => "unknown",
+        };
+
+        let final_filename = format!(
+            "schematic_{}.{}.{}.{}",
+            version, sub_version, v_type, file_ext
+        );
+
+        let final_path = schematic_dir.join(final_filename);
+        let out_path = final_path.clone();
+        let value: HashMap<String, Value> = fastsnbt::from_str(data)?;
+        let file = File::create(final_path)?;
+        save_nbt_le(file, "Schematic", &value)?;
+
+        Ok(out_path)
+    }
     pub fn save_nbt_le_value(
         &self,
         id: i64,

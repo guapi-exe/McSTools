@@ -703,3 +703,41 @@ pub async fn update_schematic_classification_tauri(
         .await
         .map_err(|e: anyhow::Error| e.to_string())
 }
+
+#[tauri::command]
+pub async fn save_snbt(
+    db: State<'_, DatabaseState>,
+    file_manager: State<'_, FileManager>,
+    id: i64,
+    snbt: String,
+) -> Result<bool, String> {
+    async move {
+        let mut conn = db.0.get()?;
+        let schematic = find_schematic(&mut conn, id)?;
+        let version = schematic.version;
+        let sub_version = schematic.sub_type;
+        let v_type = schematic.schematic_type;
+        if(v_type == 5){
+            file_manager.save_snbt_le_value(
+                id,
+                &snbt,
+                version,
+                sub_version,
+                v_type,
+            )?;
+        }else {
+            file_manager.save_snbt_value(
+                id,
+                &snbt,
+                version,
+                sub_version,
+                v_type,
+                true,
+            )?;
+        }
+
+        Ok(true)
+    }
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())
+}

@@ -78,7 +78,7 @@ export function stringifyTag(tag: nbt.Tag, options: StringifyOptions = {}): stri
             const safeKey = isSafeKey(key) ? key : escapeString(key);
 
             if (value === null || value === undefined) {
-                return `"${safeKey}":`;
+                return `"${safeKey}":{}`;
             }
 
             if ((key === "Count" || key === "Slot") && Number.isInteger(value)) {
@@ -313,9 +313,13 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
             if (type === "L" && (text[index] === "l" || text[index] === "L")) {
                 array.push(BigInt(text.slice(i, index)));
                 index++;
+            } else if(type === "B" && (text[index] === "b" || text[index] === "B")) {
+                array.push(Number(text.slice(i, index)));
+                index++;
             } else {
                 array.push(Number(text.slice(i, index)));
             }
+
         }
         throw unexpectedEnd();
     }

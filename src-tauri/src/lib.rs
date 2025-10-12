@@ -28,7 +28,8 @@ use modules::modules_data;
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_str,
-    update_schematic_name_description, get_schematic_data, update_schematic_classification_tauri
+    update_schematic_name_description, get_schematic_data, update_schematic_classification_tauri,
+    save_snbt
 };
 use split_schematic::split_schematic::schematic_split;
 use std::time::Instant;
@@ -73,6 +74,7 @@ pub fn run() {
             convert_lm,
             get_history,
             update_config,
+            save_snbt,
             open_dev,
             encode_uploaded_schematic,
             count_schematics,

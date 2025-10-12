@@ -1,7 +1,10 @@
 import {parse, toSNBT} from './nbt/snbt.ts';
 import {toast} from "./others.ts";
 import {Tag, Byte, Float, Int, Short, TagObject} from "./nbt/tag.ts";
+import {ref} from "vue";
 
+export const change_data = ref(false);
+export const showSaveDialog = ref(false);
 export const parseSNBT = (snbt: string): Tag => {
     try {
         return parse(snbt)
@@ -47,14 +50,31 @@ export function replaceBigIntWithString(obj: Tag): any {
         return obj.toString() + "l";
     }
 
-    if (obj instanceof Uint8Array || obj instanceof Int8Array || obj instanceof Int32Array) {
-        return [...obj];
+    if (obj instanceof Int32Array) {
+        return {
+            _nbtType: "Int32Array",
+            _values: Array.from(obj, v => v)
+        };
     }
 
     if (obj instanceof BigInt64Array) {
         return {
             _nbtType: "BigInt64Array",
             _values: Array.from(obj, v => v.toString() + "l")
+        };
+    }
+
+    if (obj instanceof Uint8Array) {
+        return {
+            _nbtType: "Uint8Array",
+            _values: Array.from(obj, v => v.toString() + "b")
+        };
+    }
+
+    if (obj instanceof Int8Array) {
+        return {
+            _nbtType: "Int8Array",
+            _values: Array.from(obj, v => v.toString() + "b")
         };
     }
 
@@ -93,8 +113,16 @@ export function restoreStringToBigInt(obj: any): Tag {
         return new BigInt64Array(obj._values.map((v: string) => BigInt(v.slice(0, -1))));
     }
 
-    if (obj instanceof Uint8Array || obj instanceof Int8Array || obj instanceof Int32Array) {
-        return obj;
+    if (obj && obj._nbtType === "Uint8Array" && Array.isArray(obj._values)) {
+        return new Uint8Array(obj._values.map((v: string) => Number(v.slice(0, -1))));
+    }
+
+    if (obj && obj._nbtType === "Int8Array" && Array.isArray(obj._values)) {
+        return new Int8Array(obj._values.map((v: string) => Number(v.slice(0, -1))));
+    }
+
+    if (obj && obj._nbtType === "Int32Array" && Array.isArray(obj._values)) {
+        return new Int32Array(obj._values);
     }
 
     if (Array.isArray(obj)) {

@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref} from "vue";
-import {encodeJSON, parseSNBTWithBigIntToString, restoreStringToBigInt} from "../../modules/snbt_to_json.ts";
+import {
+  change_data,
+  encodeJSON,
+  parseSNBTWithBigIntToString,
+  restoreStringToBigInt, showSaveDialog
+} from "../../modules/snbt_to_json.ts";
 import {Tag} from "../../modules/nbt/tag.ts";
 import {fetchSchematicStr, schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import JsonEditorVue from 'json-editor-vue3'
 import {data, json_data} from "../../modules/toolsData_data.ts"
 import {opacity} from "../../modules/theme.ts";
+import {invoke} from "@tauri-apps/api/core";
 const isJson = ref(false)
-const change_data = ref(false);
+const snbtdata = ref();
 const isLoading = ref(false);
 const sureLoading = ref(false);
-const showSaveDialog = ref(false);
 const couldView = ref(["tree", "form", "view", "code"])
 const get_schematicStr = async (id: number) => {
   try {
@@ -41,11 +46,32 @@ const updateJsonData = () => {
 }
 const updateModelValue = (val: Tag) => {
   const restored = restoreStringToBigInt(val);
-  encodeJSON(restored);
+  snbtdata.value = encodeJSON(restored);
   change_data.value = true;
 }
+const saveChange = async () => {
+  try {
+    await invoke(`save_snbt`, {
+      id: schematic_id.value,
+      snbt: snbtdata.value,
+    });
+    toast.success(`数据已确认保存`, {
+      timeout: 3000,
+    });
+  } catch (e: any) {
+
+    toast.error(`发生了一个错误: ${e}`, {
+      timeout: 3000,
+    });
+  }
+  showSaveDialog.value = false
+  change_data.value = false;
+};
+
 onBeforeUnmount(() => {
   json_data.value = undefined;
+  snbtdata.value = undefined;
+  change_data.value = false;
   isJson.value = false;
 });
 </script>
@@ -99,17 +125,12 @@ onBeforeUnmount(() => {
           v-model="data"
           currentMode="code"
           :modeList="couldView"
-      />
+          @update:modelValue="updateModelValue"
+      >
+      </json-editor-vue>
     </div>
   </div>
-  <v-fab v-if="change_data"
-      icon="mdi-content-save-all-outline"
-      location="right bottom"
-      size="large"
-      :app="true"
-      color="info"
-      @click="showSaveDialog = true"
-  ></v-fab>
+
   <v-dialog v-model="showSaveDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
@@ -120,7 +141,10 @@ onBeforeUnmount(() => {
         确认保存
       </v-card-title>
 
-      <v-card-text>
+      <v-card-text v-if="schematicData.schematic_type == 4">
+        建筑小帮手蓝图因特殊原因暂不提供修改，需要自行打开json修改即可！
+      </v-card-text>
+      <v-card-text v-else>
         确定要保存更改，更改不会校验数据正确，请自行确认！
       </v-card-text>
 
@@ -133,8 +157,9 @@ onBeforeUnmount(() => {
           取消
         </v-btn>
         <v-btn
+            :disabled="schematicData.schematic_type == 4"
             color="info"
-            @click=""
+            @click="saveChange"
         >
           确认保存更改
         </v-btn>
