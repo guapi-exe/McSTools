@@ -1,3 +1,10 @@
+/*
+* 你知道的这从snbt转json再转snbt就是shit，但我不想写一套适用于snbt的编译器
+* 其实底层还要再后端用 bytes转snbt 更是shit，但我又不想再前端写一套解析nbt的代码。
+* 其实后端还要吧snbt再转为bytes
+* bytes -> snbt -> json -> snbt -> bytes
+* shit
+ */
 import {parse, toSNBT} from './nbt/snbt.ts';
 import {toast} from "./others.ts";
 import {Tag, Byte, Float, Int, Short, TagObject} from "./nbt/tag.ts";
