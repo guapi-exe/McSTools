@@ -1,11 +1,12 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::Read;
+use std::sync::Arc;
 use rayon::prelude::*;
 use tauri::State;
 use crate::data_files::files::FileManager;
 use crate::database::db_apis::schematics_api::find_schematic;
 use crate::database::db_control::DatabaseState;
-use crate::utils::block_state_pos_list::{BlockPos, BlockStatePos, BlockStatePosList};
+use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos, BlockStatePosList};
 use crate::utils::schematic_data::{SchematicData, Size};
 use anyhow::{anyhow, Result};
 use crate::be_schematic::to_be_schematic::ToBESchematic;
@@ -107,8 +108,30 @@ fn split_schematic_parts(
     }
     let split_blocks = split_block_positions(blocks, size, split_type, split_number)?;
 
+    let air = Arc::new(BlockData {
+        id: BlockId {
+            name: Arc::from("minecraft:air"),
+        },
+        properties: BTreeMap::new(),
+    });
+
     let mut results = Vec::with_capacity(split_number);
-    for (i, (block_list, part_size, offset)) in split_blocks.into_iter().enumerate() {
+    for (i, (mut block_list, part_size, offset)) in split_blocks.into_iter().enumerate() {
+        let corner_positions = [
+            BlockPos { x: offset.x - 1, y: offset.y, z: offset.z - 1 },
+            BlockPos { x: offset.x - 1, y: offset.y, z: offset.z + part_size.length },
+            BlockPos { x: offset.x + part_size.width, y: offset.y, z: offset.z - 1 },
+            BlockPos { x: offset.x + part_size.width, y: offset.y, z: offset.z + part_size.length },
+            BlockPos { x: offset.x - 1, y: offset.y + part_size.height - 1, z: offset.z - 1 },
+            BlockPos { x: offset.x - 1, y: offset.y + part_size.height - 1, z: offset.z + part_size.length },
+            BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z - 1 },
+            BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z + part_size.length },
+        ];
+
+        for pos in corner_positions {
+            block_list.elements.push_back(BlockStatePos::new(pos, Arc::clone(&air)));
+        }
+
         let mut part_tile_entities = TileEntitiesList {
             original_type: tile_entities.original_type,
             elements: tile_entities
@@ -169,6 +192,7 @@ fn split_schematic_parts(
 
     Ok(results)
 }
+
 
 
 fn split_block_positions(
