@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 import {onBeforeUnmount, onMounted, ref} from "vue";
 import {
   change_data,
@@ -25,7 +27,7 @@ const get_schematicStr = async (id: number) => {
     json_data.value = parseSNBTWithBigIntToString(data.value)
     isJson.value = true;
   }catch (e){
-    toast.error(`源数据读取失败:${e}`, {
+    toast.error($t('toolsData.loadFailed', {error: String(e)}), {
       timeout: 3000
     });
   }finally {
@@ -55,12 +57,12 @@ const saveChange = async () => {
       id: schematic_id.value,
       snbt: snbtdata.value,
     });
-    toast.success(`数据已确认保存`, {
+    toast.success($t('toolsData.saveSuccess'), {
       timeout: 3000,
     });
   } catch (e: any) {
 
-    toast.error(`发生了一个错误: ${e}`, {
+    toast.error($t('toolsData.saveError', {error: String(e)}), {
       timeout: 3000,
     });
   }
@@ -81,7 +83,7 @@ onBeforeUnmount(() => {
     <div v-if="isLoading" class="loading-overlay">
       <div class="loader">
         <div class="spinner"></div>
-        <p>加载结构中...</p>
+  <p>{{$t('toolsData.loading')}}</p>
       </div>
     </div>
 
@@ -93,7 +95,7 @@ onBeforeUnmount(() => {
             icon="mdi-information-outline"
             class="mt-4 monospace-font"
         >
-          {{`该蓝图体积过大，尺寸${schematicData.sizes}，是否确认加载;加载会占用大量内存，甚至导致崩溃`}}
+          {{$t('toolsData.tooLarge', {size: schematicData.sizes})}}
         </v-alert>
         <div class="button-group">
           <v-btn
@@ -103,7 +105,7 @@ onBeforeUnmount(() => {
               prepend-icon="mdi-reload-alert"
               @click="sureLoading = false;get_schematicStr(schematic_id)"
           >
-            确认加载
+            {{$t('toolsData.confirmLoad')}}
           </v-btn>
         </div>
       </div>
@@ -138,14 +140,14 @@ onBeforeUnmount(() => {
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-content-save-all-outline</v-icon>
-        确认保存
+  {{$t('toolsData.confirmSave')}}
       </v-card-title>
 
       <v-card-text v-if="schematicData.schematic_type == 4">
-        建筑小帮手蓝图因特殊原因暂不提供修改，需要自行打开json修改即可！
+  {{$t('toolsData.noEditForType4')}}
       </v-card-text>
       <v-card-text v-else>
-        确定要保存更改，更改不会校验数据正确，请自行确认！
+  {{$t('toolsData.saveWarning')}}
       </v-card-text>
 
       <v-card-actions>
@@ -154,14 +156,14 @@ onBeforeUnmount(() => {
             color="grey-darken-1"
             @click="showSaveDialog = false"
         >
-          取消
+          {{$t('toolsData.cancel')}}
         </v-btn>
         <v-btn
             :disabled="schematicData.schematic_type == 4"
             color="info"
             @click="saveChange"
         >
-          确认保存更改
+          {{$t('toolsData.confirmSaveChange')}}
         </v-btn>
       </v-card-actions>
     </v-card>

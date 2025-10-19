@@ -10,9 +10,11 @@ import {toast} from "../../modules/others.ts";
 import {invoke} from "@tauri-apps/api/core";
 import {convertData, schematic_id} from "../../modules/tools_data.ts";
 import {copySchematic} from "../../modules/copy_file.ts";
+import { useI18n } from 'vue-i18n';
 const props = defineProps<{
   data: ConvertData | undefined,
 }>()
+  const { t: $t } = useI18n();
 const showSubVersions1 = ref(false);
 const dialogVersions1 = ref(false);
 const isLoading = ref(false);
@@ -34,48 +36,48 @@ const formatInfo = computed(() => {
       return {
         img: createImg,
         ext: 'nbt',
-        title: '香草结构蓝图',
-        desc: '适配 Minecraft 原版结构方块格式',
+        title: $t('toolsConvert.createTitle'),
+        desc: $t('toolsConvert.createDesc'),
         icon: 'mdi-cube'
       }
     case 2:
       return {
         img: lmImg,
         ext: 'litematic',
-        title: '投影蓝图',
-        desc: '适配 我的世界建筑投影蓝图格式',
+        title: $t('toolsConvert.litematicTitle'),
+        desc: $t('toolsConvert.litematicDesc'),
         icon: 'mdi-vector-square'
       }
     case 3:
       return {
         img: weImg,
-        title: '创世神',
+        title: $t('toolsConvert.weTitle'),
         ext: 'schem',
-        desc: '适配与新版1.16 + 创世神模组和最新版 axios',
+        desc: $t('toolsConvert.weDesc'),
         icon: 'mdi-vector-square'
       }
     case 4:
       return {
         img: bgImg,
-        title: '建筑小帮手',
+        title: $t('toolsConvert.bgTitle'),
         ext: 'json',
-        desc: '适配与1.12 + 建筑小帮手 3个 变种格式蓝图',
+        desc: $t('toolsConvert.bgDesc'),
         icon: 'mdi-vector-square'
       }
     case 5:
       return {
         img: beImg,
-        title: 'MC BE',
+        title: $t('toolsConvert.beTitle'),
         ext: 'mcstructure',
-        desc: '适配与1.18 + 我的世界BE原版 结构方块格式',
+        desc: $t('toolsConvert.beDesc'),
         icon: 'mdi-vector-square'
       }
     default:
       return {
         img: beImg,
-        title: '未知格式',
+        title: $t('toolsConvert.unknownTitle'),
         ext: 'unknow',
-        desc: '未知格式描述',
+        desc: $t('toolsConvert.unknownDesc'),
         icon: 'mdi-help-circle'
       }
   }
@@ -95,12 +97,12 @@ const convertSchematic = async (schematicType: number) => {
     if (result) {
       convertData.value = await fetchConvertData(schematic_id.value)
     }
-    toast.success(`转换完毕重新载入即可导出`, {
+    toast.success($t('toolsConvert.convertSuccess'), {
       timeout: 3000
     });
   } catch (err) {
 
-    toast.error(`发生了一个错误:${err}`, {
+    toast.error($t('toolsConvert.error', { error: err }), {
       timeout: 3000
     });
     throw err
@@ -122,7 +124,7 @@ onMounted(() => {
           icon="mdi-information"
           class="mt-4"
       >
-        大型蓝图的转换耗时可能过长请耐心等待
+  {{$t('toolsConvert.longTimeTip')}}
       </v-alert>
     </v-col>
   </v-row>
@@ -144,16 +146,16 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.extType')}}</span>
                   <span class="text-caption">{{ formatInfo.ext }}</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">原始大小:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.originSize')}}</span>
                   <span class="text-caption font-weight-medium">{{ ((Number(props.data?.size) ?? 0) / 1024).toFixed(2) + ' KB' }}</span>
                 </div>
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.version')}}</span>
                   <div>
                     <v-icon
                         color="success"
@@ -167,7 +169,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">适配子版本:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.subVersion')}}</span>
                   <div>
                     <v-icon
                         color="success"
@@ -200,7 +202,7 @@ onMounted(() => {
         <v-icon size="48" class="transition-swing">
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="96" viewBox="0 0 256 512"><path fill="#0284c7" d="M145.6 7.7C141 2.8 134.7 0 128 0s-13 2.8-17.6 7.7l-104 112c-6.5 7-8.2 17.2-4.4 25.9S14.5 160 24 160h56v192H24c-9.5 0-18.2 5.7-22 14.4s-2.1 18.9 4.4 25.9l104 112c4.5 4.9 10.9 7.7 17.6 7.7s13-2.8 17.6-7.7l104-112c6.5-7 8.2-17.2 4.4-25.9S241.5 352 232 352h-56V160h56c9.5 0 18.2-5.7 22-14.4s2.1-18.9-4.4-25.9z"/></svg>
         </v-icon>
-        <div class=" text-blue-grey-darken-1 mt-6">一键转换</div>
+  <div class=" text-blue-grey-darken-1 mt-6">{{$t('toolsConvert.oneClick')}}</div>
       </v-col>
     </v-row>
     <v-row class="conversion-flow" justify="center">
@@ -224,12 +226,12 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.extType') }}:</span>
                   <span class="text-caption">litematic</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">Gzip压缩:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.gzipCompression')}}</span>
                   <v-icon
                       color="success"
                       size="16"
@@ -239,7 +241,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.version') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -253,7 +255,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">存在子版本:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.hasSubVersion')}}</span>
                   <div>
                     <v-icon
                         color="success"
@@ -272,10 +274,10 @@ onMounted(() => {
           <v-card-item>
             <v-card-title class="text-h5 font-weight-bold text-blue-darken-2">
               <v-icon icon="mdi-cube-scan" size="28" class="mr-2"></v-icon>
-              投影蓝图
+              {{$t('toolsConvert.litematicTitle')}}
             </v-card-title>
             <v-card-subtitle class="text-caption text-grey-darken-1">
-              适配 我的世界建筑投影蓝图格式
+              {{$t('toolsConvert.litematicDesc')}}
             </v-card-subtitle>
 
           </v-card-item>
@@ -287,7 +289,7 @@ onMounted(() => {
                     hover>
               <v-card-title class="text-subtitle-1">
                 <v-icon icon="mdi-history" class="mr-2"></v-icon>
-                可用子版本
+                {{$t('toolsConvert.availableSubVersion')}}
               </v-card-title>
               <v-divider></v-divider>
               <v-card-text>
@@ -295,20 +297,20 @@ onMounted(() => {
                   <v-col cols="12">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{$t('toolsConvert.extType')}}</span>
                         <span class="text-caption">litematic</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.originSize')}}</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Litematic?.["-1"]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.subVersion')}}</span>
                         <span class="text-caption font-weight-medium">-1</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.exist')}}</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Litematic == undefined? 'error' : 'success'"
@@ -327,7 +329,7 @@ onMounted(() => {
                           @click="dialogVersions2 = true;"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{$t('toolsConvert.convertToThis')}}
                       </v-btn>
 
                     </v-col>
@@ -356,12 +358,12 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.extType') }}:</span>
                   <span class="text-caption">nbt</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">Gzip压缩:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.gzipCompression')}}</span>
                   <v-icon
                       color="success"
                       size="16"
@@ -371,7 +373,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.version') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -385,7 +387,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">存在子版本:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.hasSubVersion')}}</span>
                   <div>
                     <v-icon
                         color="success"
@@ -403,10 +405,10 @@ onMounted(() => {
           <v-card-item>
             <v-card-title class="text-h5 font-weight-bold text-blue-darken-2">
               <v-icon icon="mdi-cube-scan" size="28" class="mr-2"></v-icon>
-              香草结构
+              {{$t('toolsConvert.createTitle')}}
             </v-card-title>
             <v-card-subtitle class="text-caption text-grey-darken-1">
-              适配与JE原版结构方块和机械动力
+              {{$t('toolsConvert.createDesc')}}
             </v-card-subtitle>
           </v-card-item>
           <v-expand-transition>
@@ -417,7 +419,7 @@ onMounted(() => {
                     hover>
               <v-card-title class="text-subtitle-1">
                 <v-icon icon="mdi-history" class="mr-2"></v-icon>
-                可用子版本
+                {{$t('toolsConvert.availableSubVersion')}}
               </v-card-title>
               <v-divider></v-divider>
               <v-card-text>
@@ -425,20 +427,20 @@ onMounted(() => {
                   <v-col cols="12">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{$t('toolsConvert.extType')}}</span>
                         <span class="text-caption">nbt</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.originSize')}}</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Create?.["-1"]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.subVersion')}}</span>
                         <span class="text-caption font-weight-medium">-1</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.exist')}}</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Create == undefined? 'error' : 'success'"
@@ -457,7 +459,7 @@ onMounted(() => {
                           @click="dialogVersions1 = true"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{$t('toolsConvert.convertToThis')}}
                       </v-btn>
                     </v-col>
                   </v-col>
@@ -485,12 +487,12 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.extType') }}:</span>
                   <span class="text-caption">schem</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">Gzip压缩:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.gzipCompression')}}</span>
                   <v-icon
                       color="success"
                       size="16"
@@ -500,7 +502,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.version') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -514,7 +516,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">存在子版本:</span>
+                  <span class="text-caption text-grey">{{$t('toolsConvert.hasSubVersion')}}</span>
                   <div>
                     <v-icon
                         color="success"
@@ -533,10 +535,10 @@ onMounted(() => {
           <v-card-item>
             <v-card-title class="text-h5 font-weight-bold text-blue-darken-2">
               <v-icon icon="mdi-cube-scan" size="28" class="mr-2"></v-icon>
-              创世神
+              {{$t('toolsConvert.weTitle')}}
             </v-card-title>
             <v-card-subtitle class="text-caption text-grey-darken-1">
-              适配与新版1.16 + 创世神模组和最新版 axios
+              {{$t('toolsConvert.weDesc')}}
             </v-card-subtitle>
           </v-card-item>
           <v-expand-transition>
@@ -547,7 +549,7 @@ onMounted(() => {
                     hover>
               <v-card-title class="text-subtitle-1">
                 <v-icon icon="mdi-history" class="mr-2"></v-icon>
-                可用子版本
+                {{$t('toolsConvert.availableSubVersion')}}
               </v-card-title>
               <v-divider></v-divider>
               <v-card-text>
@@ -555,20 +557,20 @@ onMounted(() => {
                   <v-col cols="6">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{$t('toolsConvert.extType')}}</span>
                         <span class="text-caption">schem</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.originSize')}}</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.We?.["0"]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
-                        <span class="text-caption font-weight-medium">0: WE最新格式</span>
+                        <span class="text-caption ">{{$t('toolsConvert.subVersion')}}</span>
+                        <span class="text-caption font-weight-medium">{{$t('toolsConvert.weSubVersion0')}}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{$t('toolsConvert.exist')}}</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.We?.['0'] == undefined? 'error' : 'success'"
@@ -587,27 +589,27 @@ onMounted(() => {
                           @click="dialogVersions3 = true; weVersion = 0"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{$t('toolsConvert.convertToThis')}}
                       </v-btn>
                     </v-col>
                   </v-col>
                   <v-col cols="6">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{ $t('toolsConvert.extType') }}:</span>
                         <span class="text-caption">schem</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.originSize') }}:</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.We?.["1"]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
-                        <span class="text-caption font-weight-medium">1: WE 1.16-</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.subVersion') }}:</span>
+                        <span class="text-caption font-weight-medium">{{$t('toolsConvert.weSubVersion1')}}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.We?.['1'] == undefined? 'error' : 'success'"
@@ -626,7 +628,7 @@ onMounted(() => {
                           @click="dialogVersions3 = true; weVersion = 1"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{ $t('toolsConvert.convertToThis') }}
                       </v-btn>
                     </v-col>
                   </v-col>
@@ -654,12 +656,12 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.extType') }}:</span>
                   <span class="text-caption">json</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">Gzip压缩:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.gzipCompression') }}:</span>
                   <v-icon
                       color="error"
                       size="16"
@@ -669,7 +671,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.version') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -683,7 +685,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">存在子版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.hasSubVersion') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -702,10 +704,10 @@ onMounted(() => {
           <v-card-item>
             <v-card-title class="text-h5 font-weight-bold text-blue-darken-2">
               <v-icon icon="mdi-cube-scan" size="28" class="mr-2"></v-icon>
-              建筑小帮手
+              {{ $t('toolsConvert.bgTitle') }}
             </v-card-title>
             <v-card-subtitle class="text-caption text-grey-darken-1">
-              适配与1.12 + 建筑小帮手 3个 变种格式蓝图
+              {{$t('toolsConvert.bgDesc')}}
             </v-card-subtitle>
           </v-card-item>
           <v-expand-transition>
@@ -716,7 +718,7 @@ onMounted(() => {
                     hover>
               <v-card-title class="text-subtitle-1">
                 <v-icon icon="mdi-history" class="mr-2"></v-icon>
-                可用子版本
+                {{ $t('toolsConvert.availableSubVersion') }}
               </v-card-title>
               <v-divider></v-divider>
               <v-card-text>
@@ -724,20 +726,20 @@ onMounted(() => {
                   <v-col cols="4">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{ $t('toolsConvert.extType') }}:</span>
                         <span class="text-caption">json</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.originSize') }}:</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Bg?.["0"]?.size || 0) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
-                        <span class="text-caption font-weight-medium">0: 小帮手最新格式</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.hasSubVersion') }}:</span>
+                        <span class="text-caption font-weight-medium">{{$t('toolsConvert.bgSubVersion0')}}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Bg?.['0'] == undefined? 'error' : 'success'"
@@ -756,27 +758,27 @@ onMounted(() => {
                           @click="dialogVersions4 = true; bgVersion = 0"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{ $t('toolsConvert.convertToThis') }}
                       </v-btn>
                     </v-col>
                   </v-col>
                   <v-col cols="4">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{ $t('toolsConvert.extType') }}:</span>
                         <span class="text-caption">json</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.originSize') }}:</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Bg?.['1']?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
-                        <span class="text-caption font-weight-medium">1: 小帮手1.16+</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.subVersion') }}:</span>
+                        <span class="text-caption font-weight-medium">{{$t('toolsConvert.bgSubVersion1')}}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Bg?.['1'] == undefined? 'error' : 'success'"
@@ -795,27 +797,27 @@ onMounted(() => {
                           @click="dialogVersions4 = true; bgVersion = 1"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{ $t('toolsConvert.convertToThis') }}
                       </v-btn>
                     </v-col>
                   </v-col>
                   <v-col cols="4">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{ $t('toolsConvert.extType') }}:</span>
                         <span class="text-caption">json</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.originSize') }}:</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Bg?.[2]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
-                        <span class="text-caption font-weight-medium">2: 小帮手1.12+</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.subVersion') }}:</span>
+                        <span class="text-caption font-weight-medium">{{$t('toolsConvert.bgSubVersion2')}}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Bg?.[2] == undefined? 'error' : 'success'"
@@ -834,7 +836,7 @@ onMounted(() => {
                           @click="dialogVersions4 = true; bgVersion = 2"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{ $t('toolsConvert.convertToThis') }}
                       </v-btn>
                     </v-col>
                   </v-col>
@@ -863,12 +865,12 @@ onMounted(() => {
             <v-col cols="8" class="pa-4">
               <div class="meta-info">
                 <div class="d-flex justify-space-between">
-                  <span class="text-caption text-grey">后缀类型:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.extType') }}:</span>
                   <span class="text-caption">mcstructure</span>
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">Gzip压缩:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.gzipCompression') }}:</span>
                   <v-icon
                       color="error"
                       size="16"
@@ -878,7 +880,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.version') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -892,7 +894,7 @@ onMounted(() => {
                 </div>
 
                 <div class="d-flex justify-space-between mt-1">
-                  <span class="text-caption text-grey">存在子版本:</span>
+                  <span class="text-caption text-grey">{{ $t('toolsConvert.existSubVersion') }}:</span>
                   <div>
                     <v-icon
                         color="success"
@@ -911,10 +913,10 @@ onMounted(() => {
           <v-card-item>
             <v-card-title class="text-h5 font-weight-bold text-blue-darken-2">
               <v-icon icon="mdi-cube-scan" size="28" class="mr-2"></v-icon>
-              MC BE
+              {{ $t('toolsConvert.beTitle') }}
             </v-card-title>
             <v-card-subtitle class="text-caption text-grey-darken-1">
-              适配与1.18 + 我的世界BE原版 结构方块格式
+              {{ $t('toolsConvert.beDesc') }}
             </v-card-subtitle>
           </v-card-item>
           <v-expand-transition>
@@ -925,7 +927,7 @@ onMounted(() => {
                     hover>
               <v-card-title class="text-subtitle-1">
                 <v-icon icon="mdi-history" class="mr-2"></v-icon>
-                可用子版本
+                {{ $t('toolsConvert.availableSubVersion') }}
               </v-card-title>
               <v-divider></v-divider>
               <v-card-text>
@@ -933,20 +935,20 @@ onMounted(() => {
                   <v-col cols="12">
                     <div class="meta-info">
                       <div class="d-flex justify-space-between">
-                        <span class="text-caption">后缀类型:</span>
+                        <span class="text-caption">{{ $t('toolsConvert.extType') }}:</span>
                         <span class="text-caption">mcstructure</span>
                       </div>
 
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">原始大小:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.originSize') }}:</span>
                         <span class="text-caption font-weight-medium">{{ (Number(props.data?.schematics?.Be?.["-1"]?.size) / 1024).toFixed(2) + 'KB' }}</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">子版本:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.subVersion') }}:</span>
                         <span class="text-caption font-weight-medium">-1</span>
                       </div>
                       <div class="d-flex justify-space-between mt-1">
-                        <span class="text-caption ">已存在:</span>
+                        <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
                         <div>
                           <v-icon
                               :color="props.data?.schematics?.Be == undefined? 'error' : 'success'"
@@ -965,7 +967,7 @@ onMounted(() => {
                           @click="dialogVersions5 = true"
                       >
                         <v-icon icon="mdi-autorenew" class="mr-1"></v-icon>
-                        转换到该格式
+                        {{ $t('toolsConvert.convertToThis') }}
                       </v-btn>
                     </v-col>
                   </v-col>
@@ -989,30 +991,30 @@ onMounted(() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        转换到目标版本
+        {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-chip
             v-if="props.data?.schematics?.Create != undefined"
             color="green"
         >
           <v-icon start icon="mdi-check-circle"></v-icon>
-          已存在
+          {{ $t('toolsConvert.exist') }}
         </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        转换到.nbt 香草结构蓝图.
+        {{ $t('toolsConvert.createDesc') }}
       </v-card-subtitle>
       <v-card-text>
         <span class="text-caption text-grey-darken-1">
-          无转换参数，大型蓝图转换需要一定时间等待
+          {{ $t('toolsConvert.longTimeTip') }}
         </span>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialogVersions1 = false">取消</v-btn>
+        <v-btn @click="dialogVersions1 = false">{{ $t('tools.convert.cancel') }}</v-btn>
         <v-btn
             v-if="props.data?.schematics?.Create == undefined"
             class="ms-auto"
-            text="确认开始"
+            :text="$t('tools.convert.confirmStart')"
             color="info"
             :loading="isLoading"
             @click="convertSchematic(1)"
@@ -1020,7 +1022,7 @@ onMounted(() => {
         <v-btn
             v-else
             class="ms-auto"
-            text="确认导出"
+            :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 1)"
@@ -1040,17 +1042,17 @@ onMounted(() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        转换到目标版本
+        {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-chip
             v-if="props.data?.schematics?.Litematic != undefined"
             color="green"
         >
           <v-icon start icon="mdi-check-circle"></v-icon>
-          已存在
+          {{ $t('toolsConvert.exist') }}
         </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        转换到.litematic 投影蓝图.
+        {{ $t('toolsConvert.litematicDesc') }}
       </v-card-subtitle>
       <v-card-text>
         <v-row no-gutters>
@@ -1064,16 +1066,16 @@ onMounted(() => {
           </v-col>
         </v-row>
         <span class="text-caption text-grey-darken-1">
-          大型蓝图转换需要一定时间等待
+          {{ $t('toolsConvert.longTimeTip') }}
         </span>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialogVersions2 = false">取消</v-btn>
+        <v-btn @click="dialogVersions2 = false">{{ $t('tools.convert.cancel') }}</v-btn>
         <v-btn
             v-if="props.data?.schematics?.Litematic == undefined"
             class="ms-auto"
-            text="确认开始"
+            :text="$t('tools.convert.confirmStart')"
             color="info"
             :loading="isLoading"
             @click="convertSchematic(2)"
@@ -1081,7 +1083,7 @@ onMounted(() => {
         <v-btn
             v-else
             class="ms-auto"
-            text="确认导出"
+            :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 2)"
@@ -1101,30 +1103,30 @@ onMounted(() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        转换到目标版本
+        {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-chip
             v-if="props.data?.schematics?.We?.[weVersion] != undefined"
             color="green"
         >
           <v-icon start icon="mdi-check-circle"></v-icon>
-          已存在
+          {{ $t('toolsConvert.exist') }}
         </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        转换到.schem 创世神蓝图.
+        {{ $t('toolsConvert.weDesc') }}
       </v-card-subtitle>
       <v-card-text>
         <span class="text-caption text-grey-darken-1">
-          无转换参数，大型蓝图转换需要一定时间等待
+          {{ $t('toolsConvert.longTimeTip') }}
         </span>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialogVersions3 = false">取消</v-btn>
+        <v-btn @click="dialogVersions3 = false">{{ $t('tools.convert.cancel') }}</v-btn>
         <v-btn
             v-if="props.data?.schematics?.We?.[weVersion] == undefined"
             class="ms-auto"
-            text="确认开始"
+            :text="$t('tools.convert.confirmStart')"
             color="info"
             :loading="isLoading"
             @click="convertSchematic(3)"
@@ -1132,7 +1134,7 @@ onMounted(() => {
         <v-btn
             v-else
             class="ms-auto"
-            text="确认导出"
+            :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, weVersion, props.data.version, 3)"
@@ -1152,30 +1154,30 @@ onMounted(() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        转换到目标版本
+        {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-chip
             v-if="props.data?.schematics?.Bg?.[bgVersion] != undefined"
             color="green"
         >
           <v-icon start icon="mdi-check-circle"></v-icon>
-          已存在
+          {{ $t('toolsConvert.exist') }}
         </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        转换到.json 建筑小帮手蓝图.
+        {{ $t('toolsConvert.bgDesc') }}
       </v-card-subtitle>
       <v-card-text>
         <span class="text-caption text-grey-darken-1">
-          无转换参数，大型蓝图转换需要一定时间等待
+          {{ $t('toolsConvert.longTimeTip') }}
         </span>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialogVersions4 = false">取消</v-btn>
+        <v-btn @click="dialogVersions4 = false">{{ $t('tools.convert.cancel') }}</v-btn>
         <v-btn
             v-if="props.data?.schematics?.Bg?.[bgVersion] == undefined"
             class="ms-auto"
-            text="确认开始"
+            :text="$t('tools.convert.confirmStart')"
             color="info"
             :loading="isLoading"
             @click="convertSchematic(4)"
@@ -1183,7 +1185,7 @@ onMounted(() => {
         <v-btn
             v-else
             class="ms-auto"
-            text="确认导出"
+            :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, bgVersion, props.data.version, 4)"
@@ -1203,30 +1205,30 @@ onMounted(() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        转换到目标版本
+        {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-chip
             v-if="props.data?.schematics?.Be != undefined"
             color="green"
         >
           <v-icon start icon="mdi-check-circle"></v-icon>
-          已存在
+          {{ $t('toolsConvert.exist') }}
         </v-chip>
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        转换到.mcstructure MC BE蓝图.
+        {{ $t('toolsConvert.beDesc') }}
       </v-card-subtitle>
       <v-card-text>
         <span class="text-caption text-grey-darken-1">
-          无转换参数，大型蓝图转换需要一定时间等待
+          {{ $t('toolsConvert.longTimeTip') }}
         </span>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialogVersions5 = false">取消</v-btn>
+        <v-btn @click="dialogVersions5 = false">{{ $t('tools.convert.cancel') }}</v-btn>
         <v-btn
             v-if="props.data?.schematics?.Be == undefined"
             class="ms-auto"
-            text="确认开始"
+            :text="$t('tools.convert.confirmStart')"
             color="info"
             :loading="isLoading"
             @click="convertSchematic(5)"
@@ -1234,7 +1236,7 @@ onMounted(() => {
         <v-btn
             v-else
             class="ms-auto"
-            text="确认导出"
+            :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
             @click="copySchematic(schematic_id, -1, props.data.version, 5)"

@@ -340,7 +340,7 @@ const batchExport = async () => {
           </template>
 
           <span v-if="!panelExpanded" class="text-grey">
-          点击展开筛选条件
+          {{$t('localData.clickToExpandFilter')}}
         </span>
         </div>
       </v-expansion-panel-title>
@@ -348,15 +348,15 @@ const batchExport = async () => {
         <v-container class="filter-container">
           <v-row>
             <v-col cols="12" md="4">
-              <v-text-field
-                  v-model="filters.keyword"
-                  label="关键词筛选"
-                  placeholder="输入蓝图名称或描述"
-                  clearable
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-magnify"
-              ></v-text-field>
+        <v-text-field
+          v-model="filters.keyword"
+          :label="$t('localData.keywordFilter')"
+          :placeholder="$t('localData.inputBlueprintNameOrDesc')"
+          clearable
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-magnify"
+        ></v-text-field>
             </v-col>
 
           </v-row>
@@ -389,13 +389,13 @@ const batchExport = async () => {
               class="nav-item"
               :class="{ 'active-item': selectClassification === '' }"
           >
-            <v-list-item-title
-                class="font-medium mt-2"
-                @click="selectClassification = '';reload();"
-            >
-              <v-icon size="20">mdi-cube-outline</v-icon>
-              全部蓝图
-            </v-list-item-title>
+              <v-list-item-title
+                  class="font-medium mt-2"
+                  @click="selectClassification = '';reload();"
+              >
+                <v-icon size="20">mdi-cube-outline</v-icon>
+                {{$t('localData.allBlueprints')}}
+              </v-list-item-title>
             <template #append>
               <v-badge v-if="!rail_e" color="info" :content="userData?.schematics ?? 0" inline></v-badge>
             </template>
@@ -438,7 +438,7 @@ const batchExport = async () => {
             <v-list-item @click="openCreateTagDialog" class="mt-auto">
               <v-list-item-title class="font-medium mt-2">
                 <v-icon size="20">mdi-plus-box-outline</v-icon>
-                创建分类
+                {{$t('localData.createCategory')}}
               </v-list-item-title>
             </v-list-item>
           </v-list>
@@ -485,7 +485,7 @@ const batchExport = async () => {
 
               <template #title >
                 <div class="d-flex align-center flex-wrap" @click="selectSchematic(bp.id)">
-                  <span v-if="bp.schematic_type == -1" class="text-h6 text-red-lighten-1">未解析</span>
+                  <span v-if="bp.schematic_type == -1" class="text-h6 text-red-lighten-1">{{$t('localData.unparsed')}}</span>
                   <span class="text-h6 text-blue-darken-4">{{ bp.name }}</span>
                   <div class="ms-3 d-flex align-center ga-1">
                     <v-chip
@@ -549,7 +549,7 @@ const batchExport = async () => {
                         <v-icon icon="mdi-tag" size="small" class="me-1"></v-icon>
                         <span class="text-caption">
                         v{{ bp.version }}
-                        <v-chip size="x-small" color="green" class="ms-1">当前版本</v-chip>
+                        <v-chip size="x-small" color="green" class="ms-1">{{$t('localData.currentVersion')}}</v-chip>
                       </span>
                       </div>
                     </div>
@@ -597,7 +597,7 @@ const batchExport = async () => {
                       color="info"
                       @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"
                   >
-                    导出
+                    {{$t('localData.export')}}
                   </v-btn>
                   <div class="d-flex ga-1">
                     <v-btn
@@ -628,13 +628,13 @@ const batchExport = async () => {
                     color="info"
                     size="24"
                 ></v-progress-circular>
-                <span class="ml-2 text-caption">正在加载更多数据...</span>
+                <span class="ml-2 text-caption">{{$t('localData.loadingMore')}}</span>
               </div>
             </template>
             <template v-slot:empty>
               <div class="text-center py-4 text-grey">
                 <v-icon icon="mdi-check-circle" class="mr-2"></v-icon>
-                已经到底了，没有更多数据啦~
+                {{$t('localData.noMoreData')}}
               </div>
             </template>
           </v-infinite-scroll>

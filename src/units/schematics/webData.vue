@@ -345,7 +345,7 @@ watch(
           </template>
 
           <span v-if="!panelExpanded_MCS" class="text-grey">
-          点击展开筛选条件
+          {{$t('webData.clickToExpandFilter')}}
         </span>
         </div>
       </v-expansion-panel-title>
@@ -353,43 +353,43 @@ watch(
         <v-container class="filter-container">
           <v-row>
             <v-col cols="12" md="4">
-              <v-text-field
-                  v-model="filters_MCS.keyword"
-                  label="关键词筛选"
-                  placeholder="输入蓝图名称或描述"
-                  clearable
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-magnify"
-              ></v-text-field>
+        <v-text-field
+          v-model="filters_MCS.keyword"
+          :label="$t('webData.keywordFilter')"
+          :placeholder="$t('webData.inputBlueprintNameOrDesc')"
+          clearable
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-magnify"
+        ></v-text-field>
             </v-col>
 
             <v-col cols="12" md="4">
-              <v-select
-                  v-model="filters_MCS.type"
-                  :items="blueprintTypes_MCS"
-                  label="蓝图类型"
-                  clearable
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-shape"
-                  item-title="text"
-                  item-value="value"
-              >
-              </v-select>
+        <v-select
+          v-model="filters_MCS.type"
+          :items="blueprintTypes_MCS"
+          :label="$t('webData.blueprintType')"
+          clearable
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-shape"
+          item-title="text"
+          item-value="value"
+        >
+        </v-select>
             </v-col>
 
             <v-col cols="12" md="4">
-              <v-select
-                  v-model="filters_MCS.sortBy"
-                  :items="sortOptions_MCS"
-                  label="排序方式"
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-sort"
-                  item-title="text"
-                  item-value="value"
-              ></v-select>
+        <v-select
+          v-model="filters_MCS.sortBy"
+          :items="sortOptions_MCS"
+          :label="$t('webData.sortType')"
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-sort"
+          item-title="text"
+          item-value="value"
+        ></v-select>
             </v-col>
           </v-row>
         </v-container>
@@ -428,8 +428,8 @@ watch(
             </div>
           </template>
 
-          <span v-if="!panelExpanded_MCS" class="text-grey">
-          点击展开筛选条件
+          <span v-if="!panelExpanded_CMS" class="text-grey">
+          {{$t('webData.clickToExpandFilter')}}
         </span>
         </div>
       </v-expansion-panel-title>
@@ -437,46 +437,46 @@ watch(
         <v-container class="filter-container">
           <v-row>
             <v-col cols="12" md="4">
-              <v-text-field
-                  v-model="filters_CMS.filter"
-                  label="关键词筛选"
-                  placeholder="输入蓝图名称或描述"
-                  clearable
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-magnify"
-                  @change="reload_CMS"
-              ></v-text-field>
+        <v-text-field
+          v-model="filters_CMS.filter"
+          :label="$t('webData.keywordFilter')"
+          :placeholder="$t('webData.inputBlueprintNameOrDesc')"
+          clearable
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-magnify"
+          @change="reload_CMS"
+        ></v-text-field>
             </v-col>
 
             <v-col cols="12" md="4">
-              <v-select
-                  v-model="filters_CMS.sortType"
-                  :items="blueprintTypes_CMS"
-                  label="蓝图类型"
-                  clearable
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-shape"
-                  item-title="text"
-                  item-value="value"
-                  @change="reload_CMS"
-              >
-              </v-select>
+        <v-select
+          v-model="filters_CMS.sortType"
+          :items="blueprintTypes_CMS"
+          :label="$t('webData.blueprintType')"
+          clearable
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-shape"
+          item-title="text"
+          item-value="value"
+          @change="reload_CMS"
+        >
+        </v-select>
             </v-col>
 
             <v-col cols="12" md="4">
-              <v-select
-                  v-model="filters_CMS.sort"
-                  :items="sortOptions_CMS"
-                  label="排序方式"
-                  density="compact"
-                  variant="outlined"
-                  prepend-inner-icon="mdi-sort"
-                  item-title="text"
-                  item-value="value"
-                  @change="reload_CMS"
-              ></v-select>
+        <v-select
+          v-model="filters_CMS.sort"
+          :items="sortOptions_CMS"
+          :label="$t('webData.sortType')"
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-sort"
+          item-title="text"
+          item-value="value"
+          @change="reload_CMS"
+        ></v-select>
             </v-col>
           </v-row>
         </v-container>
@@ -508,7 +508,7 @@ watch(
 
         <template #title >
           <div class="d-flex align-center flex-wrap">
-            <span v-if="bp.type == -1" class="text-h6 text-red-lighten-1">未解析</span>
+            <span v-if="bp.type == -1" class="text-h6 text-red-lighten-1">{{$t('webData.unparsed')}}</span>
             <span class="text-h6 text-blue-darken-4">{{ bp.name }}</span>
             <div class="ms-3 d-flex align-center ga-1">
               <v-chip
@@ -581,7 +581,7 @@ watch(
                 :loading="downLoading_MCS"
                 @click="downloadAndUpload(bp.uuid, bp.type)"
             >
-              导入
+              {{$t('webData.import')}}
             </v-btn>
             <div class="d-flex ga-1">
               <v-btn
@@ -591,7 +591,7 @@ watch(
                   size="small"
                   @click="openLink(`https://www.mcschematic.top/home/${bp.uuid}`)"
               >
-                前往
+                {{$t('webData.goTo')}}
               </v-btn>
             </div>
           </div>
@@ -604,13 +604,13 @@ watch(
               color="info"
               size="24"
           ></v-progress-circular>
-          <span class="ml-2 text-caption">正在加载更多数据...</span>
+          <span class="ml-2 text-caption">{{$t('webData.loadingMore')}}</span>
         </div>
       </template>
       <template v-slot:empty>
         <div class="text-center py-4 text-grey">
           <v-icon icon="mdi-check-circle" class="mr-2"></v-icon>
-          已经到底了，没有更多数据啦~
+          {{$t('webData.noMoreData')}}
         </div>
       </template>
     </v-infinite-scroll>
@@ -721,7 +721,7 @@ watch(
                 size="small"
                 :disabled="true"
             >
-              导入
+              {{$t('webData.import')}}
             </v-btn>
             <div class="d-flex ga-1">
               <v-btn
@@ -731,7 +731,7 @@ watch(
                   size="small"
                   @click="openLink(`https://www.creativemechanicserver.com/detail/${bp.id}/`)"
               >
-                前往
+                {{$t('webData.goTo')}}
               </v-btn>
             </div>
           </div>
@@ -744,13 +744,13 @@ watch(
               color="info"
               size="24"
           ></v-progress-circular>
-          <span class="ml-2 text-caption">正在加载更多数据...</span>
+          <span class="ml-2 text-caption">{{$t('webData.loadingMore')}}</span>
         </div>
       </template>
       <template v-slot:empty>
         <div class="text-center py-4 text-grey">
           <v-icon icon="mdi-check-circle" class="mr-2"></v-icon>
-          已经到底了，没有更多数据啦~
+          {{$t('webData.noMoreData')}}
         </div>
       </template>
     </v-infinite-scroll>

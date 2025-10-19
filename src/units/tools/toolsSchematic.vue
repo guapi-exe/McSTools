@@ -8,6 +8,8 @@ import {schematic_id} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import {userData} from "../../modules/user_data.ts";
 import {opacity} from "../../modules/theme.ts";
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 import {invoke} from "@tauri-apps/api/core";
 
 const props = defineProps<{
@@ -133,7 +135,7 @@ onMounted(() => {
 
 <template>
   <div v-if="props.data" class="ma-4">
-    <v-card-title>蓝图基本信息</v-card-title>
+  <v-card-title>{{$t('toolsSchematic.basicInfo')}}</v-card-title>
 
     <v-card-text>
       <v-row>
@@ -143,12 +145,12 @@ onMounted(() => {
               <template v-slot:prepend>
                 <v-icon icon="mdi-identifier"></v-icon>
               </template>
-              <v-list-item-title>ID：{{ props.data.id }}</v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.id')}}：{{ props.data.id }}</v-list-item-title>
             </v-list-item>
 
             <v-list-item  v-if="!editing">
               <v-list-item-title class="d-flex align-center">
-                <span>名称：{{ props.data.name }}</span>
+                <span>{{$t('toolsSchematic.name')}}：{{ props.data.name }}</span>
               </v-list-item-title>
               <template v-slot:append>
 
@@ -163,13 +165,14 @@ onMounted(() => {
               </template>
             </v-list-item>
             <v-list-item v-else>
-              <v-text-field
-                  v-model="schematicEdit.name"
-                  variant="underlined"
-                  density="compact"
-                  autofocus
-                  @keydown.enter="saveEdit"
-              ></v-text-field>
+        <v-text-field
+          v-model="schematicEdit.name"
+          variant="underlined"
+          density="compact"
+          autofocus
+          :label="$t('toolsSchematic.name')"
+          @keydown.enter="saveEdit"
+        ></v-text-field>
               <template v-slot:append>
 
                 <v-list-item-action class="d-flex gap-2">
@@ -185,12 +188,12 @@ onMounted(() => {
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>类型：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4] }} </v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.type')}}：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4] }} </v-list-item-title>
             </v-list-item>
 
             <v-list-item>
               <v-list-item-title>
-                尺寸：
+                {{$t('toolsSchematic.size')}}：
                 <v-chip
                     color="deep-purple"
                     variant="outlined"
@@ -211,7 +214,7 @@ onMounted(() => {
             </v-list-item>
             <v-list-item v-if="props.data.schematic_type == 2">
               <v-list-item-title class="d-flex align-center">
-                <span>投影格式版本：{{ props.data.lm_version }}</span>
+                <span>{{$t('toolsSchematic.lmVersion')}}：{{ props.data.lm_version }}</span>
               </v-list-item-title>
               <template v-slot:append>
 
@@ -232,19 +235,19 @@ onMounted(() => {
           <v-list density="compact">
             <v-list-item>
               <v-list-item-title>
-                状态：
+                {{$t('toolsSchematic.status')}}：
                 <v-chip :color="props.data.is_deleted ? 'error' : 'success'" size="small">
-                  {{ props.data.is_deleted ? '已删除' : '正常' }}
+                  {{ props.data.is_deleted ? $t('toolsSchematic.deleted') : $t('toolsSchematic.normal') }}
                 </v-chip>
               </v-list-item-title>
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>创建者：{{ props.data.user || '未知' }}</v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.creator')}}：{{ props.data.user || $t('toolsSchematic.unknown') }}</v-list-item-title>
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>版本：v{{ props.data.version }}
+              <v-list-item-title>{{$t('toolsSchematic.version')}}：v{{ props.data.version }}
                 <v-chip
                     color="orange-lighten-4"
                     size="small"
@@ -257,23 +260,23 @@ onMounted(() => {
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>更新时间：{{ formatTime(props.data.updated_at) }}</v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.updatedAt')}}：{{ formatTime(props.data.updated_at) }}</v-list-item-title>
             </v-list-item>
           </v-list>
         </v-col>
         <v-col cols="12">
-          <v-combobox
-              v-model="schematicEdit.schematic_tags"
-              label="蓝图标签"
-              multiple
-              chips
-              clearable
-              variant="underlined"
-              hint="输入后按回车添加标签"
-              persistent-hint
-              :items="[]"
-              @update:model-value="saveTags"
-          >
+      <v-combobox
+        v-model="schematicEdit.schematic_tags"
+        :label="$t('toolsSchematic.tags')"
+        multiple
+        chips
+        clearable
+        variant="underlined"
+        :hint="$t('toolsSchematic.tagsHint')"
+        persistent-hint
+        :items="[]"
+        @update:model-value="saveTags"
+      >
             <template v-slot:chip="{ props, item, index }">
               <v-chip
                   v-bind="props"
@@ -291,33 +294,33 @@ onMounted(() => {
         </v-col>
       </v-row>
 
-      <v-textarea
-          :readonly="!editing"
-          :model-value="schematicEdit.description"
-          label="蓝图描述"
-          clearable
-          auto-grow
-          @keydown.enter="saveEdit"
-          class="mt-4"
-      ></v-textarea>
+    <v-textarea
+      :readonly="!editing"
+      :model-value="schematicEdit.description"
+      :label="$t('toolsSchematic.description')"
+      clearable
+      auto-grow
+      @keydown.enter="saveEdit"
+      class="mt-4"
+    ></v-textarea>
 
       <div class="upload-container">
-        <v-file-input
-            v-model="files"
-            class="custom-file-input"
-            variant="solo-filled"
-            color="info"
-            bg-color="grey-lighten-3"
-            label="更新蓝图文件"
-            multiple
-            accept=".nbt, .json, .schem, .litematic, .mcstructure"
-            :max-file-size="100 * 1024 * 1024"
-            :loading="uploadStatus === 'uploading'"
-            :error-messages="uploadError"
-            :disabled="uploadStatus === 'uploading'"
-            @update:model-value="handleUpload(props.data.id)"
-        >
-        </v-file-input>
+    <v-file-input
+      v-model="files"
+      class="custom-file-input"
+      variant="solo-filled"
+      color="info"
+      bg-color="grey-lighten-3"
+      :label="$t('toolsSchematic.updateFile')"
+      multiple
+      accept=".nbt, .json, .schem, .litematic, .mcstructure"
+      :max-file-size="100 * 1024 * 1024"
+      :loading="uploadStatus === 'uploading'"
+      :error-messages="uploadError"
+      :disabled="uploadStatus === 'uploading'"
+      @update:model-value="handleUpload(props.data.id)"
+    >
+    </v-file-input>
 
         <v-alert
             v-if="uploadStatus === 'success'"
@@ -330,7 +333,7 @@ onMounted(() => {
           </template>
 
           <div class="d-flex align-center">
-            <span class="mr-2">成功上传 {{ files.length }} 个文件</span>
+            <span class="mr-2">{{$t('toolsSchematic.uploadSuccess', {count: files.length})}}</span>
             <v-spacer></v-spacer>
             <v-btn
                 icon
@@ -367,7 +370,7 @@ onMounted(() => {
           </template>
 
           <div class="d-flex align-center">
-            <span class="mr-2">发生错误:{{ uploadError }}</span>
+            <span class="mr-2">{{$t('toolsSchematic.uploadError')}}:{{ uploadError }}</span>
             <v-spacer></v-spacer>
             <v-btn
                 icon
@@ -397,7 +400,7 @@ onMounted(() => {
   </div>
   <div v-else class="ma-4 error-card">
     <v-alert type="error">
-      未选取蓝图
+  {{$t('toolsSchematic.noSchematic')}}
     </v-alert>
   </div>
 
@@ -408,11 +411,11 @@ onMounted(() => {
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
-        修改投影版本
+  {{$t('toolsSchematic.editLmVersion')}}
       </v-card-title>
 
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        修改建筑投影，自身版本控制器
+        {{$t('toolsSchematic.editLmVersionHint')}}
       </v-card-subtitle>
       <v-card-text>
         <v-row no-gutters>
@@ -421,12 +424,12 @@ onMounted(() => {
                 v-model="lmVersion"
                 :items="[3, 4, 5, 6, 7]"
                 density="compact"
-                label="目标输出版本"
+                :label="$t('toolsSchematic.targetVersion')"
             ></v-combobox>
           </v-col>
         </v-row>
         <span class="text-caption text-grey-darken-1">
-          修改前确认你想要的目标版本
+          {{$t('toolsSchematic.confirmTargetVersion')}}
         </span>
       </v-card-text>
       <v-card-actions>
@@ -435,13 +438,13 @@ onMounted(() => {
             color="grey-darken-1"
             @click="showDeleteDialog = false"
         >
-          取消
+          {{$t('toolsSchematic.cancel')}}
         </v-btn>
         <v-btn
             color="info"
             @click="setLmVersion"
         >
-          确认修改
+          {{$t('toolsSchematic.confirmEdit')}}
         </v-btn>
       </v-card-actions>
     </v-card>

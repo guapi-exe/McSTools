@@ -16,7 +16,7 @@ const dialog = ref(false)
 const autoUpdateEnabled = ref(true);
 const devMode = ref(false);
 const autoTheme = ref(false);
-const { locale, t } = useI18n()
+const { locale, t: $t } = useI18n()
 const languageTypes = ref([
   {
     value: 'zh',
@@ -63,16 +63,16 @@ const clearData = async () => {
     await invoke(
         'clear_app_data'
     )
-    toast.info(t('messages.clearSuccess'), {
+    toast.info($t('messages.clearSuccess'), {
       timeout: 3000
     });
     await new Promise(resolve => setTimeout(resolve, 5000));
     await relaunch();
   } catch (error) {
-    toast.error(t('messages.error', { error }), {
+    toast.error($t('messages.error', { error }), {
       timeout: 3000
     });
-    throw new Error(t('messages.fetchError', { error }));
+    throw new Error($t('messages.fetchError', { error }));
   }
 }
 

@@ -6,13 +6,15 @@ import {invoke} from "@tauri-apps/api/core";
 import {getBlockIcon, toast} from "../../modules/others.ts";
 import {BlockData, BlockDataNew} from "../../modules/replace_data.ts";
 import {schematic_id} from "../../modules/tools_data.ts";
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 const active = ref(0)
 const blockIdInput = ref('')
 const propertiesInput = ref('')
 
 const idRules = [
-  (v: string) => !!v.trim() || '必须输入方块ID',
-  (v: string) => /^[a-z0-9_]+:[a-z0-9_/]+$/i.test(v) || '格式: 命名空间:方块名'
+  (v: string) => !!v.trim() || $t('toolsReplace.idRequired'),
+  (v: string) => /^[a-z0-9_]+:[a-z0-9_/]+$/i.test(v) || $t('toolsReplace.idFormat')
 ]
 
 const propRules = [
@@ -21,7 +23,7 @@ const propRules = [
     return v.split('\n').every(line => {
       const [key, value] = line.split('=')
       return key?.trim() && value?.trim()
-    }) || '每行格式应为 键=值'
+    }) || $t('toolsReplace.propFormat')
   }
 ]
 
@@ -39,7 +41,7 @@ const updateBlockData = debounce(() => {
 
   try {
     if (!/^[a-z0-9_]+:[a-z0-9_/]+$/i.test(blockIdInput.value)) {
-      throw new Error('无效的方块ID格式')
+  throw new Error($t('toolsReplace.invalidIdFormat'))
     }
     state.selectedReplacementDetails = {
       id: blockIdInput.value,
@@ -88,24 +90,24 @@ onMounted(async () => {
   try {
     jeBlocks.value = await fetchJeBlocks();
   } catch (err) {
-    state.error = err instanceof Error ? err.message : '无法加载方块数据';
+  state.error = err instanceof Error ? err.message : $t('toolsReplace.loadBlockError');
   }
 });
 
 const addReplacementRule = (mode: number) => {
   if (state.quantity <= 0) {
-    state.error = '替换数量必须大于0';
+    state.error = $t('toolsReplace.quantityGreaterThanZero');
     return;
   }
 
   if (mode === 0) {
     if (!state.selectedOriginal || !state.selectedReplacement) {
-      state.error = '请先选择要替换的方块和替换目标';
+      state.error = $t('toolsReplace.selectBlockAndTarget');
       return;
     }
   } else {
     if (!state.selectedOriginalDetails || !state.selectedReplacementDetails) {
-      state.error = '请先选择要替换的方块和替换目标（精准模式）';
+      state.error = $t('toolsReplace.selectBlockAndTargetDetails');
       return;
     }
   }
@@ -177,12 +179,12 @@ const executeReplacement = async () => {
       state.replacementRules = [];
       state.showConfirmDialog = false;
     }
-    toast.success(`方块替换完成,请前往仓库中查看`, {
+    toast.success($t('toolsReplace.replaceSuccess'), {
       timeout: 3000
     });
   } catch (err) {
-    state.error = err instanceof Error ? err.message : '替换操作失败';
-    toast.error(`发生了一个错误:${err}`, {
+    state.error = err instanceof Error ? err.message : $t('toolsReplace.replaceFailed');
+    toast.error($t('toolsReplace.error', {error: String(err)}), {
       timeout: 3000
     });
 
@@ -224,8 +226,8 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
   <v-row class="pa-4" no-gutters>
     <v-col cols="4">
       <v-tabs v-model="active" align-tabs="center" color="blue-lighten-1">
-        <v-tab value="brief">简单模式</v-tab>
-        <v-tab value="details">精准模式</v-tab>
+  <v-tab value="brief">{{$t('toolsReplace.briefMode')}}</v-tab>
+  <v-tab value="details">{{$t('toolsReplace.detailsMode')}}</v-tab>
       </v-tabs>
       <v-window v-model="active">
         <v-window-item value="brief">
@@ -233,7 +235,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
             <v-icon icon="mdi-magnify" class="mr-2"/>
             <v-combobox
                 v-model="state.selectedOriginal"
-                label="查找方块"
+                :label="$t('toolsReplace.searchBlock')"
                 :items="props.data?.items ?? []"
                 item-title="zh_cn"
                 item-value="id"
@@ -261,7 +263,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
                     </v-avatar>
                   </template>
                   <v-list-item-subtitle class="text-caption">
-                    ID: {{ item.raw.id }}
+                    {{$t('toolsReplace.id')}}: {{ item.raw.id }}
                   </v-list-item-subtitle>
                 </v-list-item>
               </template>
@@ -271,7 +273,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
             <v-icon icon="mdi-arrow-right" class="mx-2"/>
             <v-combobox
                 v-model="state.selectedReplacement"
-                label="替换为（可输入ID或选择）"
+                :label="$t('toolsReplace.replaceTo')"
                 :items="jeBlocks || []"
                 item-title="zh_cn"
                 item-value="block_name"
@@ -300,7 +302,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
                       </v-avatar>
                     </template>
                     <v-list-item-subtitle class="text-caption">
-                      ID: minecraft:{{ item.raw.block_name }}
+                      {{$t('toolsReplace.id')}}: minecraft:{{ item.raw.block_name }}
                     </v-list-item-subtitle>
                   </v-list-item>
                 </template>
@@ -316,7 +318,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
                       </v-avatar>
                     </template>
                     <v-list-item-subtitle class="text-caption">
-                      自定义ID: {{ item.raw }}
+                      {{$t('toolsReplace.customId')}}: {{ item.raw }}
                     </v-list-item-subtitle>
                   </v-list-item>
                 </template>
@@ -325,21 +327,21 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
           </div>
           <v-text-field
               v-model.number="state.quantity"
-              label="替换数量"
+              :label="$t('toolsReplace.replaceQuantity')"
               type="number"
               min="1"
               class="mt-4"
               :disabled="state.globalReplace && !!state.selectedOriginal"
-              :hint="state.globalReplace
-      ? (state.selectedOriginal
-          ? `全局替换已锁定: ${state.selectedOriginal.zh_cn} 的需求量 ${state.selectedOriginal.num}`
-          : '请先选择要替换的方块')
-      : ''"
+          :hint="state.globalReplace
+        ? (state.selectedOriginal
+          ? $t('toolsReplace.globalReplaceLocked', {block: state.selectedOriginal.zh_cn, num: state.selectedOriginal.num})
+          : $t('toolsReplace.selectBlockFirst'))
+        : ''"
               persistent-hint
           />
           <v-checkbox
               v-model="state.globalReplace"
-              label="全局替换"
+              :label="$t('toolsReplace.globalReplace')"
               density="compact"
               :disabled="true"
           />
@@ -350,7 +352,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               color="secondary"
               @click="addReplacementRule(0)"
           >
-            添加列表
+            {{$t('toolsReplace.addToList')}}
           </v-btn>
           <v-btn
               color="green"
@@ -359,7 +361,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               :disabled="state.replacementRules.length === 0"
               @click="state.showConfirmDialog = true"
           >
-            执行替换
+            {{$t('toolsReplace.executeReplace')}}
           </v-btn>
         </v-window-item>
         <v-window-item value="details">
@@ -367,7 +369,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
             <v-icon icon="mdi-magnify" class="mr-2"/>
             <v-combobox
                 v-model="state.selectedOriginalDetails"
-                label="查找方块（支持属性过滤）"
+                :label="$t('toolsReplace.searchBlockWithProps')"
                 :items="props.blocks ?? []"
                 item-title="id"
                 clearable
@@ -415,8 +417,8 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               <v-col cols="12">
                 <v-text-field
                     v-model="blockIdInput"
-                    label="方块ID (例: minecraft:stone)"
-                    placeholder="命名空间:方块名"
+                    :label="$t('toolsReplace.blockIdLabel')"
+                    :placeholder="$t('toolsReplace.blockIdPlaceholder')"
                     :rules="idRules"
                     @update:model-value="updateBlockData"
                 />
@@ -424,14 +426,14 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               <v-col cols="12">
                 <v-textarea
                     v-model="propertiesInput"
-                    label="方块属性"
-                    placeholder="每行一个属性，格式：键=值"
+                    :label="$t('toolsReplace.blockPropsLabel')"
+                    :placeholder="$t('toolsReplace.blockPropsPlaceholder')"
                     rows="3"
                     :rules="propRules"
                     @update:model-value="updateBlockData"
                 >
                   <template #append>
-                    <v-tooltip text="每行输入一个属性，例如：color=blue">
+                    <v-tooltip :text="$t('toolsReplace.blockPropsTooltip')">
                       <template v-slot:activator="{ props }">
                         <v-icon v-bind="props" icon="mdi-information" size="small"/>
                       </template>
@@ -441,7 +443,7 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               </v-col>
               <v-col cols="12">
                 <div v-if="state.selectedReplacementDetails" class="preview-box">
-                  <div class="text-caption text-grey">实时预览：</div>
+                  <div class="text-caption text-grey">{{$t('toolsReplace.preview')}}：</div>
                   <pre>{{ JSON.stringify(state.selectedReplacementDetails, null, 2) }}</pre>
                 </div>
               </v-col>
@@ -488,18 +490,18 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
       <v-table density="compact" class="elevation-1">
         <thead>
         <tr>
-          <th>模式</th>
-          <th>原方块</th>
-          <th>新方块</th>
-          <th>数量</th>
-          <th>操作</th>
+          <th>{{$t('toolsReplace.mode')}}</th>
+          <th>{{$t('toolsReplace.originalBlock')}}</th>
+          <th>{{$t('toolsReplace.newBlock')}}</th>
+          <th>{{$t('toolsReplace.quantity')}}</th>
+          <th>{{$t('toolsReplace.action')}}</th>
         </tr>
         </thead>
         <tbody>
         <tr v-for="(rule, index) in state.replacementRules" :key="index">
           <td>
             <v-chip :color="rule.replaceMode === 0 ? 'blue' : 'teal'" variant="tonal" size="small">
-              {{ rule.replaceMode === 0 ? '简单' : '精准' }}
+              {{ rule.replaceMode === 0 ? $t('toolsReplace.briefMode') : $t('toolsReplace.detailsMode') }}
             </v-chip>
           </td>
 
@@ -562,23 +564,23 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
               {{ rule.quantity }}
             </template>
             <template v-else>
-              默认全局
+              {{$t('toolsReplace.defaultGlobal')}}
             </template>
 
           </td>
           <td>
-            <v-btn
-                variant="text"
-                color="error"
-                icon="mdi-delete"
-                @click="removeRule(index)"
-            />
+      <v-btn
+        variant="text"
+        color="error"
+        icon="mdi-delete"
+        @click="removeRule(index)"
+      >{{$t('toolsReplace.delete')}}</v-btn>
           </td>
         </tr>
 
         <tr v-if="state.replacementRules.length === 0">
           <td colspan="5" class="text-center text-grey">
-            暂无替换规则
+            {{$t('toolsReplace.noRules')}}
           </td>
         </tr>
         </tbody>
@@ -593,28 +595,28 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
       <v-card>
         <v-card-title class="text-h6">
           <v-icon icon="mdi-alert" color="warning" class="mr-2"/>
-          确认替换操作
+          {{$t('toolsReplace.confirmReplace')}}
         </v-card-title>
         <v-card-subtitle>
-          替换将导出为新蓝图
+          {{$t('toolsReplace.replaceExportHint')}}
         </v-card-subtitle>
         <v-card-text>
-          即将替换 {{ state.replacementRules.length }} 条方块规则
+          {{$t('toolsReplace.replacePreview', {count: state.replacementRules.length})}}
           <ul class="mt-2">
             <li v-for="(rule, index) in state.replacementRules" :key="index">
-              {{ rule.replaceMode == 0 ? rule.original.zh_cn :  rule.originalDetails.id}} → {{ rule.replaceMode == 0 ? rule.replacement.zh_cn : rule.replacementDetails.id }} ×{{ rule.replaceMode == 0 ? rule.quantity : "全局"}}
+              {{ rule.replaceMode == 0 ? rule.original.zh_cn :  rule.originalDetails.id}} → {{ rule.replaceMode == 0 ? rule.replacement.zh_cn : rule.replacementDetails.id }} ×{{ rule.replaceMode == 0 ? rule.quantity : $t('toolsReplace.defaultGlobal') }}
             </li>
           </ul>
         </v-card-text>
         <v-card-actions>
           <v-spacer/>
-          <v-btn @click="state.showConfirmDialog = false">取消</v-btn>
+          <v-btn @click="state.showConfirmDialog = false">{{$t('toolsReplace.cancel')}}</v-btn>
           <v-btn
               color="info"
               :loading="state.isLoading"
               @click="executeReplacement"
           >
-            确认执行
+            {{$t('toolsReplace.confirmExecute')}}
           </v-btn>
         </v-card-actions>
       </v-card>

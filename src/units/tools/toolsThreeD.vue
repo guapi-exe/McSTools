@@ -9,6 +9,8 @@ import {schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {blocks_resources} from "../../modules/deepslateInit.ts";
 import {getBlockIcon, toast} from "../../modules/others.ts";
 import {layers, layerMap, currentLayer, camera_l, interactiveCanvas, size_l, loading_threeD, once_threeD, structure_l, structureRenderer} from "../../modules/threeD_data.ts"
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 const materialOverview = ref<{id: string, name: string, count: number}[]>([]);
 const progress = ref(0)
 const sureLoading = ref<boolean>(false);
@@ -200,13 +202,12 @@ const loadInit = async () => {
     currentLayer.value = size_l.value[1] - 1;
     if (size_l.value[0] * size_l.value[1] * size_l.value[2] >= 100 * 100 * 100) {
       once_threeD.value = true;
-
-      toast.info(`蓝图尺寸过大已默认启用单层显示`, {timeout: 3000})
+      toast.info($t('toolsThreeD.largeSizeSingleLayer'), {timeout: 3000})
     }
     await reloadRenderer();
 
   }catch (e) {
-    toast.error(`发生了一个错误:${e}`, {timeout: 3000});
+    toast.error($t('toolsThreeD.error', {error: String(e)}), {timeout: 3000});
   }finally {
     loading_threeD.value = false;
   }
@@ -283,23 +284,23 @@ onBeforeUnmount(async () => {
             :min="0"
             :max="size_l ? size_l[1] - 1 : 0"
         />
-        <div class="layer-indicator">当前层: {{ currentLayer }}</div>
+  <div class="layer-indicator">{{$t('toolsThreeD.currentLayer')}}: {{ currentLayer }}</div>
 
-        <v-switch
-            class="ml-4"
-            v-model="once_threeD"
-            label="单层显示"
-            color="green"
-            density="compact"
-            hint="只显示选中当前层"
-            persistent-hint
-        ></v-switch>
+    <v-switch
+      class="ml-4"
+      v-model="once_threeD"
+      :label="$t('toolsThreeD.singleLayer')"
+      color="green"
+      density="compact"
+      :hint="$t('toolsThreeD.singleLayerHint')"
+      persistent-hint
+    ></v-switch>
       </div>
 
       <div v-if="loading_threeD" class="loading-overlay">
         <div class="loader">
           <div class="spinner"></div>
-          <p>加载结构中...</p>
+          <p>{{$t('toolsThreeD.loadingStructure')}}</p>
           <div class="progress-container">
             <div
                 class="progress-bar"
@@ -318,7 +319,7 @@ onBeforeUnmount(async () => {
               icon="mdi-information-outline"
               class="mt-4 monospace-font"
           >
-            {{`该蓝图体积过大，尺寸${schematicData.sizes}，是否确认加载;加载会占用大量内存，甚至导致崩溃`}}
+            {{$t('toolsThreeD.confirmLargeLoad', {size: schematicData.sizes})}}
           </v-alert>
           <div class="button-group">
             <v-btn
@@ -328,7 +329,7 @@ onBeforeUnmount(async () => {
                 prepend-icon="mdi-reload-alert"
                 @click="sureLoading = false;loadInit()"
             >
-              确认加载
+              {{$t('toolsThreeD.confirmLoad')}}
             </v-btn>
           </div>
         </div>

@@ -274,7 +274,7 @@ onBeforeMount(async() => {
               <template #prepend>
                 <v-icon>mdi-file</v-icon>
               </template>
-              <v-list-item-title>文件名</v-list-item-title>
+              <v-list-item-title>{{$t('mapImage2d.fileName')}}</v-list-item-title>
               <v-list-item-subtitle>{{ `${image_data.name}.${image_data.ext}` }}</v-list-item-subtitle>
             </v-list-item>
 
@@ -282,7 +282,7 @@ onBeforeMount(async() => {
               <template #prepend>
                 <v-icon>mdi-arrow-expand</v-icon>
               </template>
-              <v-list-item-title>分辨率</v-list-item-title>
+              <v-list-item-title>{{$t('mapImage2d.resolution')}}</v-list-item-title>
               <v-list-item-subtitle>{{ `${image_data.width} x ${image_data.height}` }}</v-list-item-subtitle>
             </v-list-item>
           </v-list>
@@ -338,7 +338,7 @@ onBeforeMount(async() => {
         <v-file-input
             v-model="mapImg"
             accept="image/png, image/jpeg, image/bmp, image/jpg"
-            label="选择图片文件"
+            :label="$t('mapImage2d.selectImageFile')"
             density="compact"
             prepend-icon="mdi-folder-open"
             @update:model-value="uploadImage(mapImg)"
@@ -352,7 +352,7 @@ onBeforeMount(async() => {
             icon="mdi-information"
             class="mb-4"
         >
-          请先上传源图片
+          {{$t('mapImage2d.uploadImageTip')}}
         </v-alert>
         <v-img
             v-else
@@ -366,12 +366,12 @@ onBeforeMount(async() => {
       <div class="flex-grow-1 overflow-y-auto">
         <v-text-field
             v-model.number="exportSettings.width"
-            label="导出宽度"
+            :label="$t('mapImage2d.exportWidth')"
             type="number"
             min="16"
             :max="exportSettings.maxResolution"
             step="16"
-            hint="建议和原尺寸保持同比例"
+            :hint="$t('mapImage2d.suggestSameRatio')"
             persistent-hint
             density="compact"
             class="mb-2"
@@ -380,12 +380,12 @@ onBeforeMount(async() => {
 
         <v-text-field
             v-model.number="exportSettings.height"
-            label="导出高度"
+            :label="$t('mapImage2d.exportHeight')"
             type="number"
             min="16"
             :max="exportSettings.maxResolution"
             step="16"
-            hint="建议和原尺寸保持同比例"
+            :hint="$t('mapImage2d.suggestSameRatio')"
             persistent-hint
             density="compact"
             class="mb-4"
@@ -395,10 +395,10 @@ onBeforeMount(async() => {
         <v-switch
             class="ml-4"
             v-model="exportSettings.dithering"
-            label="启用抖动算法"
+            :label="$t('mapImage2d.enableDithering')"
             color="info"
             density="compact"
-            hint="通过颜色抖动提升画面细节表现"
+            :hint="$t('mapImage2d.ditheringHint')"
             persistent-hint
         >
           <template v-slot:append>
@@ -411,7 +411,7 @@ onBeforeMount(async() => {
                     class="ml-2"
                 ></v-icon>
               </template>
-              <span>使用Floyd-Steinberg算法进行误差扩散，优化色彩过渡</span>
+              <span>{{$t('mapImage2d.ditheringTooltip')}}</span>
             </v-tooltip>
           </template>
         </v-switch>
@@ -419,10 +419,10 @@ onBeforeMount(async() => {
         <v-switch
             class="ml-4"
             v-model="replaceAir"
-            label="空气方块"
+            :label="$t('mapImage2d.airBlock')"
             color="info"
             density="compact"
-            hint="将透明SRGBA替换为空气方块"
+            :hint="$t('mapImage2d.airBlockHint')"
             persistent-hint
         >
           <template v-slot:append>
@@ -435,7 +435,7 @@ onBeforeMount(async() => {
                     class="ml-2"
                 ></v-icon>
               </template>
-              <span>减少整体工作量，改变风格</span>
+              <span>{{$t('mapImage2d.airBlockTooltip')}}</span>
             </v-tooltip>
           </template>
         </v-switch>
@@ -447,7 +447,7 @@ onBeforeMount(async() => {
           @click="refreshImage"
       >
         <v-icon left>mdi-refresh</v-icon>
-        刷新
+  {{$t('mapImage2d.refresh')}}
       </v-btn>
 
       <v-btn
@@ -458,7 +458,7 @@ onBeforeMount(async() => {
           @click="dialog = true;"
       >
         <v-icon left>mdi-download</v-icon>
-        导出蓝图
+  {{$t('mapImage2d.exportSchematic')}}
       </v-btn>
       <v-btn
           :disabled="!hasImage"
@@ -469,11 +469,11 @@ onBeforeMount(async() => {
           @click="exportImage"
       >
         <v-icon left>mdi-download</v-icon>
-        导出图片
+  {{$t('mapImage2d.exportImage')}}
       </v-btn>
       <v-card v-if="blocksLoaded">
         <v-toolbar density="compact">
-          <v-toolbar-title>方块选择器</v-toolbar-title>
+          <v-toolbar-title>{{$t('mapImage2d.blockSelector')}}</v-toolbar-title>
         </v-toolbar>
 
         <v-list style="height: 80vh">
@@ -572,7 +572,7 @@ onBeforeMount(async() => {
               size="64"
               color="info"
           ></v-progress-circular>
-          <div class="text-caption mt-2">正在处理图像...</div>
+          <div class="text-caption mt-2">{{$t('mapImage2d.processingImage')}}</div>
         </div>
 
         <div class="preview-content">
@@ -591,7 +591,7 @@ onBeforeMount(async() => {
               variant="tonal"
               color="grey"
               icon="mdi-image-off-outline"
-              text="等待输入图像..."
+              :text="$t('mapImage2d.waitingForImage')"
           ></v-alert>
         </div>
       </div>
@@ -609,10 +609,10 @@ onBeforeMount(async() => {
     >
       <v-card-title class="text-subtitle-1">
         <v-icon icon="mdi-history" class="mr-2"></v-icon>
-        导出蓝图
+  {{$t('mapImage2d.exportSchematic')}}
       </v-card-title>
       <v-card-subtitle class="text-caption text-grey-darken-1">
-        导出到指定类型蓝图.
+  {{$t('mapImage2d.exportToType')}}
       </v-card-subtitle>
       <v-card-text>
         <v-row no-gutters>
@@ -624,7 +624,7 @@ onBeforeMount(async() => {
                 item-value="value"
                 return-object
                 density="compact"
-                label="主类型"
+                :label="$t('mapImage2d.mainType')"
                 @update:modelValue="v => onMainTypeChange(v)"
             ></v-combobox>
           </v-col>
@@ -637,12 +637,12 @@ onBeforeMount(async() => {
                 item-title="label"
                 item-value="value"
                 density="compact"
-                label="子类型"
+                :label="$t('mapImage2d.subType')"
                 @update:modelValue="v => onSubTypeChange(v)"
             ></v-combobox>
           </v-col>
           <v-col cols="12" class="d-flex align-center justify-center gap-2" style="padding: 0 !important;">
-            <span>法线轴朝向</span>
+            <span>{{$t('mapImage2d.axisOrientation')}}</span>
             <v-icon color="blue" icon="mdi-axis-arrow" class="mt-1"></v-icon>
             <v-btn-toggle
                 v-model="exportSettings.axios"
@@ -689,22 +689,20 @@ onBeforeMount(async() => {
 
           <v-col  cols="12" class="d-flex align-center justify-center gap-2" style="padding: 0 !important;">
             <v-number-input :disabled="!threeD" v-model="maxZ" :precision="0" hide-details="auto"></v-number-input>
-            <code class="d-block pt-3">立体最大高度: {{ maxZ }}</code>
+            <code class="d-block pt-3">{{$t('mapImage2d.max3dHeight')}}: {{ maxZ }}</code>
           </v-col>
         </v-row>
       </v-card-text>
       <template v-slot:actions>
         <v-spacer/>
-        <v-btn @click="dialog = false">取消</v-btn>
-        <v-btn
-            :disabled="schematicType == null"
-            class="ms-auto"
-            color="info"
-            text="确认导出"
-            :loading="exportLoading"
-            @click="exportSchematicData"
-        >
-        </v-btn>
+  <v-btn @click="dialog = false">{{$t('mapImage2d.cancel')}}</v-btn>
+    <v-btn
+      :disabled="schematicType == null"
+      class="ms-auto"
+      color="info"
+      :loading="exportLoading"
+      @click="exportSchematicData"
+    >{{$t('mapImage2d.confirmExport')}}</v-btn>
       </template>
     </v-card>
   </v-dialog>

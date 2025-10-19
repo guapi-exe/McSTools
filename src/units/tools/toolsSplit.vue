@@ -3,6 +3,8 @@ import {computed, ref} from "vue";
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {splitSchematicParts} from "../../modules/split_data.ts";
 import {toast} from "../../modules/others.ts";
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
@@ -13,15 +15,15 @@ const splitNumber = ref(2)
 const splitTypes = ref([
   {
     value: 1,
-    label: '垂直分层'
+    label: $t('toolsSplit.verticalSplit')
   },
   {
     value: 2,
-    label: '水平区域'
+    label: $t('toolsSplit.horizontalSplit')
   },
   {
     value: 3,
-    label: '网格划分'
+    label: $t('toolsSplit.gridSplit')
   }
 ]);
 
@@ -47,9 +49,9 @@ const parseDimensions = (sizeStr: string) => {
 };
 
 const dimensionLabel = computed(() => {
-  if (spiltType.value === 1) return '长度(X)';
-  if (spiltType.value === 2) return '宽度(Y)';
-  if (spiltType.value === 3) return 'X×Z';
+  if (spiltType.value === 1) return $t('toolsSplit.lengthX');
+  if (spiltType.value === 2) return $t('toolsSplit.widthY');
+  if (spiltType.value === 3) return $t('toolsSplit.xz');
   return '';
 });
 
@@ -84,7 +86,7 @@ const SplitDimensions = async () => {
     })
     console.log(splitFiles.value)
   }catch (e) {
-    toast.error(`发生了一个错误:${e}`, {timeout: 3000});
+  toast.error($t('toolsSplit.error', {error: String(e)}), {timeout: 3000});
   }finally {
     loading.value = false;
   }
@@ -130,7 +132,7 @@ const downloadAll = async () => {
           icon="mdi-information"
           class="mt-4"
       >
-        切割过程中不要切换蓝图关闭页面，下载为一次性临时文件。
+  {{$t('toolsSplit.splitAlert')}}
       </v-alert>
     </v-col>
   </v-row>
@@ -149,7 +151,7 @@ const downloadAll = async () => {
           <v-icon color="blue" class="mt-1">
             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 36 36"><path fill="#0284c7" d="m33.53 18.76l-6.93-3.19V6.43a1 1 0 0 0-.6-.9l-7.5-3.45a1 1 0 0 0-.84 0l-7.5 3.45a1 1 0 0 0-.58.91v9.14l-6.9 3.18a1 1 0 0 0-.58.91v9.78a1 1 0 0 0 .58.91l7.5 3.45a1 1 0 0 0 .84 0l7.08-3.26l7.08 3.26a1 1 0 0 0 .84 0l7.5-3.45a1 1 0 0 0 .58-.91v-9.78a1 1 0 0 0-.57-.91m-2.81.91L25.61 22l-5.11-2.33l5.11-2.35ZM18.1 4.08l5.11 2.35l-5.11 2.35L13 6.43Zm-7.5 13.23l5.11 2.35L10.6 22l-5.11-2.33Zm6.5 11.49l-6.5 3l-6.5-3v-7.57L10.18 24a1 1 0 0 0 .82 0l6.08-2.8Zm-5.5-13.23V8l6.08 2.8a1 1 0 0 0 .84 0L24.6 8v7.58l-6.5 3Zm20.51 13.24l-6.5 3l-6.51-3v-7.59L25.19 24a1 1 0 0 0 .81 0l6.08-2.8Z" class="clr-i-outline clr-i-outline-path-1"/><path fill="none" d="M0 0h36v36H0z"/></svg>
           </v-icon>
-          <span>切割数量</span>
+          <span>{{$t('toolsSplit.splitCount')}}</span>
           <v-btn-toggle
               v-model="splitNumber"
               color="info"
@@ -169,7 +171,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为4份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 4})}}
               </v-tooltip>
             </v-btn>
 
@@ -185,7 +187,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为9份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 9})}}
               </v-tooltip>
             </v-btn>
 
@@ -201,7 +203,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为16份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 16})}}
               </v-tooltip>
             </v-btn>
 
@@ -217,7 +219,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为25份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 25})}}
               </v-tooltip>
             </v-btn>
           </v-btn-toggle>
@@ -241,7 +243,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为2份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 2})}}
               </v-tooltip>
             </v-btn>
 
@@ -257,7 +259,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为4份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 4})}}
               </v-tooltip>
             </v-btn>
 
@@ -273,7 +275,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为8份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 8})}}
               </v-tooltip>
             </v-btn>
 
@@ -289,7 +291,7 @@ const downloadAll = async () => {
                   activator="parent"
                   location="bottom"
               >
-                原始尺寸{{ dimensionLabel }}不足，无法分割为16份
+                {{$t('toolsSplit.originalSize')}}{{ dimensionLabel }}{{$t('toolsSplit.cannotSplit', {count: 16})}}
               </v-tooltip>
             </v-btn>
           </v-btn-toggle>
@@ -300,7 +302,7 @@ const downloadAll = async () => {
             prepend-icon="mdi-axe"
             @click="SplitDimensions"
             :loading="loading"
-        >执行分割</v-btn>
+  >{{$t('toolsSplit.executeSplit')}}</v-btn>
       </v-card>
     </v-col>
 
@@ -309,7 +311,7 @@ const downloadAll = async () => {
         <v-container>
           <v-row>
             <v-col cols="6">
-              <div class="text-body-2 text-grey-darken-1 mb-1">原始尺寸</div>
+              <div class="text-body-2 text-grey-darken-1 mb-1">{{$t('toolsSplit.originalSize')}}</div>
               <v-chip
                   color="deep-purple"
                   variant="outlined"
@@ -329,7 +331,7 @@ const downloadAll = async () => {
             </v-col>
 
             <v-col cols="6">
-              <div class="text-body-2 text-grey-darken-1 mb-1">分割后尺寸</div>
+              <div class="text-body-2 text-grey-darken-1 mb-1">{{$t('toolsSplit.splitSize')}}</div>
               <v-chip
                   color="green"
                   variant="outlined"
@@ -351,7 +353,7 @@ const downloadAll = async () => {
             <v-col cols="12" class="mt-4">
               <v-card v-if="splitFiles.length > 0" class="elevation-1">
                 <v-toolbar color="blue-lighten-5" density="compact">
-                  <v-toolbar-title>分割结果</v-toolbar-title>
+                  <v-toolbar-title>{{$t('toolsSplit.splitResult')}}</v-toolbar-title>
                   <v-spacer></v-spacer>
                   <v-btn
                       color="green"
@@ -361,10 +363,10 @@ const downloadAll = async () => {
                       @click="downloadAll"
                   >
                     <v-icon left>mdi-archive</v-icon>
-                    打包下载
+                    {{$t('toolsSplit.downloadAll')}}
                   </v-btn>
                   <v-chip color="green" variant="tonal" size="small">
-                    {{ splitFiles.length }} 个文件
+                    {{ splitFiles.length }} {{$t('toolsSplit.file')}}
                   </v-chip>
                 </v-toolbar>
 
@@ -393,7 +395,7 @@ const downloadAll = async () => {
                     <template v-slot:append>
                       <v-btn color="info" variant="tonal" size="small" @click="downloadFile(file.file)">
                         <v-icon left>mdi-download</v-icon>
-                        下载
+                        {{$t('toolsSplit.download')}}
                       </v-btn>
                     </template>
                   </v-list-item>
@@ -402,8 +404,8 @@ const downloadAll = async () => {
 
               <v-card v-else class="elevation-0 text-center py-10 bg-grey-lighten-4">
                 <v-icon size="x-large" color="grey" class="mb-3">mdi-file-arrow-left-right-outline</v-icon>
-                <div class="text-h6 text-grey-darken-1">执行分割后将在此显示结果</div>
-                <div class="text-body-1 text-grey mt-2">点击左侧"执行分割"按钮生成切割后的文件</div>
+                <div class="text-h6 text-grey-darken-1">{{$t('toolsSplit.splitResultHint')}}</div>
+                <div class="text-body-1 text-grey mt-2">{{$t('toolsSplit.splitButtonHint')}}</div>
               </v-card>
             </v-col>
           </v-row>

@@ -2,6 +2,8 @@
 import { defineProps, computed, ref, watch, nextTick, onBeforeUnmount } from "vue";
 import type { RequirementStatistics } from "../../modules/requirements.ts";
 import * as echarts from 'echarts';
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 import {exportRequirementsStatsToCsv} from "../../modules/exportRequirements.ts";
 import {schematicData} from "../../modules/tools_data.ts";
 
@@ -36,8 +38,8 @@ const initOrUpdateChart = async () => {
     const option = {
       tooltip: {
         trigger: 'item',
-        formatter: ({ data }: any) =>
-            `${data.name}<br/>数量: ${data.value} (${data.percentage}%)`
+    formatter: ({ data }: any) =>
+      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       legend: {
         type: 'scroll',
@@ -84,8 +86,8 @@ const initOrUpdateChart = async () => {
     const option = {
       tooltip: {
         trigger: 'item',
-        formatter: ({ data }: any) =>
-            `${data.name}<br/>数量: ${data.value} (${data.percentage}%)`
+    formatter: ({ data }: any) =>
+      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       dataset: [
         {
@@ -157,7 +159,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="d-flex align-center px-4 pt-2">
     <div class="text-caption text-medium-emphasis mr-auto">
-      共 {{ data?.total || 0 }} 个材料
+  {{$t('toolsStats.total')}} {{ data?.total || 0 }} {{$t('toolsStats.material')}}
     </div>
     <v-btn-toggle
         mandatory
@@ -166,7 +168,7 @@ onBeforeUnmount(() => {
     >
       <v-btn size="small" @click="exportRequirement">
         <v-icon start><svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 16 16"><path fill="none" stroke="#000000" stroke-linejoin="round" d="M7 7.5H5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h2m3.5-4h-2A.5.5 0 0 0 8 8v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-2m4-4.5c0 .5 1 4.5 1 4.5h1s1-4 1-4.5M11 13.5v1H2v-13h6m0 0v3h3m-3-3h.5L11 4v.5m0 0V6"/></svg></v-icon>
-        导出csv
+  {{$t('toolsStats.exportCsv')}}
       </v-btn>
     </v-btn-toggle>
     <v-btn-toggle
@@ -178,12 +180,12 @@ onBeforeUnmount(() => {
 
       <v-btn value="list" size="small">
         <v-icon icon="mdi-format-list-bulleted" start></v-icon>
-        列表
+  {{$t('toolsStats.list')}}
       </v-btn>
 
       <v-btn value="chart" size="small">
         <v-icon icon="mdi-chart-pie" start></v-icon>
-        图表
+  {{$t('toolsStats.chart')}}
       </v-btn>
     </v-btn-toggle>
   </div>
@@ -196,15 +198,15 @@ onBeforeUnmount(() => {
     >
       <thead class="table-header">
       <tr>
-        <th class="text-left">材料名称</th>
+        <th class="text-left">{{$t('toolsStats.materialName')}}</th>
         <th class="text-center">ID</th>
         <th class="text-right">
           <div class="d-flex align-center justify-end">
             <v-icon icon="mdi-sort-numeric-descending" size="small" class="mr-1"></v-icon>
-            数量
+            {{$t('toolsStats.count')}}
           </div>
         </th>
-        <th class="text-right">占比</th>
+        <th class="text-right">{{$t('toolsStats.percentage')}}</th>
       </tr>
       </thead>
 
@@ -277,7 +279,7 @@ onBeforeUnmount(() => {
       <tr v-if="!sortedItems.length">
         <td colspan="4" class="text-center py-8 text-medium-emphasis">
           <v-icon icon="mdi-package-variant-remove"></v-icon>
-          暂无材料数据
+          {{$t('toolsStats.noMaterialData')}}
         </td>
       </tr>
       </tbody>
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
       <template v-slot:prepend>
         <v-icon icon="mdi-information-outline"></v-icon>
       </template>
-      暂无数据可供图表展示
+  {{$t('toolsStats.noChartData')}}
     </v-alert>
   </div>
 

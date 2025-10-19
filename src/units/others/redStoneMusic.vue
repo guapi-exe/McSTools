@@ -11,7 +11,7 @@
           icon="mdi-information"
           class="mt-4"
       >
-        未实现。
+  {{$t('redStoneMusic.unimplemented')}}
       </v-alert>
     </v-col>
   </v-row>

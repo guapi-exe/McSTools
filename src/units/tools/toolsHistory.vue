@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {schematicTypeList} from "../../modules/schematics_data.ts";
+import { useI18n } from 'vue-i18n';
+const { t: $t } = useI18n();
 import {computed, defineProps, ref} from "vue";
 import {HistoryRecordData} from "../../modules/history_data.ts";
 import dayjs from "dayjs";
@@ -99,7 +101,7 @@ const showDiff = (index: number) => {
           <div class="d-flex justify-space-between align-start">
             <div class="flex-grow-1">
               <div class="d-flex align-center flex-wrap ga-2 mb-2">
-                <span v-if="bp.schematic_type == -1" class="text-subtitle-1 text-red-lighten-1">未解析</span>
+                <span v-if="bp.schematic_type == -1" class="text-subtitle-1 text-red-lighten-1">{{$t('toolsHistory.unparsed')}}</span>
                 <span class="text-h6 text-blue-darken-4">{{ bp.name }}</span>
                 <v-chip
                     variant="outlined"
@@ -162,7 +164,7 @@ const showDiff = (index: number) => {
                   size="small"
                   @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"
               >
-                导出蓝图
+                {{$t('toolsHistory.exportSchematic')}}
               </v-btn>
               <div class="d-flex ga-1">
                 <v-btn
@@ -173,7 +175,7 @@ const showDiff = (index: number) => {
                     @click.stop="showDiff(index); indexId = index"
                     :disabled="index >= reversedSchematics.length - 1"
                 >
-                  差异对比
+                  {{$t('toolsHistory.diffCompare')}}
                 </v-btn>
               </div>
             </div>
@@ -188,7 +190,7 @@ const showDiff = (index: number) => {
         <v-card class="h-100 d-flex flex-column">
           <v-card-title class="d-flex align-center">
             <v-icon icon="mdi-clock-time-eight-outline" class="mr-2"></v-icon>
-            当前材料需求
+            {{$t('toolsHistory.currentRequirements')}}
           </v-card-title>
           <v-card-text class="flex-grow-1 overflow-y-auto" style="max-height: 100vh;">
             <v-list lines="two">
@@ -225,7 +227,7 @@ const showDiff = (index: number) => {
         <v-card class="h-100 d-flex flex-column">
           <v-card-title class="d-flex align-center">
             <v-icon icon="mdi-compare-horizontal" class="mr-2"></v-icon>
-            材料需求差异对比
+            {{$t('toolsHistory.diffRequirements')}}
           </v-card-title>
           <v-card-text class="flex-grow-1 overflow-y-auto" style="max-height: 100vh;">
             <v-list lines="two">
