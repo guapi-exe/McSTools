@@ -252,7 +252,17 @@
         singleLayerHint: '只顯示選中的當前層',
         loadingStructure: '結構加載中...',
         confirmLargeLoad: '該藍圖體積過大，尺寸{size}，是否確認加載？加載會佔用大量記憶體，甚至導致崩潰',
-        confirmLoad: '確認加載'
+        confirmLoad: '確認加載',
+        hideMaterialList: '隱藏物品列表',
+        showMaterialList: '顯示物品列表',
+        freeView: '自由視角',
+        frontView: '前視圖',
+        sideView: '側視圖',
+        topView: '俯視圖',
+        exportView: '導出視圖',
+        viewsNotReady: '視圖尚未準備好',
+        exportSuccess: '導出成功',
+        exportError: '導出失敗：{error}'
     },
     common: {
         save: '儲存',

@@ -252,7 +252,17 @@ export default {
     singleLayerHint: '只显示选中当前层',
     loadingStructure: '加载结构中...',
     confirmLargeLoad: '该蓝图体积过大，尺寸{size}，是否确认加载;加载会占用大量内存，甚至导致崩溃',
-    confirmLoad: '确认加载'
+    confirmLoad: '确认加载',
+    hideMaterialList: '隐藏物品列表',
+    showMaterialList: '显示物品列表',
+    freeView: '自由视角',
+    frontView: '前视图',
+    sideView: '侧视图',
+    topView: '俯视图',
+    exportView: '导出视图',
+    viewsNotReady: '视图尚未准备好',
+    exportSuccess: '导出成功',
+    exportError: '导出失败：{error}'
   },
   common: {
     save: '保存',

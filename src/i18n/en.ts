@@ -246,7 +246,17 @@ export default {
     singleLayerHint: 'Show only the selected layer',
     loadingStructure: 'Loading structure...',
     confirmLargeLoad: 'This schematic is very large (size: {size}). Are you sure you want to load it? Loading may consume a lot of memory and even cause a crash.',
-    confirmLoad: 'Confirm Load'
+    confirmLoad: 'Confirm Load',
+    hideMaterialList: 'Hide Material List',
+    showMaterialList: 'Show Material List',
+    freeView: 'Free View',
+    frontView: 'Front View',
+    sideView: 'Side View',
+    topView: 'Top View',
+    exportView: 'Export View',
+    viewsNotReady: 'Views are not ready yet',
+    exportSuccess: 'Export successful',
+    exportError: 'Export failed: {error}'
   },
   common: {
     save: 'Save',

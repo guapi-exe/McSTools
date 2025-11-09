@@ -151,10 +151,9 @@ const schematic_load = async ({ done }: LoadParams) => {
 
   try {
     isLoading.value = true;
-
     const { data, page, page_size } = await fetchSchematics({
       filter: filters.value.keyword,
-      classification: selectClassification.value,
+      classification: selectClassification.value[0] || '',
       page: autoPage.value,
       page_size: 20
     });

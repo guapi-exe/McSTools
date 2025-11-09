@@ -252,7 +252,17 @@ export default {
     singleLayerHint: '選択した層のみ表示',
     loadingStructure: '構造を読み込み中...',
     confirmLargeLoad: 'この設計図は非常に大きいです（サイズ: {size}）。本当に読み込みますか？大量のメモリを消費し、クラッシュする可能性があります。',
-    confirmLoad: '読み込みを確認'
+    confirmLoad: '読み込みを確認',
+    hideMaterialList: 'マテリアルリストを非表示',
+    showMaterialList: 'マテリアルリストを表示',
+    freeView: '自由視点',
+    frontView: '正面図',
+    sideView: '側面図',
+    topView: '平面図',
+    exportView: 'ビューをエクスポート',
+    viewsNotReady: 'ビューの準備ができていません',
+    exportSuccess: 'エクスポート成功',
+    exportError: 'エクスポート失敗: {error}'
   },
   common: {
     save: '保存',

@@ -63,7 +63,6 @@ export class InteractiveCanvas {
             this.viewDist += evt.deltaY / 100
             this.redraw()
         })
-
         this.redraw()
     }
 
@@ -85,6 +84,7 @@ export class InteractiveCanvas {
         }
         this.onRender(view)
     }
+
 }
 
 export const resources_Init = async () => {

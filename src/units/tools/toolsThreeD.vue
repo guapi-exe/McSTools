@@ -8,12 +8,30 @@ import {fetchSchematicData} from "../../modules/schematic_data.ts";
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {blocks_resources} from "../../modules/deepslateInit.ts";
 import {getBlockIcon, toast} from "../../modules/others.ts";
-import {layers, layerMap, currentLayer, camera_l, interactiveCanvas, size_l, loading_threeD, once_threeD, structure_l, structureRenderer} from "../../modules/threeD_data.ts"
+import {
+  layers,
+  layerMap,
+  currentLayer,
+  camera_l,
+  interactiveCanvas,
+  size_l,
+  loading_threeD,
+  once_threeD,
+  structure_l,
+  structureRenderer,
+  gl_ctx
+} from "../../modules/threeD_data.ts"
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
 const materialOverview = ref<{id: string, name: string, count: number}[]>([]);
 const progress = ref(0)
 const sureLoading = ref<boolean>(false);
+const showMaterialList = ref(true);
+const exportingView = ref(false);
+const exportdata = ref(false);
+
+type ViewType = 'free' | 'front' | 'side' | 'top';
+const currentView = ref<ViewType>('free');
 const loadStructure = async () => {
   const schematic_data = await fetchSchematicData(schematic_id.value)
   const schematic_size = schematic_data.size
@@ -167,26 +185,78 @@ const updateStructure = (targetLayer: number) => {
   structure_l.value = newStructure;
 }
 const reloadRenderer = async () => {
-  const structureCanvas = document.getElementById('structure-display') as HTMLCanvasElement
-  const structureGl = structureCanvas.getContext('webgl')!
+  if (structureRenderer.value) return;
+
+  const structureCanvas = document.getElementById('structure-display') as HTMLCanvasElement;
+  let structureGl = structureCanvas.getContext('webgl', { preserveDrawingBuffer: true })!;
+
+  gl_ctx.value = structureGl;
   if (interactiveCanvas.value) {
     camera_l.value = {
       xRotation: (interactiveCanvas.value as any).xRotation,
       yRotation: (interactiveCanvas.value as any).yRotation,
       viewDist: (interactiveCanvas.value as any).viewDist
-    }
+    };
   }
-  structureRenderer.value = new StructureRenderer(structureGl, structure_l.value, blocks_resources.value, {
-    facesPerBuffer: 1000,
-    chunkSize: 16,
-    useInvisibleBlockBuffer: false}
-  )
 
-  interactiveCanvas.value = new InteractiveCanvas(structureCanvas,camera_l.value, view => {
-    structureRenderer.value.drawStructure(view)
-    structureRenderer.value.drawGrid(view)
-  }, [size_l.value[0] / 2, size_l.value[1] / 2, size_l.value[2] / 2])
+  structureRenderer.value = new StructureRenderer(
+      structureGl,
+      structure_l.value,
+      blocks_resources.value,
+      {
+        facesPerBuffer: 1000,
+        chunkSize: 16,
+        useInvisibleBlockBuffer: false
+      }
+  );
+
+  interactiveCanvas.value = new InteractiveCanvas(
+      structureCanvas,
+      camera_l.value,
+      view => {
+        const gl = gl_ctx.value;
+        if (gl) {
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        }
+
+        structureRenderer.value.drawStructure(view)
+        structureRenderer.value.drawGrid(view)
+      },
+      [size_l.value[0] / 2, size_l.value[1] / 2, size_l.value[2] / 2]
+  );
+};
+
+const switchView = (viewType: ViewType) => {
+  currentView.value = viewType;
+
+  if (!interactiveCanvas.value) return;
+
+  const cam = interactiveCanvas.value as any;
+
+  const maxDist = Math.max(...size_l.value) * 2;
+
+  switch (viewType) {
+    case 'front':
+      cam.xRotation = 0;
+      cam.yRotation = 0;
+      cam.viewDist = maxDist / 2;
+      break;
+    case 'side':
+      cam.xRotation = 0;
+      cam.yRotation = Math.PI / 2;
+      cam.viewDist = maxDist / 2;
+      break;
+    case 'top':
+      cam.xRotation = Math.PI / 2;
+      cam.yRotation = 0;
+      cam.viewDist = maxDist / 2;
+      break;
+  }
+
+  cam.redraw();
 }
+
 onMounted(async () => {
   let size = schematicData.value.sizes
   const [length, width, height] = size.split(',').map(Number);
@@ -214,36 +284,109 @@ const loadInit = async () => {
 }
 watch(currentLayer, (newVal) => {
   updateStructure(newVal);
-  reloadRenderer();
+
+  const renderer = structureRenderer.value;
+  if (renderer) {
+    renderer.setStructure(structure_l.value);
+    renderer.updateStructureBuffers();
+    interactiveCanvas.value?.redraw();
+  }
 });
+
 
 watch(once_threeD, () => {
   updateStructure(currentLayer.value);
-  reloadRenderer();
+
+  const renderer = structureRenderer.value;
+  renderer.setStructure(structure_l.value);
+  renderer.updateStructureBuffers();
+  interactiveCanvas.value?.redraw();
 });
+
 const destroyData = () => {
-  if (loading_threeD.value) {
-    console.log('clean')
-    loading_threeD.value = false;
-    layers.value = {};
-    layerMap.clear();
-    structure_l.value = undefined;
-    size_l.value = undefined;
-    camera_l.value = undefined;
-    currentLayer.value = 0;
-    structureRenderer.value = undefined;
-    interactiveCanvas.value = undefined;
-  }
+  console.log('clean')
+  loading_threeD.value = false;
+  layers.value = {};
+  layerMap.clear();
+  structure_l.value = undefined;
+  size_l.value = undefined;
+  camera_l.value = undefined;
+  currentLayer.value = 0;
+  structureRenderer.value = undefined;
+  interactiveCanvas.value = undefined;
 }
+
+const exportCurrentView = async () => {
+  const canvas = document.getElementById('structure-display') as HTMLCanvasElement;
+  if (!canvas) {
+    toast.error($t('toolsThreeD.viewsNotReady'), { timeout: 3000 });
+    return;
+  }
+
+  try {
+    exportingView.value = true;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height + 120;
+
+    const ctx = exportCanvas.getContext('2d')!;
+
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 24px Arial';
+
+    if (!exportdata.value) {
+      let viewName = '';
+      switch (currentView.value) {
+        case 'front': viewName = $t('toolsThreeD.frontView'); break;
+        case 'side':  viewName = $t('toolsThreeD.sideView');  break;
+        case 'top':   viewName = $t('toolsThreeD.topView');   break;
+        case 'free':  viewName = $t('toolsThreeD.freeView');  break;
+      }
+      ctx.fillText(viewName, 20, 35);
+    } else {
+      const info = schematicData.value;
+
+      const [sx, sy, sz] = info.sizes.split(',').map(Number);
+
+      ctx.font = 'bold 26px Arial';
+      ctx.fillText(info.name, 20, 35);
+
+      ctx.font = '18px Arial';
+      ctx.fillText(`尺寸: ${sx} × ${sy} × ${sz}`, 20, 65);
+      ctx.fillText(`作者: ${info.user}`, 20, 90);
+      ctx.fillText(`版本: ${info.game_version}`, 20, 115);
+    }
+
+    ctx.drawImage(canvas, 0, 120);
+
+    const dataUrl = exportCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = `structure-${currentView.value}-${Date.now()}.png`;
+    link.href = dataUrl;
+    link.click();
+
+    toast.success($t('toolsThreeD.exportSuccess'), { timeout: 3000 });
+
+  } catch (error) {
+    toast.error($t('toolsThreeD.exportError', { error: String(error) }), { timeout: 3000 });
+
+  } finally {
+    exportingView.value = false;
+  }
+};
 
 onBeforeUnmount(async () => {
   destroyData();
-})
+});
 </script>
 
 <template>
   <v-row no-gutters class="container">
-    <v-col cols="3">
+    <v-col v-if="showMaterialList" cols="3">
       <v-container style="max-height: 100vh; overflow-y: auto;">
         <v-list lines="two" class="scrollable-list">
           <v-list-item v-for="(material, i) in materialOverview" :key="i" class="material-item d-flex justify-space-between">
@@ -273,9 +416,60 @@ onBeforeUnmount(async () => {
 
     </v-col>
 
-    <v-col cols="9" style="height: 100vh; display: flex; justify-content: center; align-items: center;">
+    <v-col :cols="showMaterialList ? 9 : 12" style="height: 100vh; display: flex; justify-content: center; align-items: center; position: relative;">
       <canvas class="gpu-canvas" id="structure-display" width="1150" height="800"></canvas>
 
+      <div class="top-controls">
+        <v-btn
+          :icon="showMaterialList ? 'mdi-chevron-left' : 'mdi-chevron-right'"
+          variant="text"
+          @click="showMaterialList = !showMaterialList"
+          :title="showMaterialList ? $t('toolsThreeD.hideMaterialList') : $t('toolsThreeD.showMaterialList')"
+        ></v-btn>
+
+        <v-btn-toggle
+          v-model="currentView"
+          mandatory
+          color="primary"
+          density="compact"
+          class="ml-2"
+        >
+          <v-btn value="free" size="small">
+            <v-icon>mdi-rotate-3d-variant</v-icon>
+            <v-tooltip activator="parent" location="bottom">{{$t('toolsThreeD.freeView')}}</v-tooltip>
+          </v-btn>
+          <v-btn value="front" size="small" @click="switchView('front')">
+            <v-icon>mdi-arrow-left-right</v-icon>
+            <v-tooltip activator="parent" location="bottom">{{$t('toolsThreeD.frontView')}}</v-tooltip>
+          </v-btn>
+          <v-btn value="side" size="small" @click="switchView('side')">
+            <v-icon>mdi-arrow-up-down</v-icon>
+            <v-tooltip activator="parent" location="bottom">{{$t('toolsThreeD.sideView')}}</v-tooltip>
+          </v-btn>
+          <v-btn value="top" size="small" @click="switchView('top')">
+            <v-icon>mdi-arrow-all</v-icon>
+            <v-tooltip activator="parent" location="bottom">{{$t('toolsThreeD.topView')}}</v-tooltip>
+          </v-btn>
+        </v-btn-toggle>
+        <v-checkbox
+            class="export-checkbox"
+            label="标注"
+            v-model="exportdata"
+        ></v-checkbox>
+        <v-btn
+          color="success"
+          variant="outlined"
+          prepend-icon="mdi-download"
+          :loading="exportingView"
+          @click="exportCurrentView"
+          class="ml-2"
+          size="small"
+        >
+          {{$t('toolsThreeD.exportView')}}
+        </v-btn>
+      </div>
+
+      <!-- 右侧滑块控制 -->
       <div class="slider-container">
         <input
             type="range"
@@ -284,17 +478,17 @@ onBeforeUnmount(async () => {
             :min="0"
             :max="size_l ? size_l[1] - 1 : 0"
         />
-  <div class="layer-indicator">{{$t('toolsThreeD.currentLayer')}}: {{ currentLayer }}</div>
+        <div class="layer-indicator">{{$t('toolsThreeD.currentLayer')}}: {{ currentLayer }}</div>
 
-    <v-switch
-      class="ml-4"
-      v-model="once_threeD"
-      :label="$t('toolsThreeD.singleLayer')"
-      color="green"
-      density="compact"
-      :hint="$t('toolsThreeD.singleLayerHint')"
-      persistent-hint
-    ></v-switch>
+        <v-switch
+          class="ml-4"
+          v-model="once_threeD"
+          :label="$t('toolsThreeD.singleLayer')"
+          color="green"
+          density="compact"
+          :hint="$t('toolsThreeD.singleLayerHint')"
+          persistent-hint
+        ></v-switch>
       </div>
 
       <div v-if="loading_threeD" class="loading-overlay">
@@ -363,6 +557,20 @@ onBeforeUnmount(async () => {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.top-controls {
+  position: absolute;
+  left: 20px;
+  top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .slider-container {
@@ -437,4 +645,12 @@ onBeforeUnmount(async () => {
   font-size: 0.85rem;
   color: #888;
 }
+.export-checkbox {
+  --v-input-control-height: 24px !important;
+  transform: scale(0.8);
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+}
+
 </style>

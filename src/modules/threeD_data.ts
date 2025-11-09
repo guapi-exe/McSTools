@@ -15,3 +15,4 @@ export const layerMap = new Map<number, Array<{
 export const layers = ref<Record<number, Array<{pos: BlockPos, block: {id: string, properties: any}}>>>({});
 export const structureRenderer = ref<StructureRenderer | null>(null);
 export const interactiveCanvas = ref<InteractiveCanvas | null>(null);
+export const gl_ctx = ref<WebGLRenderingContext | null>(null);
