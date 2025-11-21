@@ -594,7 +594,7 @@ const batchExport = async () => {
                       prepend-icon="mdi-download"
                       size="small"
                       color="info"
-                      @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"
+                      @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type, bp.name)"
                   >
                     {{$t('localData.export')}}
                   </v-btn>

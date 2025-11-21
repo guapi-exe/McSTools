@@ -8,7 +8,7 @@ import {BlockData, BlockDataNew} from "../../modules/replace_data.ts";
 import {schematic_id} from "../../modules/tools_data.ts";
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
-const active = ref(0)
+const active = ref('brief')
 const blockIdInput = ref('')
 const propertiesInput = ref('')
 
@@ -216,6 +216,16 @@ watch(() => [state.globalReplace, state.selectedOriginal], ([global, selected]) 
     state.quantity = (selected as RequirementStatistic).num
   } else if (!global) {
     state.quantity = 1
+  }
+}, { deep: true })
+
+watch(() => state.selectedOriginalDetails, (newVal) => {
+  if (newVal && active.value === "details") {
+    blockIdInput.value = newVal.id
+    propertiesInput.value = Object.entries(newVal.properties)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')
+    updateBlockData()
   }
 }, { deep: true })
 

@@ -12,10 +12,8 @@ mod word_edit;
 mod split_schematic;
 
 use crate::database::db_control;
-use crate::litematica::lm_schematic::LmSchematic;
 use crate::utils::minecraft_data::je_blocks_data::BlocksData;
 use crate::utils::minecraft_data::map_art_data::MapArtsData;
-use crate::utils::schematic_data::SchematicError;
 use data_files::{config, config::get_config, config::update_config, files::FileManager};
 use database::db_apis::logs_api::{add_logs, get_logs};
 use database::db_apis::schematic_data_api::{get_schematic_requirements, get_unique_block};
@@ -24,7 +22,6 @@ use database::db_apis::user_api::{get_user_data, update_user_classification_taur
 use modules::convert::{convert, convert_lm, get_je_blocks, get_map_arts, get_schematic_convert_data};
 use modules::history::get_history;
 use modules::map_art::create_map_art;
-use modules::modules_data;
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_str,
@@ -105,31 +102,4 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[test]
-fn test_unique() -> Result<(), SchematicError> {
-    let mut sys = System::new_all();
-    let pid = Pid::from(std::process::id() as usize);
-
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let start_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let start_time = Instant::now();
-    let schematic2 =
-        LmSchematic::new("./schematic/36fbf6f4-5f07-4370-b4c5-cefdb12c4b92.litematic")?;
-    let schem2 = schematic2.get_blocks_pos()?;
-    let unique_blocks = modules_data::convert_data::get_unique_block(&schem2.blocks);
-    println!("unique_blocks: {:?}", unique_blocks);
-    sys.refresh_processes(ProcessesToUpdate::All, false);
-    let end_mem = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
-    let duration = start_time.elapsed();
-
-    println!("执行时间: {:.2} 秒", duration.as_secs_f64());
-    println!(
-        "内存消耗: {} KB → {} KB (增量: {} KB)",
-        start_mem / 1024,
-        end_mem / 1024,
-        (end_mem - start_mem) / 1024
-    );
-    Ok(())
 }

@@ -8,7 +8,7 @@ import {defineProps, computed, ref, onMounted} from "vue";
 import {ConvertData, fetchConvertData} from "../../modules/convert_data.ts";
 import {toast} from "../../modules/others.ts";
 import {invoke} from "@tauri-apps/api/core";
-import {convertData, schematic_id} from "../../modules/tools_data.ts";
+import {convertData, schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {copySchematic} from "../../modules/copy_file.ts";
 import { useI18n } from 'vue-i18n';
 const props = defineProps<{
@@ -1025,7 +1025,7 @@ onMounted(() => {
             :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
-            @click="copySchematic(schematic_id, -1, props.data.version, 1)"
+            @click="copySchematic(schematic_id, -1, props.data.version, 1, `create_${schematicData.name}`)"
         >
         </v-btn>
       </template>
@@ -1086,7 +1086,7 @@ onMounted(() => {
             :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
-            @click="copySchematic(schematic_id, -1, props.data.version, 2)"
+            @click="copySchematic(schematic_id, -1, props.data.version, 2, `litematic_${schematicData.name}`)"
         >
         </v-btn>
       </template>
@@ -1137,7 +1137,7 @@ onMounted(() => {
             :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
-            @click="copySchematic(schematic_id, weVersion, props.data.version, 3)"
+            @click="copySchematic(schematic_id, weVersion, props.data.version, 3, `we_${schematicData.name}`)"
         >
         </v-btn>
       </template>
@@ -1188,7 +1188,7 @@ onMounted(() => {
             :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
-            @click="copySchematic(schematic_id, bgVersion, props.data.version, 4)"
+            @click="copySchematic(schematic_id, bgVersion, props.data.version, 4, `bg_${schematicData.name}`)"
         >
         </v-btn>
       </template>
@@ -1239,7 +1239,7 @@ onMounted(() => {
             :text="$t('tools.convert.confirmExport')"
             color="info"
             :loading="isLoading"
-            @click="copySchematic(schematic_id, -1, props.data.version, 5)"
+            @click="copySchematic(schematic_id, -1, props.data.version, 5, `be_${schematicData.name}`)"
         >
         </v-btn>
       </template>

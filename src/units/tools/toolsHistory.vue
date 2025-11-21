@@ -162,7 +162,7 @@ const showDiff = (index: number) => {
                   color="info"
                   prepend-icon="mdi-download"
                   size="small"
-                  @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type)"
+                  @click="copySchematic(bp.id, bp.sub_type, bp.version, bp.schematic_type, bp.name)"
               >
                 {{$t('toolsHistory.exportSchematic')}}
               </v-btn>

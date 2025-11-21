@@ -14,9 +14,10 @@ const getExtensions = (type: number): string[] => {
     }
 };
 
-export const copySchematic = async (id: number, sub: number, version: number, type: number) => {
+export const copySchematic = async (id: number, sub: number, version: number, type: number, name:string = 'def') => {
     try {
         const path = await save({
+            defaultPath: name,
             filters: [
                 {
                     name: 'Schematic File',
@@ -29,7 +30,7 @@ export const copySchematic = async (id: number, sub: number, version: number, ty
             toast.error(`未选择目标目录`, { timeout: 3000 });
             return;
         }
-        console.log(path)
+        //console.log(path)
         const result = await invoke('copy_schematic', {
             id: id,
             sub: sub,
@@ -42,7 +43,7 @@ export const copySchematic = async (id: number, sub: number, version: number, ty
             toast.success(`复制成功！`, { timeout: 3000 });
         }
     } catch (error) {
-        console.error('复制失败:', error);
+        //console.error('复制失败:', error);
         toast.error(`复制失败: ${error}`, { timeout: 3000 });
     }
 };
@@ -52,7 +53,7 @@ export const openData = async () => {
         const appConfigDirPath = await appConfigDir();
         await openPath(appConfigDirPath);
     } catch (error) {
-        console.error('打开失败:', error);
+        //console.error('打开失败:', error);
         toast.error(`打开失败: ${error}`, { timeout: 3000 });
     }
 };
@@ -91,7 +92,7 @@ export const batchExportSchematics = async (blueprints: {
                     targetPath
                 );
             } catch (e) {
-                console.error(`导出失败: ${bp.name}`, e);
+                //console.error(`导出失败: ${bp.name}`, e);
                 toast.error(`导出失败: ${bp.name}`, { timeout: 2000 });
             }
         }
