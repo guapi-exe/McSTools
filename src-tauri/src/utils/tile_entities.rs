@@ -45,4 +45,28 @@ impl TileEntitiesList {
             elements: entities,
         })
     }
+
+    pub fn from_nbt_we(list: &[Value], original_type:i32) -> Result<Self, SchematicError> {
+        let mut entities = Vec::new();
+
+        for entry in list {
+            let Compound(root) = entry else {
+                return Err(SchematicError::InvalidFormat("TileEntity is not a Compound"));
+            };
+            let sizes = root.get_i32_array("Pos")?;
+            let x = sizes[0];
+            let y = sizes[1];
+            let z = sizes[2];
+
+            entities.push(TileEntities {
+                pos: BlockPos { x, y, z },
+                nbt: entry.clone(),
+            });
+        }
+
+        Ok(Self {
+            original_type,
+            elements: entities,
+        })
+    }
 }

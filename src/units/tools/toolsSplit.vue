@@ -11,6 +11,7 @@ import { saveAs } from "file-saver";
 const spiltType = ref(1);
 const splitFiles = ref([]);
 const loading = ref(false);
+const airFrame = ref(false);
 const splitNumber = ref(2)
 const splitTypes = ref([
   {
@@ -33,13 +34,13 @@ const isSplitNumberDisabled = (num: number) => {
   const [x, y, z] = schematicData.value.sizes.split(',').map(Number);
 
   if (spiltType.value === 1) {
-    return x < num; // 垂直分层 → 宽度不足
+    return x < num;
   } else if (spiltType.value === 2) {
-    return y < num; // 水平区域 → 高度不足
+    return y < num;
   } else if (spiltType.value === 3) {
     const sqrt = Math.sqrt(num);
-    if (!Number.isInteger(sqrt)) return true; // 必须是平方数
-    return x < sqrt || z < sqrt; // X 或 Y 尺寸不足
+    if (!Number.isInteger(sqrt)) return true;
+    return x < sqrt || z < sqrt;
   }
   return true;
 };
@@ -82,6 +83,7 @@ const SplitDimensions = async () => {
       schematicId: schematic_id.value,
       splitType: spiltType.value,
       splitNumber: splitNumber.value,
+      airFrame: airFrame.value,
       vType: schematicData.value.schematic_type
     })
     console.log(splitFiles.value)
@@ -142,7 +144,7 @@ const downloadAll = async () => {
       <v-card class="pa-3" elevation="2">
         <v-select
             v-model="spiltType"
-            label="分割方式"
+            :label="$t('toolsSplit.splitMethod')"
             :items="splitTypes"
             item-title="label"
             item-value="value"
@@ -296,6 +298,31 @@ const downloadAll = async () => {
             </v-btn>
           </v-btn-toggle>
         </v-col>
+        <div class="flex-grow-1 overflow-y-auto">
+          <v-switch
+              class="ml-4"
+              v-model="airFrame"
+              :label="$t('toolsSplit.airFrame')"
+              color="info"
+              density="compact"
+              :hint="$t('toolsSplit.airFrameHint')"
+              persistent-hint
+          >
+            <template v-slot:append>
+              <v-tooltip location="bottom">
+                <template v-slot:activator="{ props }">
+                  <v-icon
+                      v-bind="props"
+                      icon="mdi-information-outline"
+                      size="small"
+                      class="ml-2"
+                  ></v-icon>
+                </template>
+                <span>{{$t('toolsSplit.airFrameTooltip')}}</span>
+              </v-tooltip>
+            </template>
+          </v-switch>
+        </div>
         <v-btn
             block
             color="green"

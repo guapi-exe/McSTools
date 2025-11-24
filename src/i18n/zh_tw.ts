@@ -212,6 +212,7 @@
         confirmEdit: '確認修改'
     },
     toolsSplit: {
+        splitMethod: '分割方式',
         verticalSplit: '垂直分層',
         horizontalSplit: '水平區域',
         gridSplit: '網格劃分',
@@ -230,7 +231,10 @@
         file: '個檔案',
         download: '下載',
         splitResultHint: '執行分割後將在此顯示結果',
-        splitButtonHint: '點擊左側「執行分割」按鈕生成切割後的檔案'
+        splitButtonHint: '點擊左側「執行分割」按鈕生成切割後的檔案',
+        airFrame: '空氣框架',
+        airFrameHint: '為切割後的藍圖添加空氣框架',
+        airFrameTooltip: '添加空氣框架防止切割後藍圖大小不一'
     },
     toolsStats: {
         total: '共',

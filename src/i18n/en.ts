@@ -206,6 +206,7 @@ export default {
     confirmEdit: 'Confirm Edit'
   },
   toolsSplit: {
+    splitMethod: 'Split Method',
     verticalSplit: 'Vertical Split',
     horizontalSplit: 'Horizontal Area',
     gridSplit: 'Grid Division',
@@ -224,7 +225,10 @@ export default {
     file: 'files',
     download: 'Download',
     splitResultHint: 'Results will be shown here after splitting',
-    splitButtonHint: 'Click "Execute Split" on the left to generate split files'
+    splitButtonHint: 'Click "Execute Split" on the left to generate split files',
+    airFrame: 'Air Frame',
+    airFrameHint: 'Add air frame to split schematics',
+    airFrameTooltip: 'Add air frame to prevent size inconsistency after splitting'
   },
   toolsStats: {
     total: 'Total',

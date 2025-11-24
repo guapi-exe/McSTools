@@ -218,7 +218,10 @@ onMounted(async () => {
       mainContent.addEventListener('scroll', checkScroll)
     }
   })
-  locale.value = await appStore.get('locale', 'zh')
+  let storedLocale = await appStore.get('locale', 'zh-CN')
+  if (storedLocale === 'zh') storedLocale = 'zh-CN'
+  if (storedLocale === 'zh_tw') storedLocale = 'zh-TW'
+  locale.value = storedLocale
   selectedTheme.value = await appStore.get('selectedTheme', 'grey')
   autoUpdateEnabled.value = await appStore.get('autoUpdate', true)
   theme.global.name.value = selectedTheme.value

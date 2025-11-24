@@ -16,6 +16,9 @@ use crate::litematica::to_lm_schematic::ToLmSchematic;
 use crate::utils::entities::EntitiesList;
 use crate::utils::tile_entities::TileEntitiesList;
 use crate::word_edit::to_we_schematic::ToWeSchematic;
+use fastnbt::Value;
+use fastnbt::Value::Compound;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 struct Offset {
@@ -30,7 +33,8 @@ pub async fn schematic_split(
     file_manager: State<'_, FileManager>,
     schematic_id: i64,
     split_type: i64,
-    split_number: i64
+    split_number: i64,
+    air_frame: bool,
 ) -> Result<Vec<(i64, Size, Vec<u8>)>, String> {
     async move {
         let mut conn = db.0.get()?;
@@ -50,6 +54,7 @@ pub async fn schematic_split(
             size,
             split_type,
             split_number as usize,
+            air_frame,
         )?;
 
         let mut results = Vec::new();
@@ -102,6 +107,7 @@ fn split_schematic_parts(
     size: &Size,
     split_type: i64,
     split_number: usize,
+    air_frame: bool,
 ) -> Result<Vec<(BlockStatePosList, TileEntitiesList, EntitiesList, Size, Offset)>> {
     if split_number == 0 {
         return Err(anyhow!("Split number must be at least 1"));
@@ -127,11 +133,13 @@ fn split_schematic_parts(
             BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z - 1 },
             BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z + part_size.length },
         ];
-
-        for pos in corner_positions {
-            block_list.elements.push_back(BlockStatePos::new(pos, Arc::clone(&air)));
+        if air_frame {
+            if split_type != 3 {
+                for pos in corner_positions {
+                    block_list.elements.push_back(BlockStatePos::new(pos, Arc::clone(&air)));
+                }
+            }
         }
-
         let mut part_tile_entities = TileEntitiesList {
             original_type: tile_entities.original_type,
             elements: tile_entities
@@ -148,10 +156,6 @@ fn split_schematic_parts(
         };
 
         if tile_entities.original_type == 2 {
-            use fastnbt::Value;
-            use fastnbt::Value::Compound;
-            use std::collections::HashMap;
-
             part_tile_entities.elements.iter_mut().for_each(|te| {
                 let nx = te.pos.x - offset.x;
                 let ny = te.pos.y - offset.y;
@@ -174,6 +178,38 @@ fn split_schematic_parts(
                         new_map.insert("x".to_string(), Value::Int(nx));
                         new_map.insert("y".to_string(), Value::Int(ny));
                         new_map.insert("z".to_string(), Value::Int(nz));
+                        new_map.insert("nbt".to_string(), other.clone());
+                        te.nbt = Compound(new_map);
+                    }
+                }
+            });
+        }
+
+        if tile_entities.original_type == 3 {
+            part_tile_entities.elements.iter_mut().for_each(|te| {
+                let nx = te.pos.x - offset.x;
+                let ny = te.pos.y - offset.y;
+                let nz = te.pos.z - offset.z;
+
+                te.pos.x = nx;
+                te.pos.y = ny;
+                te.pos.z = nz;
+
+                match &te.nbt {
+                    Compound(map) => {
+                        let mut new_map = map.clone();
+                        let new_pos = vec![
+                            nx, ny, nz,
+                        ];
+                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        te.nbt = Compound(new_map);
+                    }
+                    other => {
+                        let mut new_map = HashMap::new();
+                        let new_pos = vec![
+                            nx, ny, nz,
+                        ];
+                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
                         new_map.insert("nbt".to_string(), other.clone());
                         te.nbt = Compound(new_map);
                     }

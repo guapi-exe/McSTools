@@ -15,6 +15,7 @@ interface SchematicReplacementParams {
     schematicId: number;
     splitType: number;
     splitNumber: number;
+    airFrame: boolean;
     vType?: number;
 }
 
@@ -36,6 +37,7 @@ export const splitSchematicParts = async (
             schematicId: params.schematicId,
             splitType: params.splitType,
             splitNumber: params.splitNumber,
+            airFrame: params.airFrame,
             vType: params.vType,
         });
 

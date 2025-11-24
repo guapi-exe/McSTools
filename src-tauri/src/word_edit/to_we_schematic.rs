@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 use anyhow::Result;
+use crate::utils::tile_entities::TileEntitiesList;
+
 #[derive(Debug)]
 pub struct ToWeSchematic {
     blocks: VecDeque<BlockStatePos>,
@@ -19,6 +21,7 @@ pub struct ToWeSchematic {
     air_index: usize,
     pub unique_block_states: Vec<Arc<BlockData>>,
     pub block_state_to_index: HashMap<Arc<BlockData>, usize>,
+    pub tile_entities: TileEntitiesList,
 }
 
 impl ToWeSchematic {
@@ -89,7 +92,7 @@ impl ToWeSchematic {
 
             (unique, index_map, air_index)
         };
-
+        let tile_entities = schematic.tile_entities_list.clone();
         Ok(Self {
             blocks,
             start_pos: min,
@@ -100,6 +103,7 @@ impl ToWeSchematic {
             air_index,
             unique_block_states,
             block_state_to_index,
+            tile_entities,
         })
     }
 
@@ -135,6 +139,39 @@ impl ToWeSchematic {
             .collect()
     }
 
+    fn build_tile_entities_list(&self) -> Vec<Value> {
+        if self.tile_entities.original_type != 3 {
+            return vec![];
+        }
+        self.tile_entities.elements
+            .iter()
+            .map(|te| {
+                let nx = te.pos.x;
+                let ny = te.pos.y;
+                let nz = te.pos.z;
+
+                match &te.nbt {
+                    Compound(map) => {
+                        let mut new_map = map.clone();
+                        let new_pos = vec![
+                            nx, ny, nz,
+                        ];
+                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        Compound(new_map)
+                    }
+                    other => {
+                        let mut new_map = HashMap::new();
+                        let new_pos = vec![
+                            nx, ny, nz,
+                        ];
+                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        new_map.insert("nbt".to_string(), other.clone());
+                        Compound(new_map)
+                    }
+                }
+            })
+            .collect()
+    }
     pub fn decode_to_bytes(&self) -> Vec<i8> {
         let block_id_list = self.get_block_id_list();
         let mut buffer = Vec::new();
@@ -211,7 +248,7 @@ impl ToWeSchematic {
                     "BlockData".to_string(),
                     Value::ByteArray(fastnbt::ByteArray::new(bytes_array)),
                 );
-                nbt.insert("BlockEntities".to_string(), Value::List(Vec::new()));
+                nbt.insert("BlockEntities".to_string(), Value::List(self.build_tile_entities_list()));
                 Ok(Compound(nbt))
             }
             1 => {
@@ -224,7 +261,7 @@ impl ToWeSchematic {
                     "BlockData".to_string(),
                     Value::ByteArray(fastnbt::ByteArray::new(bytes_array)),
                 );
-                blocks.insert("BlockEntities".to_string(), Value::List(Vec::new()));
+                blocks.insert("BlockEntities".to_string(), Value::List(self.build_tile_entities_list()));
                 schematic.insert("Blocks".to_string(), Compound(blocks));
                 schematic.insert("Version".to_string(), Value::Int(3));
                 schematic.insert("Length".to_string(), Value::Short(self.length as i16));

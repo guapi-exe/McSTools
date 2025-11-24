@@ -3,6 +3,7 @@ use fastnbt::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::utils::tile_entities::TileEntitiesList;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WeMetadata {
@@ -46,5 +47,4 @@ pub struct WeSchematicData {
     pub palette: HashMap<i32, Arc<BlockData>>,
     pub palette_max: i32,
     pub block_data: Vec<i8>,
-    pub block_entities: Vec<Value>,
 }

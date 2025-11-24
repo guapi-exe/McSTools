@@ -212,6 +212,7 @@ export default {
     confirmEdit: '編集を確認'
   },
   toolsSplit: {
+    splitMethod: '分割方法',
     verticalSplit: '垂直分割',
     horizontalSplit: '水平エリア',
     gridSplit: 'グリッド分割',
@@ -230,7 +231,10 @@ export default {
     file: 'ファイル',
     download: 'ダウンロード',
     splitResultHint: '分割後、ここに結果が表示されます',
-    splitButtonHint: '左の「分割実行」ボタンをクリックして分割ファイルを生成'
+    splitButtonHint: '左の「分割実行」ボタンをクリックして分割ファイルを生成',
+    airFrame: 'エアフレーム',
+    airFrameHint: '分割後の設計図にエアフレームを追加',
+    airFrameTooltip: '分割後のサイズの不一致を防ぐためにエアフレームを追加'
   },
   toolsStats: {
     total: '合計',

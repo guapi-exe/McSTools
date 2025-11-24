@@ -136,19 +136,50 @@ impl WeSchematic {
         Ok(data?)
     }
 
-    pub fn get_block_entities(&self, type_version: i32) -> Result<&Vec<Value>, SchematicError> {
+    pub fn get_block_entities(&self, type_version: i32) -> Result<TileEntitiesList, SchematicError> {
         let Compound(root) = &self.nbt else {
             return Err(SchematicError::InvalidFormat("Root is not a Compound"));
         };
-        let entities = match type_version {
-            0 => root.get_list("BlockEntities"),
-            1 => root
-                .get_compound("Schematic")?
-                .get_compound("Blocks")?
-                .get_list("BlockEntities"),
-            _ => Err(SchematicError::InvalidFormat("Root is not a Compound"))?,
+
+        let entities: TileEntitiesList = match type_version {
+            0 => {
+                let tile_entities_raw: Vec<Value> = root
+                    .get("BlockEntities")
+                    .and_then(|v| match v {
+                        Value::List(list) => Some(list.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| vec![]);
+
+                if tile_entities_raw.is_empty() {
+                    TileEntitiesList::new()
+                } else {
+                    TileEntitiesList::from_nbt_we(&tile_entities_raw, 3)?
+                }
+            }
+            1 => {
+                let tile_entities_raw: Vec<Value> = root
+                    .get_compound("Schematic")?
+                    .get_compound("Blocks")?
+                    .get("BlockEntities")
+                    .and_then(|v| match v {
+                        Value::List(list) => Some(list.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| vec![]);
+
+                if tile_entities_raw.is_empty() {
+                    TileEntitiesList::new()
+                } else {
+                    TileEntitiesList::from_nbt_we(&tile_entities_raw, 3)?
+                }
+            }
+            _ => {
+                return Err(SchematicError::InvalidFormat("Root is not a Compound"));
+            }
         };
-        Ok(entities?)
+
+        Ok(entities)
     }
 
     pub fn parse_palette(
@@ -205,7 +236,6 @@ impl WeSchematic {
         let Compound(root) = &self.nbt else {
             return Err(SchematicError::InvalidFormat("Root is not a Compound"));
         };
-        let block_entities = self.get_block_entities(type_version)?;
         let palette = self.parse_palette(type_version)?;
         let palette_max = match type_version {
             0 => root.get_i32("PaletteMax")?,
@@ -221,15 +251,13 @@ impl WeSchematic {
             palette,
             palette_max,
             block_data: self.get_block_data(type_version)?.to_vec(),
-            block_entities: block_entities.to_vec(),
         })
     }
-
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
-        let tile_entities = TileEntitiesList::default();
         let mut block_list = BlockStatePosList::default();
         let type_version = self.get_type()?;
         let data = self.get_we_data(type_version)?;
+        let tile_entities = self.get_block_entities(type_version)?;
         let palette = self.parse_palette(type_version)?;
         let block_data_i8 = data.block_data;
         let size = self.get_size(type_version)?;
@@ -239,9 +267,9 @@ impl WeSchematic {
         let iter = VarIntIterator::new(&block_data_i8);
         for (i, value) in iter.enumerate() {
             let unsigned_state_id = (value & 0xFF) as i32;
-            let y = (i + 1) as i32 / (width * length);
-            let z = ((i + 1) as i32 % (width * length)) / width;
-            let x = (i + 1) as i32 % width;
+            let y = (i ) as i32 / (width * length);
+            let z = ((i ) as i32 % (width * length)) / width;
+            let x = (i ) as i32 % width;
             let block_data = palette
                 .get(&unsigned_state_id)
                 .ok_or(SchematicError::InvalidFormat("miss unsigned_state_id"))?;

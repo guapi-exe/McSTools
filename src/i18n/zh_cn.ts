@@ -212,6 +212,7 @@ export default {
     confirmEdit: '确认修改'
   },
   toolsSplit: {
+    splitMethod: '分割方式',
     verticalSplit: '垂直分层',
     horizontalSplit: '水平区域',
     gridSplit: '网格划分',
@@ -230,7 +231,10 @@ export default {
     file: '个文件',
     download: '下载',
     splitResultHint: '执行分割后将在此显示结果',
-    splitButtonHint: '点击左侧"执行分割"按钮生成切割后的文件'
+    splitButtonHint: '点击左侧"执行分割"按钮生成切割后的文件',
+    airFrame: '空气框架',
+    airFrameHint: '为切割后的蓝图添加空气框架',
+    airFrameTooltip: '添加空气框架防止切割后蓝图大小不一，但有可能会导致蓝图实体方块信息偏移错误'
   },
   toolsStats: {
     total: '共',
