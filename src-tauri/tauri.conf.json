@@ -33,7 +33,7 @@
         "center": true,
         "decorations": false,
         "label": "splashscreen",
-        "url": "./splashscreen"
+        "url": "data/splashscreen.html"
       }
     ],
     "security": {
@@ -67,7 +67,8 @@
     ],
     "createUpdaterArtifacts": true,
     "resources": [
-      "data/**/*"
+      "data/**/*",
+      "../dist/**/*"
     ],
     "windows": {
       "wix": {

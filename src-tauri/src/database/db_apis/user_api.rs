@@ -1,11 +1,10 @@
 use crate::database::db_control::DatabaseState;
-use crate::database::db_data::{Schematic, UserData};
-use anyhow::{Context, Result};
+use crate::database::db_data::{UserData};
+use anyhow::{Result};
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params};
 use tauri::State;
-use crate::database::db_apis::schematics_api::update_schematic_classification;
 
 pub fn add_user_schematic(
     conn: &mut PooledConnection<SqliteConnectionManager>,

@@ -29,8 +29,6 @@ use modules::schematic::{
     save_snbt
 };
 use split_schematic::split_schematic::schematic_split;
-use std::time::Instant;
-use sysinfo::{Pid, ProcessesToUpdate, System};
 use tauri::Manager;
 use utils::loading::close_splashscreen;
 use utils::minecraft_data::versions_data::VersionData;

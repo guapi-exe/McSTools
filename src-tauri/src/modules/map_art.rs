@@ -46,7 +46,7 @@ pub async fn create_map_art(
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
                 let data = ToCreateSchematic::new(&data)?.create_schematic(true);
-                let mut schematic = Schematic {
+                let schematic = Schematic {
                     id: 0,
                     name: format!("map_art_{}", file_name),
                     description: "".parse()?,
@@ -96,7 +96,7 @@ pub async fn create_map_art(
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
                 let data = ToLmSchematic::new(&data)?.lm_schematic(6);
-                let mut schematic = Schematic {
+                let schematic = Schematic {
                     id: 0,
                     name: format!("map_art_{}", file_name),
                     description: "".parse()?,
@@ -146,7 +146,7 @@ pub async fn create_map_art(
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
                 let data = ToWeSchematic::new(&data)?.we_schematic(sub_version as i32)?;
-                let mut schematic = Schematic {
+                let schematic = Schematic {
                     id: 0,
                     name: format!("map_art_{}", file_name),
                     description: "".parse()?,
@@ -196,7 +196,7 @@ pub async fn create_map_art(
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
                 let data = ToBgSchematic::new(&data)?.bg_schematic(sub_version as i32)?;
-                let mut schematic = Schematic {
+                let schematic = Schematic {
                     id: 0,
                     name: format!("map_art_{}", file_name),
                     description: "".parse()?,
@@ -245,7 +245,7 @@ pub async fn create_map_art(
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
                 let data = ToBESchematic::new(&data)?.to_be_value();
-                let mut schematic = Schematic {
+                let schematic = Schematic {
                     id: 0,
                     name: format!("map_art_{}", file_name),
                     description: "".parse()?,

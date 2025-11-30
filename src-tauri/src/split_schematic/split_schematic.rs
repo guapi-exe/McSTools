@@ -38,11 +38,11 @@ pub async fn schematic_split(
 ) -> Result<Vec<(i64, Size, Vec<u8>)>, String> {
     async move {
         let mut conn = db.0.get()?;
-        let mut schematic = find_schematic(&mut conn, schematic_id)?;
+        let schematic = find_schematic(&mut conn, schematic_id)?;
         let version = schematic.version;
         let sub_version = schematic.sub_type;
         let v_type = schematic.schematic_type;
-        let mut data = file_manager.get_schematic_data(schematic_id, version, sub_version, v_type)?;
+        let data = file_manager.get_schematic_data(schematic_id, version, sub_version, v_type)?;
 
         let size = &data.size;
         let blocks = &data.blocks;

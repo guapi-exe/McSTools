@@ -1,7 +1,7 @@
 use crate::database::db_control::DatabaseState;
 use crate::database::db_data::LogEntry;
-use anyhow::{Context, Result};
-use rusqlite::{params, OptionalExtension};
+use anyhow::{Result};
+use rusqlite::{params};
 use tauri::State;
 
 #[tauri::command]

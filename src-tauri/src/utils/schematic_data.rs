@@ -1,4 +1,4 @@
-use crate::utils::block_state_pos_list::{BlockPos, BlockStatePosList};
+use crate::utils::block_state_pos_list::{BlockStatePosList};
 use crate::utils::tile_entities::TileEntitiesList;
 use flate2::CompressError;
 use flate2::DecompressError;

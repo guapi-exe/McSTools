@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
-use fastnbt::{ByteArray, IntArray, LongArray, Tag, Value};
+use fastnbt::{Tag, Value};
 
 pub fn write_u8(w: &mut impl Write, v: u8) -> io::Result<()> {
     w.write_all(&[v])

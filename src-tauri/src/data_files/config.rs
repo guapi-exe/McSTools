@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{path, AppHandle, Manager};
+use tauri::{AppHandle, Manager};
 
 pub fn get_config_dir(app: &AppHandle) -> Result<PathBuf> {
     let path_resolver = app.path();

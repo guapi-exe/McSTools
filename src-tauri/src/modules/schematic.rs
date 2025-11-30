@@ -12,15 +12,13 @@ use crate::modules::modules_data::convert_data::get_unique_block_str;
 use crate::utils::minecraft_data::je_blocks_data::BlocksData;
 use crate::utils::minecraft_data::versions_data::VersionData;
 use crate::utils::requirements::{get_requirements, RequirementStr};
-use crate::utils::schematic_data::{SchematicData, SchematicError};
+use crate::utils::schematic_data::{SchematicData};
 use crate::word_edit::we_schematic::WeSchematic;
 use anyhow::Result;
-use chrono::{DateTime, Local, NaiveDateTime};
+use chrono::{Local};
 use fastnbt::Value;
-use rusqlite::version;
 use std::path::Path;
 use tauri::State;
-use tauri_plugin_updater::target;
 use crate::be_schematic::be_schematic::BESchematic;
 
 #[tauri::command]
@@ -717,7 +715,7 @@ pub async fn save_snbt(
         let version = schematic.version;
         let sub_version = schematic.sub_type;
         let v_type = schematic.schematic_type;
-        if(v_type == 5){
+        if v_type == 5 {
             file_manager.save_snbt_le_value(
                 id,
                 &snbt,

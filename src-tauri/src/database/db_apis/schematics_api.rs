@@ -1,7 +1,5 @@
-use crate::building_gadges::bg_schematic_data::JsonData;
 use crate::database::db_control::DatabaseState;
 use crate::database::db_data::{PaginatedResponse, Schematic};
-use crate::utils::schematic_data::SchematicError;
 use anyhow::Result;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;

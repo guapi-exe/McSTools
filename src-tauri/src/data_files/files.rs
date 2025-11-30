@@ -320,7 +320,7 @@ impl FileManager {
         let final_path = schematic_dir.join(final_filename);
         let out_path = final_path.clone();
 
-        let mut file = File::create(final_path)?;
+        let file = File::create(final_path)?;
         save_nbt_le(file, "Schematic", &data)?;
 
         Ok(out_path)

@@ -1,9 +1,7 @@
 use crate::utils::block_state_pos_list::BlockData;
-use fastnbt::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::utils::tile_entities::TileEntitiesList;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WeMetadata {

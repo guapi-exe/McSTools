@@ -3,7 +3,6 @@ use std::fs;
 use anyhow::{Context};
 use anyhow::Result;
 use crate::database::db_control::{drop_all_tables_in_transaction, DatabaseState};
-use tauri_plugin_shell::ShellExt;
 #[tauri::command]
 pub async fn clear_app_data(
     app_handle: AppHandle,

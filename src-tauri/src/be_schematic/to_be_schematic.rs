@@ -121,13 +121,13 @@ impl ToBESchematic {
             map.insert("name".to_string(), Value::String(block.id.name.to_string()));
 
             if !block.properties.is_empty() {
-                let mut states_map = HashMap::new();
+                let states_map = HashMap::new();
                 //for (k, v) in &block.properties {
                     //states_map.insert(k.to_string(), Value::String(v.to_string()));
                 //}
                 map.insert("states".to_string(), Value::Compound(states_map));
             }else {
-                let mut states_map = HashMap::new();
+                let states_map = HashMap::new();
                 map.insert("states".to_string(), Value::Compound(states_map));
             }
 
