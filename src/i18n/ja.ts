@@ -118,7 +118,7 @@ export default {
     createTitle: 'バニラ構造',
     createDesc: 'JEバニラ構造ブロック・Create対応',
     weTitle: 'WorldEdit',
-    weDesc: 'WorldEdit 1.16+・最新版axios対応',
+    weDesc: 'WorldEdit 1.16+・最新版axiom対応',
     bgTitle: '建築ヘルパー',
     bgDesc: '1.12+建築ヘルパー3種バリアント対応',
     beTitle: 'MC BE',
@@ -266,7 +266,15 @@ export default {
     exportView: 'ビューをエクスポート',
     viewsNotReady: 'ビューの準備ができていません',
     exportSuccess: 'エクスポート成功',
-    exportError: 'エクスポート失敗: {error}'
+    exportError: 'エクスポート失敗: {error}',
+    annotation: '注釈',
+    blockId: 'ID',
+    blockCoord: '座標',
+    blockProperties: 'プロパティ',
+    containerItems: 'コンテナ内アイテム',
+    size: 'サイズ',
+    author: '作者',
+    version: 'バージョン'
   },
   common: {
     save: '保存',
@@ -404,7 +412,7 @@ export default {
         },
         worldEdit: {
           title: 'WorldEdit',
-          desc: 'WorldEdit mod 1.16+ と最新の axios に対応',
+          desc: 'WorldEdit mod 1.16+ と最新の axiom に対応',
           ext: 'schem',
           versions: {
             latest: '0: 最新WE形式',

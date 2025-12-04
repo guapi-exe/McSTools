@@ -2,6 +2,8 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use tauri::{AppHandle, Manager};
+use tauri::path::BaseDirectory;
 
 #[derive(Debug, Deserialize)]
 struct RawBlock {
@@ -31,8 +33,8 @@ pub struct BlocksData {
 }
 
 impl BlocksData {
-    pub fn new() -> Result<BlocksData> {
-        let path = "./data/je_blocks.json";
+    pub fn new(app: &AppHandle) -> Result<BlocksData> {
+        let path = app.path().resolve("data/je_blocks.json", BaseDirectory::Resource)?;
         let str = fs::read_to_string(path)?;
         Ok(Self::parse(str.as_str())?)
     }

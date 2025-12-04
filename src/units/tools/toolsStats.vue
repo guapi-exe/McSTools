@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
 import {exportRequirementsStatsToCsv} from "../../modules/exportRequirements.ts";
 import {schematicData} from "../../modules/tools_data.ts";
+import {getIconUrl} from "../../modules/others.ts";
 
 const props = defineProps<{
   data: RequirementStatistics | undefined;
@@ -18,11 +19,6 @@ let chartInstance2: echarts.ECharts | null = null;
 const sortedItems = computed(() => {
   return props.data?.items?.slice().sort((a, b) => b.count - a.count) || [];
 });
-
-const getBlockIcon = (blockId: string) => {
-  const block = blockId.split(':');
-  return new URL(`../../assets/icon/icon-exports-x32/${block[0]}__${block[1]}.png`, import.meta.url).href
-};
 const initOrUpdateChart = async () => {
   await nextTick();
   const chartDom = document.getElementById('chart-container');
@@ -219,7 +215,7 @@ onBeforeUnmount(() => {
         <td class="text-left font-weight-medium">
           <v-avatar size="32" rounded="0" class="mr-2">
             <img
-                :src="getBlockIcon(item.id)"
+                :src="getIconUrl(item.id)"
                 :alt="item.zh_cn"
             >
           </v-avatar>

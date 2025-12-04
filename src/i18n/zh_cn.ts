@@ -109,7 +109,7 @@ export default {
     createTitle: '香草结构',
     createDesc: '适配与JE原版结构方块和机械动力',
     weTitle: '创世神',
-    weDesc: '适配与新版1.16 + 创世神模组和最新版 axios',
+    weDesc: '适配与新版1.16 + 创世神模组和最新版 axiom',
     bgTitle: '建筑小帮手',
     bgDesc: '适配与1.12 + 建筑小帮手 3个 变种格式蓝图',
     beTitle: 'MC BE',
@@ -266,7 +266,15 @@ export default {
     exportView: '导出视图',
     viewsNotReady: '视图尚未准备好',
     exportSuccess: '导出成功',
-    exportError: '导出失败：{error}'
+    exportError: '导出失败：{error}',
+    annotation: '标注',
+    blockId: 'ID',
+    blockCoord: '坐标',
+    blockProperties: '属性',
+    containerItems: '容器内物品',
+    size: '尺寸',
+    author: '作者',
+    version: '版本'
   },
   common: {
     save: '保存',
@@ -441,7 +449,7 @@ export default {
         },
         worldEdit: {
           title: '创世神（WorldEdit）',
-          desc: '适配与新版1.16 + 创世神模组和最新版 axios',
+          desc: '适配与新版1.16 + 创世神模组和最新版 axiom',
           ext: 'schem',
           versions: {
             latest: '0: WE最新格式',

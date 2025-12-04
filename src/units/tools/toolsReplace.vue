@@ -3,7 +3,7 @@ import {defineProps, reactive, onMounted, watch, ref} from "vue";
 import type { RequirementStatistics, RequirementStatistic } from "../../modules/requirements.ts";
 import { jeBlocks, fetchJeBlocks, type SubData } from "../../modules/je_blocks.ts";
 import {invoke} from "@tauri-apps/api/core";
-import {getBlockIcon, toast} from "../../modules/others.ts";
+import {getIconUrl, toast} from "../../modules/others.ts";
 import {BlockData, BlockDataNew} from "../../modules/replace_data.ts";
 import {schematic_id} from "../../modules/tools_data.ts";
 import { useI18n } from 'vue-i18n';
@@ -255,7 +255,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
               <template v-slot:selection="{ item }">
                 <div class="d-flex align-center">
                   <v-avatar size="32" rounded="0" class="mr-2">
-                    <img :src="getBlockIcon(item.raw.id)" :alt="item.raw.id">
+                    <img :src="getIconUrl(item.raw.id)" :alt="item.raw.id">
                   </v-avatar>
                   <div>
                     <span class="text-body-2">{{ item.raw.zh_cn }}</span>
@@ -267,7 +267,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                   <template v-slot:prepend>
                     <v-avatar size="32" rounded="0" class="mr-2">
                       <img
-                          :src="getBlockIcon(item.raw.id)"
+                          :src="getIconUrl(item.raw.id)"
                           :alt="item.raw.zh_cn"
                       >
                     </v-avatar>
@@ -293,7 +293,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
               <template v-slot:selection="{ item }">
                 <div class="d-flex align-center">
                   <v-avatar size="32" rounded="0" class="mr-2">
-                    <img :src="getBlockIcon(`minecraft:${item.raw.block_name}`)" :alt="item.raw.zh_cn">
+                    <img :src="getIconUrl(`minecraft:${item.raw.block_name}`)" :alt="item.raw.zh_cn">
                   </v-avatar>
                   <div>
                     <span class="text-body-2">{{ item.raw.zh_cn }}</span>
@@ -306,7 +306,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                     <template v-slot:prepend>
                       <v-avatar size="32" rounded="0" class="mr-2">
                         <img
-                            :src="getBlockIcon(`minecraft:${item.raw.block_name}`)"
+                            :src="getIconUrl(`minecraft:${item.raw.block_name}`)"
                             :alt="item.raw.zh_cn"
                         >
                       </v-avatar>
@@ -321,7 +321,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                     <template v-slot:prepend>
                       <v-avatar size="32" rounded="0" class="mr-2">
                         <img
-                            :src="getBlockIcon(item.raw)"
+                            :src="getIconUrl(item.raw)"
                             :alt="item.raw"
                             onerror="this.style.display='none'"
                         >
@@ -390,7 +390,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
               <template v-slot:selection="{ item }">
                 <div class="d-flex align-center">
                   <v-avatar size="32" rounded="0" class="mr-2">
-                    <img :src="getBlockIcon(item.raw.id)" :alt="item.raw.id">
+                    <img :src="getIconUrl(item.raw.id)" :alt="item.raw.id">
                   </v-avatar>
                   <div>
                     <span class="text-body-2">{{ item.raw.id }}</span>
@@ -403,7 +403,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                 <v-list-item v-bind="itemProps">
                   <template v-slot:prepend>
                     <v-avatar size="32" rounded="0" class="mr-2">
-                      <img :src="getBlockIcon(item.raw.id)" :alt="item.raw.id">
+                      <img :src="getIconUrl(item.raw.id)" :alt="item.raw.id">
                     </v-avatar>
                   </template>
                   <v-list-item-title class="d-flex align-center">
@@ -519,7 +519,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
             <template v-if="rule.replaceMode === 0">
               <div class="d-flex align-center">
                 <v-avatar size="32" rounded="0" class="mr-2">
-                  <img :src="getBlockIcon(rule.original.id)" :alt="rule.original.zh_cn">
+                  <img :src="getIconUrl(rule.original.id)" :alt="rule.original.zh_cn">
                 </v-avatar>
                 {{ rule.original.zh_cn }}
               </div>
@@ -527,7 +527,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
             <template v-else>
               <div class="d-flex align-center">
                 <v-avatar size="32" rounded="0" class="mr-2">
-                  <img :src="getBlockIcon(rule.originalDetails.id)" :alt="rule.originalDetails.id">
+                  <img :src="getIconUrl(rule.originalDetails.id)" :alt="rule.originalDetails.id">
                 </v-avatar>
                 <div>
                   <div>{{ rule.originalDetails.id }}</div>
@@ -543,13 +543,13 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
             <template v-if="rule.replaceMode === 0">
               <div v-if="typeof rule.replacement === 'object'" class="d-flex align-center">
                 <v-avatar size="32" rounded="0" class="mr-2">
-                  <img :src="getBlockIcon(`minecraft:${rule.replacement.block_name}`)" :alt="rule.replacement.zh_cn">
+                  <img :src="getIconUrl(`minecraft:${rule.replacement.block_name}`)" :alt="rule.replacement.zh_cn">
                 </v-avatar>
                 {{ rule.replacement.zh_cn }}
               </div>
               <div v-else class="d-flex align-center">
                 <v-avatar size="32" rounded="0" class="mr-2">
-                  <img :src="getBlockIcon(rule.replacement)" :alt="rule.replacement">
+                  <img :src="getIconUrl(rule.replacement)" :alt="rule.replacement">
                 </v-avatar>
                 {{ rule.replacement }}
               </div>
@@ -557,7 +557,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
             <template v-else>
               <div class="d-flex align-center">
                 <v-avatar size="32" rounded="0" class="mr-2">
-                  <img :src="getBlockIcon(rule.replacementDetails.id)" :alt="rule.replacementDetails.id">
+                  <img :src="getIconUrl(rule.replacementDetails.id)" :alt="rule.replacementDetails.id">
                 </v-avatar>
                 <div>
                   <div>{{ rule.replacementDetails.id }}</div>

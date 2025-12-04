@@ -13,6 +13,8 @@
     "store:default",
     "shell:allow-open",
     "fs:default",
+    "fs:allow-resource-read-recursive",
+    "fs:allow-read-text-file",
     "http:allow-fetch",
     "http:allow-fetch-send",
     "core:window:default",

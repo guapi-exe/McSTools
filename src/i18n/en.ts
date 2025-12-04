@@ -111,7 +111,7 @@ export default {
     createTitle: 'Vanilla Structure',
     createDesc: 'Compatible with JE Vanilla Structure Block and Create',
     weTitle: 'WorldEdit',
-    weDesc: 'Compatible with WorldEdit 1.16+ and latest axios',
+    weDesc: 'Compatible with WorldEdit 1.16+ and latest axiom',
     bgTitle: 'Builder Helper',
     bgDesc: 'Compatible with Builder Helper 1.12+ and 3 variant formats',
     beTitle: 'MC BE',
@@ -260,7 +260,15 @@ export default {
     exportView: 'Export View',
     viewsNotReady: 'Views are not ready yet',
     exportSuccess: 'Export successful',
-    exportError: 'Export failed: {error}'
+    exportError: 'Export failed: {error}',
+    annotation: 'Annotation',
+    blockId: 'ID',
+    blockCoord: 'Coordinates',
+    blockProperties: 'Properties',
+    containerItems: 'Container Items',
+    size: 'Size',
+    author: 'Author',
+    version: 'Version'
   },
   common: {
     save: 'Save',
@@ -398,7 +406,7 @@ export default {
         },
         worldEdit: {
           title: 'WorldEdit',
-          desc: 'Compatible with WorldEdit mod 1.16+ and latest axios',
+          desc: 'Compatible with WorldEdit mod 1.16+ and latest axiom',
           ext: 'schem',
           versions: {
             latest: '0: Latest WE Format',

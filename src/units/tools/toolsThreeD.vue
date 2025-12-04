@@ -3,11 +3,11 @@ import {nextTick, onBeforeUnmount, onMounted, ref, watch} from "vue";
 import {
   Structure, StructureRenderer,
 } from "deepslate";
-import {InteractiveCanvas} from "../../modules/deepslateInit.ts";
+import {InteractiveCanvas} from "../../modules/threed_data/deepslateInit.ts";
 import {fetchSchematicData} from "../../modules/schematic_data.ts";
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
-import {blocks_resources} from "../../modules/deepslateInit.ts";
-import {getBlockIcon, toast} from "../../modules/others.ts";
+import {blocks_resources} from "../../modules/threed_data/deepslateInit.ts";
+import {toast, getIconUrl} from "../../modules/others.ts";
 import {
   layers,
   layerMap,
@@ -30,6 +30,131 @@ const showMaterialList = ref(true);
 const exportingView = ref(false);
 const exportdata = ref(false);
 
+const hoveredBlock = ref<{
+  pos: [number, number, number], 
+  id: string, 
+  properties: Record<string, any>,
+  items?: Array<{id: string, count: number, slot: number}>
+} | null>(null);
+const showBlockInfo = ref(false);
+
+const tileEntitiesMap = ref<Map<string, any>>(new Map());
+
+const rayIntersectAABB = (
+  rayOrigin: [number, number, number],
+  rayDir: [number, number, number],
+  boxMin: [number, number, number],
+  boxMax: [number, number, number]
+): number | null => {
+  let tMin = -Infinity;
+  let tMax = Infinity;
+
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(rayDir[i]) < 1e-8) {
+      if (rayOrigin[i] < boxMin[i] || rayOrigin[i] > boxMax[i]) {
+        return null;
+      }
+    } else {
+      const t1 = (boxMin[i] - rayOrigin[i]) / rayDir[i];
+      const t2 = (boxMax[i] - rayOrigin[i]) / rayDir[i];
+      const tNear = Math.min(t1, t2);
+      const tFar = Math.max(t1, t2);
+      
+      tMin = Math.max(tMin, tNear);
+      tMax = Math.min(tMax, tFar);
+      
+      if (tMin > tMax || tMax < 0) {
+        return null;
+      }
+    }
+  }
+  
+  return tMin >= 0 ? tMin : tMax;
+};
+
+const extractItemsFromNbt = (nbt: any): Array<{id: string, count: number, slot: number}> | undefined => {
+  if (!nbt) return undefined;
+  
+  let items: any[] | undefined;
+  if (nbt.type === 'Compound' && nbt.value) {
+    const itemsField = nbt.value.Items;
+    if (itemsField?.type === 'List' && Array.isArray(itemsField.value)) {
+      items = itemsField.value;
+    }
+  } else if (nbt.Items && Array.isArray(nbt.Items)) {
+    items = nbt.Items;
+  }
+  
+  if (!items || items.length === 0) return undefined;
+  
+  return items.map((item: any) => {
+    if (item.type === 'Compound' && item.value) {
+      const v = item.value;
+      return {
+        id: v.id?.value || v.Name?.value || '',
+        count: v.Count?.value || v.count?.value || 1,
+        slot: v.Slot?.value ?? 0
+      };
+    }
+    return {
+      id: item.id || item.Name || '',
+      count: item.Count || item.count || 1,
+      slot: item.Slot ?? 0
+    };
+  });
+};
+
+const raycastBlocks = (
+  rayOrigin: [number, number, number],
+  rayDir: [number, number, number]
+): { pos: [number, number, number], id: string, properties: Record<string, any>, items?: Array<{id: string, count: number, slot: number}> } | null => {
+  if (!structure_l.value || !size_l.value) return null;
+
+  let closestHit: { pos: [number, number, number], id: string, properties: Record<string, any>, distance: number } | null = null;
+
+  const layersToCheck = once_threeD.value
+    ? [currentLayer.value] 
+    : Array.from({ length: currentLayer.value + 1 }, (_, i) => i);
+
+  for (const layerY of layersToCheck) {
+    const layerBlocks = layers.value[layerY];
+    if (!layerBlocks) continue;
+
+    for (const block of layerBlocks) {
+      const [x, y, z] = block.pos;
+      
+      const boxMin: [number, number, number] = [x, y, z];
+      const boxMax: [number, number, number] = [x + 1, y + 1, z + 1];
+      
+      const distance = rayIntersectAABB(rayOrigin, rayDir, boxMin, boxMax);
+      
+      if (distance !== null && (closestHit === null || distance < closestHit.distance)) {
+        closestHit = {
+          pos: block.pos,
+          id: block.block.id,
+          properties: block.block.properties,
+          distance
+        };
+      }
+    }
+  }
+
+  if (closestHit) {
+    const key = `${closestHit.pos[0]},${closestHit.pos[1]},${closestHit.pos[2]}`;
+    const nbt = tileEntitiesMap.value.get(key);
+    const items = extractItemsFromNbt(nbt);
+    
+    return {
+      pos: closestHit.pos,
+      id: closestHit.id,
+      properties: closestHit.properties,
+      items
+    };
+  }
+  
+  return null;
+};
+
 type ViewType = 'free' | 'front' | 'side' | 'top';
 const currentView = ref<ViewType>('free');
 const loadStructure = async () => {
@@ -37,6 +162,17 @@ const loadStructure = async () => {
   const schematic_size = schematic_data.size
   const structure = new Structure([schematic_size.width, schematic_size.height, schematic_size.length])
   const blocks = schematic_data.blocks
+  const tile_entities_list = schematic_data.tile_entities_list
+  
+  tileEntitiesMap.value.clear();
+  if (tile_entities_list?.elements) {
+    for (const te of tile_entities_list.elements) {
+      const { x, y, z } = te.pos;
+      const key = `${x},${y},${z}`;
+      tileEntitiesMap.value.set(key, te.nbt);
+    }
+  }
+  
   let minX = Infinity;
   let minY = Infinity;
   let minZ = Infinity;
@@ -204,9 +340,9 @@ const reloadRenderer = async () => {
       structure_l.value,
       blocks_resources.value,
       {
-        facesPerBuffer: 1000,
+        facesPerBuffer: 500,
         chunkSize: 16,
-        useInvisibleBlockBuffer: false
+        useInvisibleBlockBuffer: true,
       }
   );
 
@@ -222,9 +358,64 @@ const reloadRenderer = async () => {
 
         structureRenderer.value.drawStructure(view)
         structureRenderer.value.drawGrid(view)
+        
+        if (hoveredBlock.value) {
+          const pos = hoveredBlock.value.pos;
+          structureRenderer.value.drawOutline(view, pos);
+          structureRenderer.value.drawOutline(view, [pos[0] + 0.002, pos[1] + 0.002, pos[2] + 0.002] as any);
+          structureRenderer.value.drawOutline(view, [pos[0] - 0.002, pos[1] - 0.002, pos[2] - 0.002] as any);
+        }
       },
       [size_l.value[0] / 2, size_l.value[1] / 2, size_l.value[2] / 2]
   );
+  
+  let hoverThrottleTimer: number | null = null;
+  let pendingRayData: { rayOrigin: [number, number, number], rayDir: [number, number, number] } | null = null;
+  
+  const processHover = () => {
+    hoverThrottleTimer = null;
+    
+    if (!pendingRayData || !structure_l.value) {
+      if (hoveredBlock.value) {
+        hoveredBlock.value = null;
+        showBlockInfo.value = false;
+        interactiveCanvas.value?.redraw();
+      }
+      return;
+    }
+    
+    const { rayOrigin, rayDir } = pendingRayData;
+    const hitBlock = raycastBlocks(rayOrigin, rayDir);
+    
+    const prevPos = hoveredBlock.value?.pos;
+    const newPos = hitBlock?.pos;
+    
+    const posChanged = !prevPos !== !newPos ||
+      (prevPos && newPos && (prevPos[0] !== newPos[0] || prevPos[1] !== newPos[1] || prevPos[2] !== newPos[2]));
+    
+    if (posChanged) {
+      hoveredBlock.value = hitBlock;
+      showBlockInfo.value = !!hitBlock;
+      interactiveCanvas.value?.redraw();
+    }
+  };
+  
+  interactiveCanvas.value.setBlockHoverHandler((rayData) => {
+    pendingRayData = rayData;
+    
+    if (!rayData) {
+      if (hoverThrottleTimer) {
+        cancelAnimationFrame(hoverThrottleTimer);
+        hoverThrottleTimer = null;
+      }
+      processHover();
+      return;
+    }
+    
+    if (!hoverThrottleTimer) {
+      hoverThrottleTimer = requestAnimationFrame(processHover);
+    }
+  });
 };
 
 const switchView = (viewType: ViewType) => {
@@ -356,9 +547,9 @@ const exportCurrentView = async () => {
       ctx.fillText(info.name, 20, 35);
 
       ctx.font = '18px Arial';
-      ctx.fillText(`尺寸: ${sx} × ${sy} × ${sz}`, 20, 65);
-      ctx.fillText(`作者: ${info.user}`, 20, 90);
-      ctx.fillText(`版本: ${info.game_version}`, 20, 115);
+      ctx.fillText(`${$t('toolsThreeD.size')}: ${sx} × ${sy} × ${sz}`, 20, 65);
+      ctx.fillText(`${$t('toolsThreeD.author')}: ${info.user}`, 20, 90);
+      ctx.fillText(`${$t('toolsThreeD.version')}: ${info.game_version}`, 20, 115);
     }
 
     ctx.drawImage(canvas, 0, 120);
@@ -392,7 +583,7 @@ onBeforeUnmount(async () => {
           <v-list-item v-for="(material, i) in materialOverview" :key="i" class="material-item d-flex justify-space-between">
             <template #prepend>
               <v-avatar size="40" rounded="0" class="mr-2 avatar-bg">
-                <img :src="getBlockIcon(material.id)" :alt="material.id">
+                <img :src="getIconUrl(material.id)" :alt="material.id">
               </v-avatar>
             </template>
 
@@ -450,10 +641,10 @@ onBeforeUnmount(async () => {
             <v-icon>mdi-arrow-all</v-icon>
             <v-tooltip activator="parent" location="bottom">{{$t('toolsThreeD.topView')}}</v-tooltip>
           </v-btn>
-        </v-btn-toggle>
+        </v-btn-toggle>        
         <v-checkbox
             class="export-checkbox"
-            label="标注"
+            :label="$t('toolsThreeD.annotation')"
             v-model="exportdata"
         ></v-checkbox>
         <v-btn
@@ -529,6 +720,46 @@ onBeforeUnmount(async () => {
         </div>
       </div>
 
+      <!-- 方块信息悬浮框 -->
+      <v-card
+        v-if="showBlockInfo && hoveredBlock"
+        class="block-info-card"
+        elevation="8"
+      >
+        <v-card-title class="d-flex align-center py-2">
+          <v-avatar size="32" rounded="0" class="mr-2">
+            <img :src="getIconUrl(hoveredBlock.id)" :alt="hoveredBlock.id">
+          </v-avatar>
+          {{ hoveredBlock.id.split(':').pop() }}
+        </v-card-title>
+        <v-card-text class="py-2">
+          <div><strong>{{ $t('toolsThreeD.blockId') }}:</strong> {{ hoveredBlock.id }}</div>
+          <div><strong>{{ $t('toolsThreeD.blockCoord') }}:</strong> [{{ hoveredBlock.pos.join(', ') }}]</div>
+          <div v-if="Object.keys(hoveredBlock.properties).length > 0">
+            <strong>{{ $t('toolsThreeD.blockProperties') }}:</strong>
+            <ul class="properties-list">
+              <li v-for="(value, key) in hoveredBlock.properties" :key="key">
+                {{ key }}: {{ value }}
+              </li>
+            </ul>
+          </div>
+          <div v-if="hoveredBlock.items && hoveredBlock.items.length > 0" class="mt-2">
+            <strong>{{ $t('toolsThreeD.containerItems') }}:</strong>
+            <div class="items-grid mt-1">
+              <div v-for="(item, idx) in hoveredBlock.items" :key="idx" class="item-slot">
+                <v-avatar size="32" rounded="0" class="item-icon">
+                  <img :src="getIconUrl(item.id)" :alt="item.id">
+                </v-avatar>
+                <span class="item-count" v-if="item.count > 1">{{ item.count }}</span>
+                <v-tooltip activator="parent" location="top">
+                  {{ item.id.split(':').pop() }} x{{ item.count }}
+                </v-tooltip>
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+
     </v-col>
   </v-row>
 </template>
@@ -595,6 +826,7 @@ onBeforeUnmount(async () => {
 .vertical-slider {
   writing-mode: bt-lr;
   -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
   width: 8px;
   height: 200px;
   background: rgba(255, 255, 255, 0.8);
@@ -624,16 +856,16 @@ onBeforeUnmount(async () => {
   justify-content: center;
 }
 .material-item:hover {
-  background: rgba(255, 152, 0, 0.15); /* 悬停效果 */
+  background: rgba(255, 152, 0, 0.15);
 }
 
 .selected-item {
-  background: rgba(255, 152, 0, 0.3); /* 选中状态 */
+  background: rgba(255, 152, 0, 0.3);
   font-weight: bold;
 }
 
 .avatar-bg {
-  background: rgba(30, 30, 30, 0.2); /* 头像背景 */
+  background: rgba(30, 30, 30, 0.2);
 }
 
 .material-name {
@@ -651,6 +883,59 @@ onBeforeUnmount(async () => {
   margin: 0 4px;
   display: flex;
   align-items: center;
+}
+
+.block-info-card {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  min-width: 280px;
+  max-width: 350px;
+  z-index: 200;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.properties-list {
+  margin: 4px 0 0 16px;
+  padding: 0;
+  list-style: disc;
+}
+
+.properties-list li {
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.items-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.item-slot {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  background: rgba(139, 139, 139, 0.3);
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-icon {
+  background: transparent;
+}
+
+.item-count {
+  position: absolute;
+  bottom: 0;
+  right: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
 }
 
 </style>

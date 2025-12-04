@@ -55,9 +55,9 @@ pub fn run() {
             app.manage(file_manager);
             let version_data = VersionData::new();
             app.manage(version_data);
-            let je_blocks = BlocksData::new()?;
+            let je_blocks = BlocksData::new(app.handle())?;
             app.manage(je_blocks);
-            let map_arts = MapArtsData::new()?;
+            let map_arts = MapArtsData::new(app.handle())?;
             app.manage(map_arts);
             Ok(())
         })

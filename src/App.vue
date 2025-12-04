@@ -139,7 +139,7 @@ import {
   updateState,
   UpdateState
 } from "./modules/chuck_update.ts";
-import {resources_Init} from "./modules/deepslateInit.ts";
+import {resources_Init} from "./modules/threed_data/deepslateInit.ts";
 import {detectTheme, toast} from "./modules/others.ts";
 import {change_data, showSaveDialog} from "./modules/snbt_to_json.ts";
 

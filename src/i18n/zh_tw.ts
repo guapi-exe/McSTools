@@ -114,7 +114,7 @@
         createTitle: '香草結構',
         createDesc: '適配JE原版結構方塊與Create',
         weTitle: '創世神',
-        weDesc: '適配新版1.16+創世神模組與最新版axios',
+        weDesc: '適配新版1.16+創世神模組與最新版axiom',
         bgTitle: '建築小幫手',
         bgDesc: '適配1.12+建築小幫手三種變種格式藍圖',
         beTitle: 'MC BE',
@@ -266,7 +266,15 @@
         exportView: '導出視圖',
         viewsNotReady: '視圖尚未準備好',
         exportSuccess: '導出成功',
-        exportError: '導出失敗：{error}'
+        exportError: '導出失敗：{error}',
+        annotation: '標註',
+        blockId: 'ID',
+        blockCoord: '座標',
+        blockProperties: '屬性',
+        containerItems: '容器內物品',
+        size: '尺寸',
+        author: '作者',
+        version: '版本'
     },
     common: {
         save: '儲存',
@@ -441,7 +449,7 @@
                 },
                 worldEdit: {
                     title: 'WorldEdit',
-                    desc: '適配新版 1.16+ WorldEdit 模組和最新版 axios',
+                    desc: '適配新版 1.16+ WorldEdit 模組和最新版 axiom',
                     ext: 'schem',
                     versions: {
                         latest: '0: WE最新格式',

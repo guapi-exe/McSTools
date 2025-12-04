@@ -6,7 +6,7 @@ import {computed, defineProps, ref} from "vue";
 import {HistoryRecordData} from "../../modules/history_data.ts";
 import dayjs from "dayjs";
 import {Requirement} from "../../modules/requirements.ts";
-import {getBlockIcon} from "../../modules/others.ts";
+import {getIconUrl} from "../../modules/others.ts";
 import {copySchematic} from "../../modules/copy_file.ts";
 
 const props = defineProps<{
@@ -200,7 +200,7 @@ const showDiff = (index: number) => {
               >
                 <template #prepend>
                   <v-avatar size="32" rounded="0" class="mr-2">
-                    <img :src="getBlockIcon(item.id)" :alt="item.zh_cn">
+                    <img :src="getIconUrl(item.id)" :alt="item.zh_cn">
                   </v-avatar>
                 </template>
                 <v-list-item-title>
@@ -248,7 +248,7 @@ const showDiff = (index: number) => {
                        : 'mdi-minus-circle'"
                   ></v-icon>
                   <v-avatar size="32" rounded="0" class="mr-2">
-                    <img :src="getBlockIcon(item.data.id)" :alt="item.data.id">
+                    <img :src="getIconUrl(item.data.id)" :alt="item.data.id">
                   </v-avatar>
                 </template>
 

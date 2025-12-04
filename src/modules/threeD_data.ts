@@ -1,6 +1,6 @@
 import {ref} from "vue";
 import {BlockPos, Structure, StructureRenderer} from "deepslate";
-import {CameraState, InteractiveCanvas} from "./deepslateInit.ts";
+import {CameraState, InteractiveCanvas} from "./threed_data/deepslateInit.ts";
 
 export const structure_l = ref<Structure>();
 export const size_l = ref<BlockPos>();
