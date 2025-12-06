@@ -38,7 +38,7 @@ function getOrCreateCanvas(size: number): HTMLCanvasElement | OffscreenCanvas {
 }
 
 /**
- * 从精灵图裁剪图标并返回 Data URL（优化版）
+ * 从精灵图裁剪图标并返回 Data URL
  */
 const extractIconFromAtlas = (atlasUrl: string, uv: [number, number, number, number]): string => {
     const cacheKey = `${atlasUrl}_${uv.join(',')}`;
@@ -89,7 +89,6 @@ const extractIconFromAtlas = (atlasUrl: string, uv: [number, number, number, num
             img.crossOrigin = 'anonymous';
             
             img.onload = async () => {
-                console.log(`Atlas loaded: ${atlasUrl.substring(0, 50)}...`, { width: img.width, height: img.height });
                 atlasImageCache.set(atlasUrl, img);
                 
                 const sprites = Object.entries(blockIconSpriteMap).filter(([, sprite]) => sprite.atlasUrl === atlasUrl);
