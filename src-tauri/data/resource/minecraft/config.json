@@ -1,1 +1,8 @@
-{"namespace":"minecraft","blockCount":1060,"itemCount":1333}
+{
+  "namespace": "minecraft",
+  "blockCount": 1060,
+  "itemCount": 1333,
+  "name": "Minecraft",
+  "version": "1.21.1",
+  "description": "Minecraft"
+}

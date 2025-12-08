@@ -125,14 +125,32 @@ const addReplacementRule = (mode: number) => {
 const hasProperties = (block: BlockData): boolean => {
   return Object.keys(block.properties).length > 0
 }
-const filterBlocks = (item: BlockData, queryText: string) => {
-  const search = queryText.toLowerCase()
 
-  if (item.id.toLowerCase().includes(search)) return true
+// 精准模式：只检索方块ID
+const filterBlocksById = (_value: string, query: string, item?: any) => {
+  if (!query) return true
+  const search = query.toLowerCase()
+  const block = item?.raw as BlockData
+  if (!block) return false
+  return block.id.toLowerCase().includes(search)
+}
 
-  return Object.entries(item.properties).some(([key, value]) => {
-    return `${key}=${value}`.toLowerCase().includes(search)
-  })
+// 简单模式：同时检索中文名和ID
+const filterBlocksByNameAndId = (_value: string, query: string, item?: any) => {
+  if (!query) return true
+  const search = query.toLowerCase()
+  const block = item?.raw
+  if (!block) return false
+  
+  // 检索中文名（中文不需要toLowerCase，但为了统一处理）
+  const zhName = block.zh_cn || ''
+  if (zhName.includes(search)) return true
+  
+  // 检索ID
+  const blockId = block.id || ''
+  if (blockId.toLowerCase().includes(search)) return true
+  
+  return false
 }
 
 const convertToNewBlockData = (oldData: any): BlockDataNew | null => {
@@ -251,6 +269,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                 item-value="id"
                 clearable
                 :loading="!props.data"
+                :custom-filter="filterBlocksByNameAndId"
             >
               <template v-slot:selection="{ item }">
                 <div class="d-flex align-center">
@@ -384,7 +403,7 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
                 item-title="id"
                 clearable
                 :loading="!props.data"
-                :filter="filterBlocks"
+                :custom-filter="filterBlocksById"
                 :auto-filter-first="false"
             >
               <template v-slot:selection="{ item }">
@@ -400,23 +419,26 @@ watch(() => state.selectedOriginalDetails, (newVal) => {
               </template>
 
               <template v-slot:item="{ props: itemProps, item }">
-                <v-list-item v-bind="itemProps">
+                <v-list-item v-bind="itemProps" :title="undefined">
                   <template v-slot:prepend>
                     <v-avatar size="32" rounded="0" class="mr-2">
                       <img :src="getIconUrl(item.raw.id)" :alt="item.raw.id">
                     </v-avatar>
                   </template>
                   <v-list-item-title class="d-flex align-center">
-                    <span class="text-body-2">{{ item.raw }}</span>
+                    <span class="text-body-2">{{ item.raw.id }}</span>
                     <v-chip
                         v-if="hasProperties(item.raw)"
-                        small
+                        size="small"
                         class="ml-2"
                         color="green"
                     >
                       {{ Object.keys(item.raw.properties).length }} 属性
                     </v-chip>
                   </v-list-item-title>
+                  <v-list-item-subtitle v-if="hasProperties(item.raw)" class="text-caption">
+                    {{ Object.entries(item.raw.properties).map(([k,v]) => `${k}=${v}`).join(', ') }}
+                  </v-list-item-subtitle>
                 </v-list-item>
               </template>
             </v-combobox>

@@ -15,6 +15,8 @@ import beImg from '../../static/img/grass_block.png'
 import cogImg from '../../static/img/cog.png'
 import {openLink, toast} from "../../modules/others.ts";
 import {files, handleUpload} from "../../modules/upload_schematic.ts";
+import {useI18n} from "vue-i18n";
+
 const autoPage_MCS = ref(0)
 const autoPage_CMS = ref(0)
 const hasMore_MCS = ref(true);
@@ -27,6 +29,7 @@ const downLoading_MCS = ref(false)
 let schematics_MCS = ref<McSchematicData[]>([])
 const filterPanel = ref<InstanceType<typeof HTMLElement> | null>(null);
 let schematics_CMS = ref<CMSchematicData[]>([])
+const { t: $t } = useI18n();
 const filters_MCS = ref({
   keyword: '',
   type: 0,

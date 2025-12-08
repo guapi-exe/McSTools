@@ -4,6 +4,7 @@ import {mapArtData} from "../../modules/map_art/map_art_data.ts"
 import {getBlockImg, toast} from "../../modules/others.ts";
 import {encode_image, image_data} from "../../modules/map_art/encode_image.ts";
 import {MapArtProcessor} from "../../modules/map_art/image_rebuild.ts";
+import {useI18n} from "vue-i18n";
 const exportSettings = reactive({
   width: 128,
   height: 128,
@@ -17,6 +18,7 @@ const exportSettings = reactive({
 const replaceAir = ref(false)
 const schematicType = ref()
 const subType = ref()
+const { t: $t } = useI18n()
 const schematicTypes = ref([
   {
     value: 1,

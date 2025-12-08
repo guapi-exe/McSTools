@@ -22,6 +22,7 @@ import beImg from "../../static/img/grass_block.png";
 import {selectClassification, selectLoading, toast} from "../../modules/others.ts";
 import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
 import {opacity} from "../../modules/theme.ts";
+import {useI18n} from "vue-i18n";
 const router = useRouter()
 const loadState = ref()
 const autoPage = ref(1)
@@ -46,6 +47,7 @@ const countMap = ref<Record<string, number>>({});
 const filters = ref({
   keyword: '',
 })
+const { t: $t } = useI18n()
 
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
