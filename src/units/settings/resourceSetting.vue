@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   resourceList,
   isLoadingResources,
@@ -20,8 +21,9 @@ import {
 import { opacity } from '../../modules/theme';
 import { toast } from '../../modules/others';
 
-const iconUrls = ref<Record<string, string>>({});
+const { t: $t } = useI18n()
 
+const iconUrls = ref<Record<string, string>>({});
 const showDeleteDialog = ref(false);
 const deleteTargetKey = ref('');
 const deleteTargetName = ref('');
@@ -39,11 +41,11 @@ const getStatusColor = (status: ResourceStatus) => {
 
 const getStatusText = (status: ResourceStatus) => {
   switch (status) {
-    case 'installed': return '已安装';
-    case 'not-installed': return '未安装';
-    case 'update-available': return '可更新';
-    case 'downloading': return '下载中';
-    default: return '未知';
+    case 'installed': return $t('settings.resourceSetting.status.installed');
+    case 'not-installed': return $t('settings.resourceSetting.status.notInstalled');
+    case 'update-available': return $t('settings.resourceSetting.status.updateAvailable');
+    case 'downloading': return $t('settings.resourceSetting.status.downloading');
+    default: return $t('settings.resourceSetting.status.unknown');
   }
 };
 
@@ -72,7 +74,7 @@ const loadIcons = async () => {
 
 const handleDownload = async (item: ResourceItem) => {
   if (item.status === 'downloading') {
-    toast.warning('该资源正在下载中...');
+    toast.warning($t('settings.resourceSetting.toast.downloading'));
     return;
   }
   await downloadResource(item.key);
@@ -128,7 +130,7 @@ onMounted(async () => {
     <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-2 pb-2">
       <div class="d-flex align-center ga-2">
         <v-icon icon="mdi-package-variant" size="28" color="primary"></v-icon>
-        <span class="text-h6">资源管理</span>
+        <span class="text-h6">{{ $t('settings.resourceSetting.title') }}</span>
       </div>
       
       <v-btn
@@ -139,7 +141,7 @@ onMounted(async () => {
         :loading="isLoadingResources"
       >
         <v-icon start icon="mdi-refresh"></v-icon>
-        刷新
+        {{ $t('settings.resourceSetting.refresh') }}
       </v-btn>
     </v-card-title>
 
@@ -212,16 +214,16 @@ onMounted(async () => {
           <template #subtitle>
             <div class="mt-1">
               <p class="text-caption text-grey mb-1" style="line-height: 1.4;">
-                {{ getResourceDescription(item) || '暂无描述' }}
+                {{ getResourceDescription(item) || $t('settings.resourceSetting.noDescription') }}
               </p>
               <div class="d-flex align-center ga-2 flex-wrap">
                 <v-chip size="x-small" variant="outlined" color="info">
                   <v-icon start icon="mdi-cube-outline" size="12"></v-icon>
-                  方块: {{ getResourceBlockCount(item) }}
+                  {{ $t('settings.resourceSetting.blocks') }}: {{ getResourceBlockCount(item) }}
                 </v-chip>
                 <v-chip size="x-small" variant="outlined" color="info">
                   <v-icon start icon="mdi-border-all" size="12"></v-icon>
-                  物品: {{ getResourceItemCount(item) }}
+                  {{ $t('settings.resourceSetting.items') }}: {{ getResourceItemCount(item) }}
                 </v-chip>
                 <v-chip 
                   v-if="getResourceAuthors(item).length > 0"
@@ -260,7 +262,7 @@ onMounted(async () => {
                 @click="handleDownload(item)"
               >
                 <v-icon icon="mdi-download"></v-icon>
-                下载
+                {{ $t('settings.resourceSetting.download') }}
               </v-btn>
               
               <template v-else-if="item.status === 'update-available'">
@@ -271,7 +273,7 @@ onMounted(async () => {
                   @click="handleDownload(item)"
                 >
                   <v-icon icon="mdi-update"></v-icon>
-                  更新
+                  {{ $t('settings.resourceSetting.update') }}
                 </v-btn>
                 <v-btn
                   variant="tonal"
@@ -291,7 +293,7 @@ onMounted(async () => {
                   @click="openDeleteDialog(item)"
                 >
                   <v-icon icon="mdi-delete"></v-icon>
-                  删除
+                  {{ $t('settings.resourceSetting.delete') }}
                 </v-btn>
               </template>
             </div>
@@ -300,7 +302,7 @@ onMounted(async () => {
         
         <div v-if="resourceList.length === 0 && !isLoadingResources" class="text-center py-8">
           <v-icon icon="mdi-package-variant-closed" size="64" color="grey"></v-icon>
-          <p class="text-grey mt-2">没有找到资源</p>
+          <p class="text-grey mt-2">{{ $t('settings.resourceSetting.noResources') }}</p>
         </div>
       </v-list>
     </v-card-text>
@@ -311,13 +313,13 @@ onMounted(async () => {
     <v-card :style="{ '--surface-alpha': opacity }">
       <v-card-title class="d-flex align-center ga-2">
         <v-icon color="error" icon="mdi-alert-circle"></v-icon>
-        确认卸载
+        {{ $t('settings.resourceSetting.deleteDialog.title') }}
       </v-card-title>
       
       <v-card-text>
-        确定要卸载资源 <strong>{{ deleteTargetName }}</strong> 吗？
+        {{ $t('settings.resourceSetting.deleteDialog.message', { name: deleteTargetName }) }}
         <br>
-        <span class="text-caption text-grey">该操作将删除本地资源文件，可以重新下载。</span>
+        <span class="text-caption text-grey">{{ $t('settings.resourceSetting.deleteDialog.hint') }}</span>
       </v-card-text>
       
       <v-card-actions>
@@ -327,7 +329,7 @@ onMounted(async () => {
           @click="showDeleteDialog = false"
           :disabled="isDeleting"
         >
-          取消
+          {{ $t('settings.resourceSetting.deleteDialog.cancel') }}
         </v-btn>
         <v-btn
           color="error"
@@ -335,7 +337,7 @@ onMounted(async () => {
           @click="confirmDelete"
           :loading="isDeleting"
         >
-          确认卸载
+          {{ $t('settings.resourceSetting.deleteDialog.confirm') }}
         </v-btn>
       </v-card-actions>
     </v-card>

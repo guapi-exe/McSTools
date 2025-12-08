@@ -365,6 +365,34 @@ export default {
     language: {
       title: '言語設定',
       select: '言語選択'
+    },
+    resourceSetting: {
+      title: 'リソース管理',
+      refresh: 'リフレッシュ',
+      status: {
+        installed: 'インストール済み',
+        notInstalled: '未インストール',
+        updateAvailable: '更新可能',
+        downloading: 'ダウンロード中',
+        unknown: '不明'
+      },
+      noDescription: '説明なし',
+      blocks: 'ブロック',
+      items: 'アイテム',
+      download: 'ダウンロード',
+      update: '更新',
+      delete: '削除',
+      noResources: 'リソースが見つかりません',
+      deleteDialog: {
+        title: 'アンインストールの確認',
+        message: '{name} をアンインストールしますか？',
+        hint: 'ローカルリソースファイルが削除されます。再ダウンロードできます。',
+        cancel: 'キャンセル',
+        confirm: 'アンインストール確認'
+      },
+      toast: {
+        downloading: 'このリソースはダウンロード中です...'
+      }
     }
   },
   messages: {

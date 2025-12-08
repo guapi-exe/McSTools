@@ -402,6 +402,34 @@
         language: {
             title: '語言設定',
             select: '語言選擇'
+        },
+        resourceSetting: {
+            title: '資源管理',
+            refresh: '重新整理',
+            status: {
+                installed: '已安裝',
+                notInstalled: '未安裝',
+                updateAvailable: '可更新',
+                downloading: '下載中',
+                unknown: '未知'
+            },
+            noDescription: '暫無描述',
+            blocks: '方塊',
+            items: '物品',
+            download: '下載',
+            update: '更新',
+            delete: '刪除',
+            noResources: '沒有找到資源',
+            deleteDialog: {
+                title: '確認解除安裝',
+                message: '確定要解除安裝資源 {name} 嗎？',
+                hint: '該操作將刪除本機資源檔案，可以重新下載。',
+                cancel: '取消',
+                confirm: '確認解除安裝'
+            },
+            toast: {
+                downloading: '該資源正在下載中...'
+            }
         }
     },
     messages: {

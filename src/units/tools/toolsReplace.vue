@@ -142,11 +142,9 @@ const filterBlocksByNameAndId = (_value: string, query: string, item?: any) => {
   const block = item?.raw
   if (!block) return false
   
-  // 检索中文名（中文不需要toLowerCase，但为了统一处理）
   const zhName = block.zh_cn || ''
   if (zhName.includes(search)) return true
   
-  // 检索ID
   const blockId = block.id || ''
   if (blockId.toLowerCase().includes(search)) return true
   

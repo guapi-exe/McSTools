@@ -402,6 +402,34 @@ export default {
     language: {
       title: '语言设置',
       select: '语言选择'
+    },
+    resourceSetting: {
+      title: '资源管理',
+      refresh: '刷新',
+      status: {
+        installed: '已安装',
+        notInstalled: '未安装',
+        updateAvailable: '可更新',
+        downloading: '下载中',
+        unknown: '未知'
+      },
+      noDescription: '暂无描述',
+      blocks: '方块',
+      items: '物品',
+      download: '下载',
+      update: '更新',
+      delete: '删除',
+      noResources: '没有找到资源',
+      deleteDialog: {
+        title: '确认卸载',
+        message: '确定要卸载资源 {name} 吗？',
+        hint: '该操作将删除本地资源文件，可以重新下载。',
+        cancel: '取消',
+        confirm: '确认卸载'
+      },
+      toast: {
+        downloading: '该资源正在下载中...'
+      }
     }
   },
   messages: {

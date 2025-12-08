@@ -359,6 +359,34 @@ export default {
     language: {
       title: 'Language Settings',
       select: 'Language Selection'
+    },
+    resourceSetting: {
+      title: 'Resource Manager',
+      refresh: 'Refresh',
+      status: {
+        installed: 'Installed',
+        notInstalled: 'Not Installed',
+        updateAvailable: 'Update Available',
+        downloading: 'Downloading',
+        unknown: 'Unknown'
+      },
+      noDescription: 'No description',
+      blocks: 'Blocks',
+      items: 'Items',
+      download: 'Download',
+      update: 'Update',
+      delete: 'Delete',
+      noResources: 'No resources found',
+      deleteDialog: {
+        title: 'Confirm Uninstall',
+        message: 'Are you sure you want to uninstall {name}?',
+        hint: 'This will delete local resource files. You can re-download them later.',
+        cancel: 'Cancel',
+        confirm: 'Confirm Uninstall'
+      },
+      toast: {
+        downloading: 'This resource is downloading...'
+      }
     }
   },
   messages: {
