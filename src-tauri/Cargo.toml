@@ -1,6 +1,6 @@
 [package]
 name = "mcstools"
-version = "1.2.2"
+version = "1.2.3"
 description = "MCSTools"
 authors = ["guapi-exe"]
 edition = "2024"
