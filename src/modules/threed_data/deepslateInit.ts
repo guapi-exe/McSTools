@@ -24,23 +24,30 @@ export class InteractiveCanvas {
     private viewDist = 32
     private canvas: HTMLCanvasElement
     private onBlockHover?: (rayData: RayData | null) => void
+    private keysPressed: Set<string> = new Set()
+    private isAnimating = false
+    private middleDrag: { startX: number, startY: number, startCenter: [number, number, number] } | null = null
 
     constructor(
         canvas: HTMLCanvasElement,
         camera: CameraState = {xRotation: 0.8, yRotation: 0.5, viewDist: 32},
         private readonly onRender: (view: mat4) => void,
-        private readonly center?: [number, number, number],
+        private center?: [number, number, number],
 
     ) {
+        const instance = this
         this.canvas = canvas
         this.xRotation = camera.xRotation
         this.yRotation = camera.yRotation
         this.viewDist = camera.viewDist
+        this.center = this.center || [0, 0, 0]
         let dragPos: null | [number, number] = null
         
         canvas.addEventListener('mousedown', evt => {
             if (evt.button === 0) {
                 dragPos = [evt.clientX, evt.clientY]
+            } else if (evt.button === 1) {
+                this.middleDrag = { startX: evt.clientX, startY: evt.clientY, startCenter: [...this.center!] }
             }
         })
         canvas.addEventListener('mousemove', evt => {
@@ -49,24 +56,32 @@ export class InteractiveCanvas {
                 this.xRotation += (evt.clientY - dragPos[1]) / 100
                 dragPos = [evt.clientX, evt.clientY]
                 this.redraw()
+            } else if (this.middleDrag) {
+                const deltaX = evt.clientX - this.middleDrag.startX
+                const deltaY = evt.clientY - this.middleDrag.startY
+                const sensitivity = 0.01
+                this.center![0] = this.middleDrag.startCenter[0] - deltaX * sensitivity
+                this.center![2] = this.middleDrag.startCenter[2] + deltaY * sensitivity
+                this.renderImmediately()
             } else {
-                if (this.onBlockHover) {
+                if (instance.onBlockHover) {
                     const rect = canvas.getBoundingClientRect()
                     const scaleX = canvas.width / rect.width
                     const scaleY = canvas.height / rect.height
                     const x = (evt.clientX - rect.left) * scaleX
                     const y = (evt.clientY - rect.top) * scaleY
-                    const rayData = this.screenToRay(x, y)
-                    this.onBlockHover(rayData)
+                    const rayData = instance.screenToRay(x, y)
+                    instance.onBlockHover(rayData)
                 }
             }
         })
         canvas.addEventListener('mouseup', () => {
             dragPos = null
+            this.middleDrag = null
         })
         canvas.addEventListener('mouseleave', () => {
-            if (this.onBlockHover) {
-                this.onBlockHover(null)
+            if (instance.onBlockHover) {
+                instance.onBlockHover(null)
             }
         })
         canvas.addEventListener('wheel', evt => {
@@ -75,13 +90,26 @@ export class InteractiveCanvas {
             this.redraw()
         })
         this.redraw()
+
+        window.addEventListener('keydown', (evt) => {
+            if (!evt.repeat) {
+                this.keysPressed.add(evt.key.toLowerCase())
+                if (!this.isAnimating) {
+                    this.animate()
+                }
+            }
+        })
+
+        window.addEventListener('keyup', (evt) => {
+            this.keysPressed.delete(evt.key.toLowerCase())
+        })
     }
 
     public setBlockHoverHandler(handler: (rayData: RayData | null) => void) {
         this.onBlockHover = handler
     }
 
-    public getViewMatrix(): mat4 {
+    public getCameraPosition(): [number, number, number] {
         const view = mat4.create()
         mat4.translate(view, view, [0, 0, -this.viewDist])
         mat4.rotate(view, view, this.xRotation, [1, 0, 0])
@@ -89,7 +117,9 @@ export class InteractiveCanvas {
         if (this.center) {
             mat4.translate(view, view, [-this.center[0], -this.center[1], -this.center[2]])
         }
-        return view
+        const invView = mat4.create()
+        mat4.invert(invView, view)
+        return [invView[12], invView[13], invView[14]]
     }
 
     /**
@@ -109,7 +139,13 @@ export class InteractiveCanvas {
         const proj = mat4.create()
         mat4.perspective(proj, fov, aspect, near, far)
         
-        const view = this.getViewMatrix()
+        const view = mat4.create()
+        mat4.translate(view, view, [0, 0, -this.viewDist])
+        mat4.rotate(view, view, this.xRotation, [1, 0, 0])
+        mat4.rotate(view, view, this.yRotation, [0, 1, 0])
+        if (this.center) {
+            mat4.translate(view, view, [-this.center[0], -this.center[1], -this.center[2]])
+        }
         const invProj = mat4.create()
         mat4.invert(invProj, proj)
         const invView = mat4.create()
@@ -170,6 +206,61 @@ export class InteractiveCanvas {
             mat4.translate(view, view, [-this.center[0], -this.center[1], -this.center[2]])
         }
         this.onRender(view)
+    }
+
+    private animate() {
+        if (this.keysPressed.size === 0) {
+            this.isAnimating = false
+            return
+        }
+        const moveSpeed = 0.1
+        const cameraPos = this.getCameraPosition()
+        const modelPos = this.center!
+        const toModel = [
+            modelPos[0] - cameraPos[0],
+            modelPos[1] - cameraPos[1],
+            modelPos[2] - cameraPos[2]
+        ]
+        const dist = Math.sqrt(toModel[0] ** 2 + toModel[1] ** 2 + toModel[2] ** 2)
+        let forward = [0, 0, 0]
+        if (dist > 0) {
+            forward = [toModel[0] / dist, toModel[1] / dist, toModel[2] / dist]
+        }
+        const right = [
+            -toModel[2],
+            0,
+            toModel[0]
+        ]
+        const rightLen = Math.sqrt(right[0] ** 2 + right[1] ** 2 + right[2] ** 2)
+        let rightNorm = [0, 0, 0]
+        if (rightLen > 0) {
+            rightNorm = [right[0] / rightLen, right[1] / rightLen, right[2] / rightLen]
+        }
+        
+        if (this.keysPressed.has('w')) {
+            this.center![0] += forward[0] * moveSpeed
+            this.center![1] += forward[1] * moveSpeed
+            this.center![2] += forward[2] * moveSpeed
+        }
+        if (this.keysPressed.has('s')) {
+            this.center![0] -= forward[0] * moveSpeed
+            this.center![1] -= forward[1] * moveSpeed
+            this.center![2] -= forward[2] * moveSpeed
+        }
+        if (this.keysPressed.has('a')) {
+            this.center![0] -= rightNorm[0] * moveSpeed
+            this.center![1] -= rightNorm[1] * moveSpeed
+            this.center![2] -= rightNorm[2] * moveSpeed
+        }
+        if (this.keysPressed.has('d')) {
+            this.center![0] += rightNorm[0] * moveSpeed
+            this.center![1] += rightNorm[1] * moveSpeed
+            this.center![2] += rightNorm[2] * moveSpeed
+        }
+        if (this.keysPressed.has(' ')) this.center![1] += moveSpeed
+        if (this.keysPressed.has('shift')) this.center![1] -= moveSpeed
+        this.renderImmediately()
+        requestAnimationFrame(() => this.animate())
     }
 
 }

@@ -14,10 +14,34 @@ const getExtensions = (type: number): string[] => {
     }
 };
 
-export const copySchematic = async (id: number, sub: number, version: number, type: number, name:string = 'def') => {
+const ensureExtension = (name: string, type: number): string => {
+    const exts = getExtensions(type);
+    if (exts.length === 0) return name;
+
+    const expectedExt = `.${exts[0]}`;
+
+    if (name.toLowerCase().endsWith(expectedExt)) {
+        return name;
+    }
+
+    const lastDot = name.lastIndexOf('.');
+    if (lastDot !== -1) {
+        return name.slice(0, lastDot) + expectedExt;
+    }
+
+    return name + expectedExt;
+};
+export const copySchematic = async (
+    id: number,
+    sub: number,
+    version: number,
+    type: number,
+    name: string = 'def'
+) => {
     try {
+        const fixedName = ensureExtension(name, type);
         const path = await save({
-            defaultPath: name,
+            defaultPath: fixedName,
             filters: [
                 {
                     name: 'Schematic File',
@@ -30,20 +54,19 @@ export const copySchematic = async (id: number, sub: number, version: number, ty
             toast.error(`未选择目标目录`, { timeout: 3000 });
             return;
         }
-        //console.log(path)
+
         const result = await invoke('copy_schematic', {
-            id: id,
-            sub: sub,
-            version: version,
+            id,
+            sub,
+            version,
             vType: type,
-            target: path
+            target: path,
         });
 
         if (result) {
             toast.success(`复制成功！`, { timeout: 3000 });
         }
     } catch (error) {
-        //console.error('复制失败:', error);
         toast.error(`复制失败: ${error}`, { timeout: 3000 });
     }
 };
