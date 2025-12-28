@@ -32,6 +32,7 @@ const selectedBpId = ref(null)
 const draggingOverId = ref<number | null>(null)
 const selectedBpName = ref('')
 const hasMore = ref(true);
+const isDraggingTag = ref(false)
 const rail_e = ref(true) // rail 折叠状态
 const panelExpanded = ref(false)
 const isLoading = ref(false);
@@ -200,7 +201,22 @@ const handleScroll = () => {
 const handleDragStart = (event: DragEvent, tag: string) => {
   if (!event.dataTransfer) return
   event.dataTransfer.setData('tag', tag)
+  event.dataTransfer.effectAllowed = 'copy'
+
+  const ghost = document.createElement('div')
+  ghost.innerText = `🏷 ${tag}`
+  ghost.style.padding = '4px 8px'
+  ghost.style.background = '#1976d2'
+  ghost.style.color = '#fff'
+  ghost.style.borderRadius = '6px'
+  ghost.style.fontSize = '12px'
+  document.body.appendChild(ghost)
+
+  event.dataTransfer.setDragImage(ghost, 0, 0)
+  setTimeout(() => document.body.removeChild(ghost), 0)
+  isDraggingTag.value = true
 }
+
 
 const handleDragEnter = (bp: SchematicsData) => {
   draggingOverId.value = bp.id
@@ -236,6 +252,8 @@ const handleDrop = async (event: DragEvent, bp: SchematicsData) => {
   );
 
   bp.schematic_tags = currentTags.join(',')
+  isDraggingTag.value = false
+  countMap.value[tag] = (countMap.value[tag] ?? 0) + 1
   toast.success(`已为蓝图「${bp.name}」添加标签「${tag}」`, { timeout: 3000 })
 }
 const confirmDeleteClassification = async () => {
@@ -415,6 +433,7 @@ const batchExport = async () => {
               @dragstart="handleDragStart($event, tag)"
           >
             <v-list-item-title class="font-medium mt-2">
+              <v-icon size="20" class="cursor-grab" v-if="!rail_e">mdi-drag-vertical</v-icon>
               <v-icon size="20">mdi-bookmark-box-multiple-outline</v-icon>
               {{ tag }}
             </v-list-item-title>
@@ -462,7 +481,7 @@ const batchExport = async () => {
                 v-for="(bp) in schematics"
                 :key="bp.id"
                 class="py-2 blueprint-item"
-                :class="{ 'drag-over': draggingOverId == bp.id, 'selected-item': isSelected(bp.id) }"
+                :class="{ 'drag-over': draggingOverId == bp.id, 'selected-item': isSelected(bp.id), 'drag-ready': isDraggingTag }"
                 :title="bp.name"
                 @drop="handleDrop($event, bp)"
                 @dragover.prevent
@@ -840,6 +859,18 @@ const batchExport = async () => {
 .blueprint-item.selected-item {
   background-color: rgba(25, 118, 210, 0.08); /* 选中高亮 */
   border-left: 4px solid #1976d2;
+}
+.cursor-grab {
+  cursor: grab;
+}
+.cursor-grab:active {
+  cursor: grabbing;
+}
+.blueprint-item.drag-ready {
+  transition: background 0.2s;
+}
+.blueprint-item.drag-ready:hover {
+  background: rgba(25, 118, 210, 0.05);
 }
 
 </style>
