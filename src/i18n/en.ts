@@ -268,7 +268,21 @@ export default {
     containerItems: 'Container Items',
     size: 'Size',
     author: 'Author',
-    version: 'Version'
+    version: 'Version',
+    ModelToSchem: 'Model to Blueprint',
+    confirmModelExport: 'Confirm Export',
+    modelMapArtNotReady: 'Model data is not ready yet',
+    modelMapArtColorTableMissing: 'Map art color table is not loaded',
+    modelMapArtNoConvertibleBlocks: 'No convertible blocks found in current model',
+    modelMapArtExportSuccess: 'Model converted to blueprint successfully',
+    modelMapArtExportError: 'Model to blueprint failed: {error}',
+    mainType: 'Main Type',
+    subType: 'Sub Type',
+    axisOrientation: 'Axis Orientation',
+    max3dHeight: 'Max 3D Height',
+    enableMapArt3d: 'Enable 3D Map Art',
+    enableDithering: 'Enable Dithering',
+    replaceAir: 'Replace transparent pixels with air'
   },
   common: {
     save: 'Save',
@@ -503,7 +517,41 @@ export default {
     title: 'Toolbox',
     tabs: {
       mapArt: 'Map Art',
+      ModelToSchem: 'Model to Blueprint',
       redstoneMusic: 'Redstone Music'
+    },
+    modelToSCHEM: {
+      tip: 'Use map art block-color mapping to project the currently selected schematic model and export it as a map art blueprint.',
+      noSchematic: 'No current schematic detected. Please select and load one first in schematic pages.',
+      selectModelFile: 'Select model file (OBJ / GLTF / GLB / STL)',
+      mtlFileOptional: 'MTL material file (optional)',
+      textureFilesOptional: 'Texture images (optional, multiple)',
+      exportName: 'Export file name',
+      loadingModel: 'Loading model...',
+      previewPlaceholder: 'Load a model file to start preview',
+      noModel: 'Please select and load a model file first',
+      previewNotReady: 'Preview is not ready yet',
+      unsupportedFormat: 'Only OBJ / GLTF / GLB / STL files are supported',
+      loadError: 'Model loading failed: {error}'
+      ,voxelResolution: 'Voxel resolution (max edge blocks)'
+      ,sampleDensity: 'Surface sample density'
+      ,autoVoxelResolution: 'Auto adjust voxel resolution by model size'
+      ,voxelAutoHint: 'Auto resolution is enabled, manual voxel resolution input is ignored'
+      ,modelMetrics: 'Model max edge: {size}, triangles: {triangles}'
+      ,showVoxelPreview: 'Show voxel building preview'
+      ,modelPreviewTitle: 'Original model preview'
+      ,voxelPreviewTitle: 'Voxel building preview'
+      ,refreshToPreview: 'Click Refresh on the left to generate voxel preview'
+      ,colorMatch: 'Color match mode'
+      ,matchModeRgb: 'RGB Euclidean'
+      ,matchModeWeighted: 'Weighted distance'
+      ,matchModeRedmean: 'Redmean'
+      ,brightness: 'Brightness'
+      ,contrast: 'Contrast'
+      ,saturation: 'Saturation'
+      ,noSelectedBlocks: 'Please select at least one block in block selector'
+      ,noVoxelResult: 'Voxelization result is empty, increase resolution or sample density'
+      ,voxelResult: 'Voxel result: {blocks} blocks, size {size}'
     }
   },
   individuation: {

@@ -88,50 +88,9 @@ const extractIconFromAtlas = (atlasUrl: string, uv: [number, number, number, num
             const img = new Image();
             img.crossOrigin = 'anonymous';
             
-            img.onload = async () => {
+            img.onload = () => {
                 atlasImageCache.set(atlasUrl, img);
-                
-                const sprites = Object.entries(blockIconSpriteMap).filter(([, sprite]) => sprite.atlasUrl === atlasUrl);
-                const BATCH_SIZE = 10; 
-                let processedCount = 0;
-                
-                const processBatch = async () => {
-                    for (let i = 0; i < sprites.length; i += BATCH_SIZE) {
-                        const batch = sprites.slice(i, i + BATCH_SIZE);
-                        
-                        for (const [, sprite] of batch) {
-                            const key = `${atlasUrl}_${sprite.uv.join(',')}`;
-                            if (!iconDataUrlCache.has(key)) {
-                                try {
-                                    const [u0, v0, u1, v1] = sprite.uv;
-                                    const x = Math.floor(u0 * img.width);
-                                    const y = Math.floor(v0 * img.height);
-                                    const w = Math.ceil((u1 - u0) * img.width);
-                                    const h = Math.ceil((v1 - v0) * img.height);
-                                    
-                                    const canvas = getOrCreateCanvas(Math.max(w, h, 32));
-                                    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-                                    ctx.clearRect(0, 0, w, h);
-                                    ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-                                    
-                                    if (canvas instanceof HTMLCanvasElement) {
-                                        iconDataUrlCache.set(key, canvas.toDataURL('image/png'));
-                                        processedCount++;
-                                    }
-                                } catch (err) {
-                                    console.error('Failed to process icon:', err);
-                                }
-                            }
-                        }
-                        
-                        iconCacheVersion.value++;
-                        await new Promise(resolve => setTimeout(resolve, 16)); 
-                    }
-                    
-                    console.log(`Processed ${processedCount} icons from atlas`);
-                };
-                
-                processBatch();
+                iconCacheVersion.value++;
                 resolve(img);
             };
             

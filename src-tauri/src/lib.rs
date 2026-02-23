@@ -21,7 +21,7 @@ use database::db_apis::schematics_api::{add_schematic, get_schematic, get_schema
 use database::db_apis::user_api::{get_user_data, update_user_classification_tauri, get_user_classification};
 use modules::convert::{convert, convert_lm, get_je_blocks, get_map_arts, get_schematic_convert_data};
 use modules::history::get_history;
-use modules::map_art::create_map_art;
+use modules::map_art::{create_map_art, create_map_art_from_pixels};
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_str,
@@ -74,6 +74,7 @@ pub fn run() {
             encode_uploaded_schematic,
             count_schematics,
             create_map_art,
+            create_map_art_from_pixels,
             update_schematic_name_description,
             get_user_data,
             get_user_classification,

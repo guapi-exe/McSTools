@@ -274,7 +274,21 @@
         containerItems: '容器內物品',
         size: '尺寸',
         author: '作者',
-        version: '版本'
+        version: '版本',
+        ModelToSchem: '模型轉藍圖',
+        confirmModelExport: '確認導出',
+        modelMapArtNotReady: '模型資料尚未載入完成',
+        modelMapArtColorTableMissing: '地圖畫顏色配置尚未載入',
+        modelMapArtNoConvertibleBlocks: '目前模型沒有可轉換為地圖畫的方塊',
+        modelMapArtExportSuccess: '模型轉藍圖成功，可前往倉庫查看',
+        modelMapArtExportError: '模型轉藍圖失敗：{error}',
+        mainType: '主類型',
+        subType: '子類型',
+        axisOrientation: '法線軸朝向',
+        max3dHeight: '立體最大高度',
+        enableMapArt3d: '啟用立體地圖畫',
+        enableDithering: '啟用抖動算法',
+        replaceAir: '透明像素替換為空氣'
     },
     common: {
         save: '儲存',
@@ -546,7 +560,41 @@
         title: '工具箱',
         tabs: {
             mapArt: '地圖畫',
+            ModelToSchem: '模型轉藍圖',
             redstoneMusic: '紅石音樂'
+        },
+        modelToSCHEM: {
+            tip: '基於地圖畫方塊與顏色對照表，將目前已選藍圖模型投影並導出為地圖畫藍圖。',
+            noSchematic: '未偵測到目前藍圖，請先在藍圖相關頁面選擇並載入藍圖。',
+            selectModelFile: '選擇模型檔案（OBJ / GLTF / GLB / STL）',
+            mtlFileOptional: 'MTL 材質檔（可選）',
+            textureFilesOptional: '紋理圖片（可選，多選）',
+            exportName: '導出檔名',
+            loadingModel: '正在載入模型...',
+            previewPlaceholder: '請先載入模型檔案以開始預覽',
+            noModel: '請先選擇並載入模型檔案',
+            previewNotReady: '預覽尚未準備好',
+            unsupportedFormat: '僅支援 OBJ / GLTF / GLB / STL 檔案',
+            loadError: '模型載入失敗: {error}'
+            ,voxelResolution: '體素解析度（最大邊長方塊數）'
+            ,sampleDensity: '表面取樣密度'
+            ,autoVoxelResolution: '依模型大小自動調整體素解析度'
+            ,voxelAutoHint: '目前為自動解析度模式，手動體素解析度輸入不會生效'
+            ,modelMetrics: '模型最大邊長: {size}，三角面數: {triangles}'
+            ,showVoxelPreview: '顯示體素建築預覽'
+            ,modelPreviewTitle: '原模型預覽'
+            ,voxelPreviewTitle: '體素建築預覽'
+            ,refreshToPreview: '點擊左側「刷新」生成體素建築預覽'
+            ,colorMatch: '色彩匹配算法'
+            ,matchModeRgb: 'RGB 歐式'
+            ,matchModeWeighted: '加權距離'
+            ,matchModeRedmean: 'Redmean'
+            ,brightness: '亮度'
+            ,contrast: '對比度'
+            ,saturation: '飽和度'
+            ,noSelectedBlocks: '請先在方塊選擇器中選擇至少一種方塊'
+            ,noVoxelResult: '體素化結果為空，請提高解析度或取樣密度'
+            ,voxelResult: '體素結果：{blocks} 方塊，尺寸 {size}'
         }
     },
     individuation: {

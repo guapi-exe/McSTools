@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {nextTick, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {onBeforeUnmount, onMounted, ref, watch} from "vue";
 import {
   Structure, StructureRenderer,
 } from "deepslate";
@@ -160,9 +160,17 @@ const currentView = ref<ViewType>('free');
 const loadStructure = async () => {
   const schematic_data = await fetchSchematicData(schematic_id.value)
   const schematic_size = schematic_data.size
+  const totalVolume = schematic_size.width * schematic_size.height * schematic_size.length
+  const isLargeStructure = totalVolume >= 100 * 100 * 100
+  if (isLargeStructure) {
+    once_threeD.value = true
+  }
   const structure = new Structure([schematic_size.width, schematic_size.height, schematic_size.length])
   const blocks = schematic_data.blocks
   const tile_entities_list = schematic_data.tile_entities_list
+
+  layerMap.clear()
+  layers.value = {}
   
   tileEntitiesMap.value.clear();
   if (tile_entities_list?.elements) {
@@ -176,20 +184,27 @@ const loadStructure = async () => {
   let minX = Infinity;
   let minY = Infinity;
   let minZ = Infinity;
-  const validElements = [];
+  const normalizedBlocks: Array<{
+    x: number,
+    y: number,
+    z: number,
+    id: string,
+    properties: Record<string, any>
+  }> = [];
   const materialMap = new Map<string, number>();
   progress.value = 0;
-  const CHUNK_SIZE = 5000;
+  const CHUNK_SIZE = 10000;
+  let chunkCounter = 0;
   for (let i = 0; i < blocks.elements.length; i += CHUNK_SIZE) {
     const chunkEnd = Math.min(i + CHUNK_SIZE, blocks.elements.length);
     for (let j = i; j < chunkEnd; j++) {
       const element = blocks.elements[j];
       const pos = element.pos;
       if (!element.block) {
-        console.warn('Element has no block:', element);
         continue;
       }
-      if (typeof element.block.id === 'string' && element.block.id.toLowerCase() === 'minecraft:air') {
+      const blockId = element.block.id;
+      if (typeof blockId !== 'string' || blockId.toLowerCase() === 'minecraft:air') {
         continue;
       }
       if (typeof pos.x !== 'number' || typeof pos.y !== 'number' || typeof pos.z !== 'number') {
@@ -198,21 +213,28 @@ const loadStructure = async () => {
       const x = Math.round(pos.x);
       const y = Math.round(pos.y);
       const z = Math.round(pos.z);
-      validElements.push(element);
+
+      normalizedBlocks.push({
+        x,
+        y,
+        z,
+        id: blockId,
+        properties: element.block.properties || {}
+      });
+
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (z < minZ) minZ = z;
-      const blockId = element.block.id;
-      if (blockId) {
-        materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
-      }
+      materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
     }
+
     progress.value = Math.floor((i / blocks.elements.length) * 40);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    await nextTick();
+    chunkCounter++;
+    if (chunkCounter % 4 === 0) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
   }
 
-  layers.value = {};
   materialOverview.value = Array.from(materialMap.entries())
       .map(([id, count]) => ({
         id,
@@ -220,21 +242,17 @@ const loadStructure = async () => {
         count
       }))
       .sort((a, b) => b.count - a.count);
-  for (let i = 0; i < blocks.elements.length; i += CHUNK_SIZE) {
-    const chunkEnd = Math.min(i + CHUNK_SIZE, blocks.elements.length);
-
+  for (let i = 0; i < normalizedBlocks.length; i += CHUNK_SIZE) {
+    const chunkEnd = Math.min(i + CHUNK_SIZE, normalizedBlocks.length);
     for (let j = i; j < chunkEnd; j++) {
-      const element = blocks.elements[j];
-      if (!element.block || element.block.id?.toLowerCase() === 'minecraft:air') continue;
+      const block = normalizedBlocks[j];
+      const rx = block.x - minX;
+      const ry = block.y - minY;
+      const rz = block.z - minZ;
 
-      const { x, y, z } = element.pos;
-      if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') continue;
-
-      const rx = Math.round(x - minX);
-      const ry = Math.round(y - minY);
-      const rz = Math.round(z - minZ);
-
-      validElements.push(element);
+      if (!isLargeStructure || !once_threeD.value) {
+        structure.addBlock([rx, ry, rz], block.id, block.properties);
+      }
 
       if (!layerMap.has(ry)) {
         layerMap.set(ry, []);
@@ -242,37 +260,23 @@ const loadStructure = async () => {
       layerMap.get(ry)!.push({
         pos: [rx, ry, rz],
         block: {
-          id: element.block.id,
-          properties: element.block.properties || {}
+          id: block.id,
+          properties: block.properties
         }
       });
     }
-    progress.value = 40 + Math.floor((i / blocks.elements.length) * 60);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    await nextTick();
-  }
-
-  const addBlocksToStructure = (elements: typeof blocks.elements) => {
-    for (const element of elements) {
-      const { x, y, z } = element.pos;
-      structure.addBlock(
-          [Math.round(x - minX), Math.round(y - minY), Math.round(z - minZ)],
-          element.block.id,
-          element.block.properties || {}
-      );
+    progress.value = 40 + Math.floor((i / Math.max(1, normalizedBlocks.length)) * 60);
+    if ((i / CHUNK_SIZE) % 4 === 0) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
     }
-  };
-  for (let i = 0; i < validElements.length; i += CHUNK_SIZE) {
-    const chunk = validElements.slice(i, i + CHUNK_SIZE);
-    addBlocksToStructure(chunk);
-    await new Promise(resolve => requestAnimationFrame(resolve));
   }
+  normalizedBlocks.length = 0
   const layersObj: Record<number, any> = {};
   for (const [y, blocks] of layerMap) {
     layersObj[y] = blocks;
   }
   structure_l.value = structure;
-  size_l.value = structure.getSize();
+  size_l.value = [schematic_size.width, schematic_size.height, schematic_size.length] as any;
   layers.value = layersObj;
 }
 
@@ -342,7 +346,7 @@ const reloadRenderer = async () => {
       {
         facesPerBuffer: 500,
         chunkSize: 16,
-        useInvisibleBlockBuffer: true,
+        useInvisibleBlockBuffer: false,
       }
   );
 

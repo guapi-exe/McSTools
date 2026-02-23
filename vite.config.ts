@@ -43,5 +43,19 @@ export default defineConfig(async () => ({
                 'vuetify',
             ],
         },
+        build: {
+            target: 'es2020',
+            rollupOptions: {
+                output: {
+                    manualChunks: {
+                        'vendor-vue': ['vue', 'vue-router', 'vue-i18n'],
+                        'vendor-vuetify': ['vuetify'],
+                        'vendor-three': ['three'],
+                        'vendor-echarts': ['echarts'],
+                        'vendor-utils': ['axios', 'dayjs', 'jszip'],
+                    },
+                },
+            },
+        },
 }
 ));

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {computed, onBeforeMount, onMounted, reactive, ref} from "vue";
+import {computed, nextTick, onBeforeMount, onMounted, reactive, ref} from "vue";
 import {mapArtData} from "../../modules/map_art/map_art_data.ts"
 import {getBlockImg, toast} from "../../modules/others.ts";
-import {encode_image, image_data} from "../../modules/map_art/encode_image.ts";
+import {encode_image, image_data, releaseProcessedImage} from "../../modules/map_art/encode_image.ts";
 import {MapArtProcessor} from "../../modules/map_art/image_rebuild.ts";
 import {useI18n} from "vue-i18n";
 const exportSettings = reactive({
@@ -13,7 +13,14 @@ const exportSettings = reactive({
   schematic_type: 1,
   sub_type: -1,
   axios: 'y',
-  targetRotation: 0
+  targetRotation: 0,
+  ditherMode: 'floyd' as 'floyd' | 'atkinson' | 'ordered' | 'none',
+  adaptiveThreshold: 0.35,
+  matchMode: 'weighted' as 'rgb' | 'weighted' | 'redmean',
+  brightness: 1,
+  contrast: 1,
+  saturation: 1,
+  gamma: 1
 });
 const replaceAir = ref(false)
 const schematicType = ref()
@@ -31,7 +38,7 @@ const schematicTypes = ref([
     value: 2,
     label: '投影结构',
     subtypes: [
-      { value: -1, label: 'Litematica格式' }
+      { value: -1, label: '默认格式' }
     ]
   },
   {
@@ -66,6 +73,7 @@ const isProcessing = ref(false)
 const exportLoading = ref(false)
 const exportImageLoading = ref(false)
 const dialog = ref(false)
+const fullscreenDialog = ref(false)
 const selectedBlocks = ref<string[]>([]);
 const expandedCategories = ref<string[]>([])
 const imageBuild = ref<MapArtProcessor>();
@@ -75,6 +83,59 @@ const threeD = ref<boolean>()
 const maxZ = ref(60)
 const previewImage = ref<string>("");
 const blocksLoaded = ref(false);
+const fullscreenCanvas = ref<HTMLCanvasElement | null>(null)
+const fsScale = ref(1)
+const fsOffset = reactive({ x: 0, y: 0 })
+const fsDragging = ref(false)
+const fsDragStart = reactive({ x: 0, y: 0 })
+const fsCanvasStyle = computed(() => ({
+  transform: `translate(${fsOffset.x}px, ${fsOffset.y}px) scale(${fsScale.value})`,
+  transformOrigin: 'center center',
+  cursor: fsDragging.value ? 'grabbing' : 'grab'
+}))
+
+const resetFullscreenView = () => {
+  fsScale.value = 1
+  fsOffset.x = 0
+  fsOffset.y = 0
+}
+
+const openFullscreen = async () => {
+  if (!finallyImage.value) return
+  fullscreenDialog.value = true
+  await nextTick()
+  const canvas = fullscreenCanvas.value
+  if (!canvas) return
+  canvas.width = finallyImage.value.width
+  canvas.height = finallyImage.value.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(finallyImage.value, 0, 0)
+  resetFullscreenView()
+}
+
+const onFullscreenWheel = (event: WheelEvent) => {
+  event.preventDefault()
+  const nextScale = Math.min(8, Math.max(0.2, fsScale.value * (event.deltaY > 0 ? 0.9 : 1.1)))
+  fsScale.value = nextScale
+}
+
+const onFullscreenMouseDown = (event: MouseEvent) => {
+  fsDragging.value = true
+  fsDragStart.x = event.clientX - fsOffset.x
+  fsDragStart.y = event.clientY - fsOffset.y
+}
+
+const onFullscreenMouseMove = (event: MouseEvent) => {
+  if (!fsDragging.value) return
+  fsOffset.x = event.clientX - fsDragStart.x
+  fsOffset.y = event.clientY - fsDragStart.y
+}
+
+const onFullscreenMouseUp = () => {
+  fsDragging.value = false
+}
 const toggleBlock = (blockId: string) => {
   const index = selectedBlocks.value.indexOf(blockId)
   if (index === -1) {
@@ -126,10 +187,29 @@ const isCategorySelected = (categoryName: string) => {
 }
 const refreshImage = async () => {
   try {
+    if (!image_data.value) return
     isProcessing.value = true
     hasImage.value = true
     imageBuild.value.updateBlocksData(selectedBlocks.value)
-    const resultCanvas = await imageBuild.value.generatePixelArt(image_data.value.image, 16, {width: exportSettings.width, height:exportSettings.height}, exportSettings.dithering, replaceAir.value, exportSettings.targetRotation as 0 | 90 | 180| 270);
+    const resultCanvas = await imageBuild.value.generatePixelArt(
+        image_data.value.file,
+        16,
+        {width: exportSettings.width, height:exportSettings.height},
+        exportSettings.dithering,
+        replaceAir.value,
+        exportSettings.targetRotation as 0 | 90 | 180| 270,
+        {
+          matchMode: exportSettings.matchMode,
+          brightness: exportSettings.brightness,
+          contrast: exportSettings.contrast,
+          saturation: exportSettings.saturation,
+          gamma: exportSettings.gamma,
+        },
+        {
+          mode: exportSettings.ditherMode,
+          adaptiveThreshold: exportSettings.adaptiveThreshold,
+        }
+    );
     finallyImage.value = resultCanvas
     const ctx = previewCanvas.value.getContext('2d')
     if (!ctx) return
@@ -148,15 +228,38 @@ const refreshImage = async () => {
 }
 const uploadImage = async(file: File | undefined) => {
   try {
+    if (!file) return
     isProcessing.value = true
     hasImage.value = true
+    if (image_data.value) {
+      releaseProcessedImage(image_data.value)
+    }
     image_data.value = await encode_image(file);
+    previewImage.value = image_data.value.objectUrl
     exportSettings.height = Math.round(image_data.value.height)
     exportSettings.width = Math.round(image_data.value.width)
     if (exportSettings.height*16 * exportSettings.width*16 >= 16384* 16384) resize.value = 0.5
     imageBuild.value.updateBlocksData(selectedBlocks.value)
     await updateSize()
-    const resultCanvas = await imageBuild.value.generatePixelArt(image_data.value.image, 16, {width: exportSettings.width, height:exportSettings.height}, exportSettings.dithering, replaceAir.value, exportSettings.targetRotation as 0 | 90 | 180| 270);
+    const resultCanvas = await imageBuild.value.generatePixelArt(
+        image_data.value.file,
+        16,
+        {width: exportSettings.width, height:exportSettings.height},
+        exportSettings.dithering,
+        replaceAir.value,
+        exportSettings.targetRotation as 0 | 90 | 180| 270,
+        {
+          matchMode: exportSettings.matchMode,
+          brightness: exportSettings.brightness,
+          contrast: exportSettings.contrast,
+          saturation: exportSettings.saturation,
+          gamma: exportSettings.gamma,
+        },
+        {
+          mode: exportSettings.ditherMode,
+          adaptiveThreshold: exportSettings.adaptiveThreshold,
+        }
+    );
     finallyImage.value = resultCanvas
     const ctx = previewCanvas.value.getContext('2d')
     if (!ctx) return
@@ -174,14 +277,16 @@ const uploadImage = async(file: File | undefined) => {
   }
 }
 const updateSize = async() => {
+  if (!image_data.value) return
   exportSettings.width = Math.round(image_data.value.width * resize.value);
   exportSettings.height = Math.round(image_data.value.height * resize.value)
 }
 const exportSchematicData = async() => {
   exportLoading.value = true
   try {
+    if (!image_data.value) return
     let result = await imageBuild.value.exportSchematic(
-        image_data.value.image,
+        image_data.value.file,
         image_data.value.name,
         exportSettings.schematic_type,
         exportSettings.sub_type,
@@ -191,7 +296,18 @@ const exportSchematicData = async() => {
         replaceAir.value,
         threeD.value,
         maxZ.value,
-        exportSettings.axios as 'x' | 'y' | 'z'
+        exportSettings.axios as 'x' | 'y' | 'z',
+        {
+          matchMode: exportSettings.matchMode,
+          brightness: exportSettings.brightness,
+          contrast: exportSettings.contrast,
+          saturation: exportSettings.saturation,
+          gamma: exportSettings.gamma,
+        },
+        {
+          mode: exportSettings.ditherMode,
+          adaptiveThreshold: exportSettings.adaptiveThreshold,
+        }
     )
     if (result){
       toast.success(`已成功导出蓝图可前往仓库查看`, {
@@ -235,7 +351,11 @@ onMounted(async () => {
 
 })
 const cleanImage = async() => {
+  if (image_data.value) {
+    releaseProcessedImage(image_data.value)
+  }
   image_data.value = undefined;
+  previewImage.value = ""
   hasImage.value = false;
   const canvas = previewCanvas.value;
   if (!canvas) return;
@@ -254,14 +374,15 @@ onBeforeMount(async() => {
 </script>
 
 <template>
-  <v-row no-gutters class="mx-auto v-theme--custom text-primary">
-    <v-col cols="12" md="4" class="pa-4 d-flex flex-column text-medium-emphasis">
+  <v-row no-gutters class="mx-auto v-theme--custom text-primary map-editor-row">
+    <v-col cols="12" md="4" class="pa-4 d-flex flex-column text-medium-emphasis config-column">
+      <div class="config-scroll">
       <v-row v-if="image_data != undefined">
         <v-col cols="12" class="image-column" >
           <v-img
               :aspect-ratio="16/9"
               :style="{
-                    backgroundImage: `url(${image_data.base64})`,
+                  backgroundImage: `url(${image_data.objectUrl})`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     backgroundAttachment: 'fixed',
@@ -356,13 +477,6 @@ onBeforeMount(async() => {
         >
           {{$t('mapImage2d.uploadImageTip')}}
         </v-alert>
-        <v-img
-            v-else
-            :src="previewImage"
-            :max-height="300"
-            contain
-            class="mb-4 elevation-2 rounded"
-        ></v-img>
       </div>
 
       <div class="flex-grow-1 overflow-y-auto">
@@ -418,6 +532,30 @@ onBeforeMount(async() => {
           </template>
         </v-switch>
 
+        <v-select
+          v-model="exportSettings.ditherMode"
+          :items="[
+            { title: 'Floyd-Steinberg', value: 'floyd' },
+            { title: 'Atkinson', value: 'atkinson' },
+            { title: '有序抖动(Bayer)', value: 'ordered' },
+            { title: '关闭抖动', value: 'none' }
+          ]"
+          label="抖动模式"
+          density="compact"
+          class="mb-2"
+        ></v-select>
+
+        <v-slider
+          v-model="exportSettings.adaptiveThreshold"
+          :min="0"
+          :max="1"
+          :step="0.05"
+          thumb-label
+          label="自适应阈值"
+          color="info"
+          class="mb-2"
+        ></v-slider>
+
         <v-switch
             class="ml-4"
             v-model="replaceAir"
@@ -441,6 +579,62 @@ onBeforeMount(async() => {
             </v-tooltip>
           </template>
         </v-switch>
+
+        <v-select
+          v-model="exportSettings.matchMode"
+          :items="[
+            { title: 'RGB欧式', value: 'rgb' },
+            { title: '加权距离', value: 'weighted' },
+            { title: 'Redmean', value: 'redmean' }
+          ]"
+          label="色彩匹配算法"
+          density="compact"
+          class="mb-2"
+        ></v-select>
+
+        <v-slider
+          v-model="exportSettings.brightness"
+          :min="0.5"
+          :max="1.5"
+          :step="0.05"
+          thumb-label
+          label="亮度"
+          color="info"
+          class="mb-1"
+        ></v-slider>
+
+        <v-slider
+          v-model="exportSettings.contrast"
+          :min="0.5"
+          :max="1.5"
+          :step="0.05"
+          thumb-label
+          label="对比度"
+          color="info"
+          class="mb-1"
+        ></v-slider>
+
+        <v-slider
+          v-model="exportSettings.saturation"
+          :min="0.5"
+          :max="1.5"
+          :step="0.05"
+          thumb-label
+          label="饱和度"
+          color="info"
+          class="mb-1"
+        ></v-slider>
+
+        <v-slider
+          v-model="exportSettings.gamma"
+          :min="0.6"
+          :max="1.8"
+          :step="0.05"
+          thumb-label
+          label="Gamma"
+          color="info"
+          class="mb-1"
+        ></v-slider>
       </div>
       <v-btn
           variant="outlined"
@@ -478,7 +672,7 @@ onBeforeMount(async() => {
           <v-toolbar-title>{{$t('mapImage2d.blockSelector')}}</v-toolbar-title>
         </v-toolbar>
 
-        <v-list style="height: 80vh">
+        <v-list>
           <v-list-group
               v-for="category in mapArtData"
               :key="category.name"
@@ -563,10 +757,12 @@ onBeforeMount(async() => {
           </v-list-group>
         </v-list>
       </v-card>
+      </div>
 
     </v-col>
 
-    <v-col cols="12" md="8" class="pa-4 d-flex flex-column">
+    <v-col cols="12" md="8" class="pa-4 d-flex flex-column preview-column">
+      <div class="preview-scroll">
       <div class="preview-container elevation-3 rounded-lg">
         <div v-if="isProcessing" class="processing-overlay">
           <v-progress-circular
@@ -578,6 +774,14 @@ onBeforeMount(async() => {
         </div>
 
         <div class="preview-content">
+          <v-btn
+              v-if="hasImage"
+              size="small"
+              variant="tonal"
+              color="info"
+              class="fullscreen-btn"
+              @click="openFullscreen"
+          >全屏查看</v-btn>
           <canvas
               ref="previewCanvas"
               class="pixel-canvas"
@@ -597,9 +801,34 @@ onBeforeMount(async() => {
           ></v-alert>
         </div>
       </div>
+      </div>
 
     </v-col>
   </v-row>
+  <v-dialog v-model="fullscreenDialog" fullscreen>
+    <v-card class="fullscreen-card">
+      <v-toolbar density="compact">
+        
+        <v-spacer></v-spacer>
+        <v-btn variant="text" @click="resetFullscreenView">重置</v-btn>
+        <v-btn variant="text" @click="fullscreenDialog = false">关闭</v-btn>
+      </v-toolbar>
+      <div
+          class="fullscreen-stage"
+          @wheel="onFullscreenWheel"
+          @mousedown="onFullscreenMouseDown"
+          @mousemove="onFullscreenMouseMove"
+          @mouseup="onFullscreenMouseUp"
+          @mouseleave="onFullscreenMouseUp"
+      >
+        <canvas
+            ref="fullscreenCanvas"
+            class="fullscreen-canvas"
+            :style="fsCanvasStyle"
+        ></canvas>
+      </div>
+    </v-card>
+  </v-dialog>
   <v-dialog
       v-model="dialog"
       max-width="500"
@@ -711,10 +940,38 @@ onBeforeMount(async() => {
 </template>
 
 <style scoped>
+.map-editor-row {
+  height: calc(100vh - 64px);
+}
+
+.config-column,
+.preview-column {
+  height: 100%;
+  overflow: hidden;
+}
+
+.config-scroll,
+.preview-scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
 .preview-container {
-  display: inline-block;
+  display: block;
   position: relative;
+  min-height: 70vh;
   background: repeating-conic-gradient(#f5f5f5 0% 25%, white 0% 50%) 50% / 20px 20px;
+}
+
+.preview-content {
+  position: relative;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
 }
 
 .processing-overlay {
@@ -736,5 +993,25 @@ onBeforeMount(async() => {
   height: 100%;
   object-fit: contain;
   transition: opacity 0.3s ease;
+}
+
+.fullscreen-card {
+  height: 100%;
+}
+
+.fullscreen-stage {
+  height: calc(100% - 48px);
+  background: #111;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-canvas {
+  max-width: none;
+  max-height: none;
+  will-change: transform;
+  user-select: none;
 }
 </style>

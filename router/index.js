@@ -1,13 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeViews from "../src/views/homeViews.vue";
-import ToolsViews from "../src/views/toolsViews.vue";
-import SchematicViews from "../src/views/schematicsViews.vue"
-import IndividuationViews from "../src/views/individuationViews.vue"
-import ReportViews from "../src/views/reportViews.vue";
-import AboutViews from "../src/views/aboutViews.vue";
-import EmptyViews from "../src/views/EmptyViews.vue"
-import OthersViews from "../src/views/othersViews.vue";
-import SettingViews from "../src/views/settingViews.vue";
+
+const HomeViews = () => import('../src/views/homeViews.vue')
+const ToolsViews = () => import('../src/views/toolsViews.vue')
+const SchematicViews = () => import('../src/views/schematicsViews.vue')
+const IndividuationViews = () => import('../src/views/individuationViews.vue')
+const ReportViews = () => import('../src/views/reportViews.vue')
+const AboutViews = () => import('../src/views/aboutViews.vue')
+const EmptyViews = () => import('../src/views/EmptyViews.vue')
+const OthersViews = () => import('../src/views/othersViews.vue')
+const SettingViews = () => import('../src/views/settingViews.vue')
 const routes = [
     {
         path: '/',

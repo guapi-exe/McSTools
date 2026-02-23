@@ -274,7 +274,21 @@ export default {
     containerItems: '容器内物品',
     size: '尺寸',
     author: '作者',
-    version: '版本'
+    version: '版本',
+    ModelToSchem: '模型转蓝图',
+    confirmModelExport: '确认导出',
+    modelMapArtNotReady: '模型数据尚未加载完成',
+    modelMapArtColorTableMissing: '地图画颜色配置尚未加载',
+    modelMapArtNoConvertibleBlocks: '当前模型没有可用于地图画转换的方块',
+    modelMapArtExportSuccess: '模型转蓝图成功，可前往仓库查看',
+    modelMapArtExportError: '模型转蓝图失败：{error}',
+    mainType: '主类型',
+    subType: '子类型',
+    axisOrientation: '法线轴朝向',
+    max3dHeight: '立体最大高度',
+    enableMapArt3d: '启用立体地图画',
+    enableDithering: '启用抖动算法',
+    replaceAir: '透明像素替换为空气'
   },
   common: {
     save: '保存',
@@ -546,7 +560,41 @@ export default {
     title: '工具箱',
     tabs: {
       mapArt: '地图画',
+      ModelToSchem: '模型转蓝图',
       redstoneMusic: '红石音乐'
+    },
+    modelToSCHEM: {
+      tip: '基于地图画方块与颜色对照表，将当前已选蓝图模型投影并导出为地图画蓝图。',
+      noSchematic: '未检测到当前蓝图，请先在蓝图相关页面选择并加载蓝图。',
+      selectModelFile: '选择模型文件（OBJ / GLTF / GLB / STL）',
+      mtlFileOptional: 'MTL 材质文件（可选）',
+      textureFilesOptional: '纹理图片（可选，多选）',
+      exportName: '导出文件名',
+      loadingModel: '正在加载模型...',
+      previewPlaceholder: '请先加载模型文件以开始预览',
+      noModel: '请先选择并加载模型文件',
+      previewNotReady: '预览尚未准备好，稍后再试',
+      unsupportedFormat: '仅支持 OBJ / GLTF / GLB / STL 文件',
+      loadError: '模型加载失败: {error}'
+      ,voxelResolution: '体素分辨率(最大边长方块数)'
+      ,sampleDensity: '表面采样密度'
+      ,autoVoxelResolution: '根据模型大小自动调整体素分辨率'
+      ,voxelAutoHint: '当前为自动分辨率模式，体素分辨率输入框不会生效'
+      ,modelMetrics: '模型最大边长: {size}，三角面数: {triangles}'
+      ,showVoxelPreview: '显示体素建筑预览'
+      ,modelPreviewTitle: '原模型预览'
+      ,voxelPreviewTitle: '体素建筑预览'
+      ,refreshToPreview: '点击左侧“刷新”生成体素建筑预览'
+      ,colorMatch: '色彩匹配算法'
+      ,matchModeRgb: 'RGB欧式'
+      ,matchModeWeighted: '加权距离'
+      ,matchModeRedmean: 'Redmean'
+      ,brightness: '亮度'
+      ,contrast: '对比度'
+      ,saturation: '饱和度'
+      ,noSelectedBlocks: '请先在方块选择器中选择至少一种方块'
+      ,noVoxelResult: '体素化结果为空，请提高分辨率或采样密度'
+      ,voxelResult: '体素结果：{blocks} 方块，尺寸 {size}'
     }
   },
   individuation: {

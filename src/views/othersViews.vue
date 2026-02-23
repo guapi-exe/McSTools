@@ -6,11 +6,12 @@ import {ref} from "vue";
 import {onBeforeRouteLeave} from "vue-router";
 import mapImage2d from "../units/others/mapImage2d.vue";
 import redStoneMusic from "../units/others/redStoneMusic.vue";
+import ModelToSchem from "../units/others/modelToSchem.vue";
 import {mapArtData} from "../modules/map_art/map_art_data.ts";
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n()
-const active = ref(0)
+const active = ref('img')
 
 onBeforeRouteLeave(navigationGuard)
 </script>
@@ -31,15 +32,19 @@ onBeforeRouteLeave(navigationGuard)
 
           <v-tabs v-model="active" align-tabs="center" color="blue-lighten-1">
             <v-tab value="img" class="text-medium-emphasis">{{ t('others.tabs.mapArt') }}</v-tab>
+            <v-tab value="model" class="text-medium-emphasis">{{ t('others.tabs.ModelToSchem') }}</v-tab>
             <v-tab value="music" class="text-medium-emphasis">{{ t('others.tabs.redstoneMusic') }}</v-tab>
           </v-tabs>
         </v-toolbar>
         <v-window v-model="active">
           <v-window-item value="img">
-            <map-image2d v-if="mapArtData" />
+            <map-image2d v-if="mapArtData && active === 'img'" />
+          </v-window-item>
+          <v-window-item value="model">
+            <model-to-schem v-if="active === 'model'" />
           </v-window-item>
           <v-window-item value="music">
-            <redStoneMusic />
+            <redStoneMusic v-if="active === 'music'" />
           </v-window-item>
         </v-window>
       </v-card>

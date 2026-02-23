@@ -10,6 +10,10 @@ import {
 import {blocks_resources} from "./deepslateInit.ts";
 export const blockIconSpriteMap: Record<string, { atlasUrl: string, uv: [number, number, number, number] }> = {};
 
+const yieldToMainThread = async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 interface ConfigData {
     namespace: string;
     blockCount: number;
@@ -179,13 +183,18 @@ export async function loadResource() {
     try {
         const resourcePath = await resolveResource('data/resource/');
         const resourceDirs = await readDir(resourcePath);
-        
-        const resourcePromises = resourceDirs
-            .filter(dir => dir.isDirectory)
-            .map(dir => loadModResource(dir.name));
-        
-        const resourceResults = await Promise.all(resourcePromises);
-        const validResources = resourceResults.filter((r): r is ResourceData => r !== null);
+
+        const modDirs = resourceDirs.filter(dir => dir.isDirectory);
+        const validResources: ResourceData[] = [];
+        for (let i = 0; i < modDirs.length; i++) {
+            const resource = await loadModResource(modDirs[i].name);
+            if (resource) {
+                validResources.push(resource);
+            }
+            if (i % 2 === 0) {
+                await yieldToMainThread();
+            }
+        }
         
         if (validResources.length === 0) {
             console.error('No valid resources loaded');
@@ -195,6 +204,9 @@ export async function loadResource() {
         const mergedBlockDefinitions: Record<string, BlockDefinition> = {};
         const mergedBlockModels: Record<string, BlockModel> = {};
         const mergedOpaqueBlocks = new Set<string>();
+        Object.keys(blockIconSpriteMap).forEach((key) => {
+            delete blockIconSpriteMap[key]
+        })
         
         validResources.forEach(resource => {
             Object.assign(mergedBlockDefinitions, resource.blockDefinitions);
@@ -215,29 +227,26 @@ export async function loadResource() {
         }
         mergedAtlasSize = Math.min(16384, mergedAtlasSize);
 
-        const mergedCanvas = document.createElement('canvas');
-        mergedCanvas.width = mergedAtlasSize;
-        mergedCanvas.height = mergedAtlasSize;
-        const mergedCtx = mergedCanvas.getContext('2d')!;
+        let mergedCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+        if (typeof OffscreenCanvas !== 'undefined') {
+            const mergedCanvas = new OffscreenCanvas(mergedAtlasSize, mergedAtlasSize);
+            mergedCtx = mergedCanvas.getContext('2d')!;
+        } else {
+            const mergedCanvas = document.createElement('canvas');
+            mergedCanvas.width = mergedAtlasSize;
+            mergedCanvas.height = mergedAtlasSize;
+            mergedCtx = mergedCanvas.getContext('2d')!;
+        }
         
         const atlasPositions = new Map<string, { x: number, y: number, size: number }>();
         let currentX = 0;
         let currentY = 0;
         let rowHeight = 0;
         
-        const atlasUrlMap: Record<string, string> = {};
         for (let i = 0; i < validResources.length; i++) {
             const resource = validResources[i];
             const atlasData = resource.atlasImage;
             const atlasSize = resource.atlasSize;
-            if (!atlasUrlMap[resource.namespace]) {
-                const canvas = document.createElement('canvas');
-                canvas.width = atlasSize;
-                canvas.height = atlasSize;
-                const ctx = canvas.getContext('2d')!;
-                ctx.putImageData(atlasData, 0, 0);
-                atlasUrlMap[resource.namespace] = canvas.toDataURL('image/png');
-            }
             if (currentX + atlasSize > mergedAtlasSize) {
                 currentX = 0;
                 currentY += rowHeight;
@@ -252,7 +261,7 @@ export async function loadResource() {
             currentX += atlasSize;
             rowHeight = Math.max(rowHeight, atlasSize);
             if (i % 2 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+                await yieldToMainThread();
             }
         }
         
@@ -273,30 +282,30 @@ export async function loadResource() {
             }
             
             if (resource.iconAtlasUrl && resource.iconUvMap) {
-                const iconCount = Object.keys(resource.iconUvMap).length;
-                console.log(`Loading ${iconCount} icons for ${resource.namespace}`);
                 Object.entries(resource.iconUvMap).forEach(([id, uv]) => {
                     blockIconSpriteMap[id] = {
                         atlasUrl: resource.iconAtlasUrl!,
                         uv
                     };
                 });
-                console.log(`First icon key: ${Object.keys(resource.iconUvMap)[0]}`);
-            } else {
-                console.warn(`No icons loaded for ${resource.namespace}`);
             }
             
             if (i % 2 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
+                await yieldToMainThread();
             }
         }
         
         const mergedTextureAtlas = new TextureAtlas(mergedAtlasData, mergedUvMap);
-        Object.values(mergedBlockModels).forEach((model: any) => {
+        const models = Object.values(mergedBlockModels) as any[]
+        for (let i = 0; i < models.length; i++) {
+            const model = models[i]
             model.flatten({ 
                 getBlockModel: (id: Identifier) => mergedBlockModels[id.toString()] || null 
             });
-        });
+            if (i % 150 === 0) {
+                await yieldToMainThread();
+            }
+        }
         blocks_resources.value = {
             getBlockDefinition(id: Identifier) {
                 return mergedBlockDefinitions[id.toString()] || null;
@@ -332,9 +341,6 @@ export async function loadResource() {
         
         console.log(`Loaded ${validResources.length} mod resources:`, 
             validResources.map(r => r.namespace).join(', '));
-        console.log(`Total icons in blockIconSpriteMap: ${Object.keys(blockIconSpriteMap).length}`);
-        console.log(`Sample icon keys:`, Object.keys(blockIconSpriteMap).slice(0, 3));
-        
 
     } catch (err) {
         console.error('Failed to load resources:', err);

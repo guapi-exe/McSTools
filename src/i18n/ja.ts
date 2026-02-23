@@ -274,7 +274,21 @@ export default {
     containerItems: 'コンテナ内アイテム',
     size: 'サイズ',
     author: '作者',
-    version: 'バージョン'
+    version: 'バージョン',
+    ModelToSchem: 'モデルを設計図へ',
+    confirmModelExport: 'エクスポートを確認',
+    modelMapArtNotReady: 'モデルデータの読み込みが未完了です',
+    modelMapArtColorTableMissing: 'マップアートのカラーテーブルが未読み込みです',
+    modelMapArtNoConvertibleBlocks: '現在のモデルには変換可能なブロックがありません',
+    modelMapArtExportSuccess: 'モデルの設計図化に成功しました',
+    modelMapArtExportError: 'モデルの設計図化に失敗: {error}',
+    mainType: 'メインタイプ',
+    subType: 'サブタイプ',
+    axisOrientation: '法線軸の向き',
+    max3dHeight: '3D最大高さ',
+    enableMapArt3d: '3Dマップアートを有効化',
+    enableDithering: 'ディザリングを有効化',
+    replaceAir: '透明ピクセルを空気に置換'
   },
   common: {
     save: '保存',
@@ -509,7 +523,41 @@ export default {
     title: 'ツールボックス',
     tabs: {
       mapArt: 'マップアート',
+      ModelToSchem: 'モデルを設計図へ',
       redstoneMusic: 'レッドストーンミュージック'
+    },
+    modelToSCHEM: {
+      tip: 'マップアートのブロック・色対応表に基づき、現在選択中の設計図モデルを投影してマップアート設計図として出力します。',
+      noSchematic: '現在の設計図が見つかりません。先に設計図ページで選択・読み込みしてください。',
+      selectModelFile: 'モデルファイルを選択（OBJ / GLTF / GLB / STL）',
+      mtlFileOptional: 'MTL マテリアルファイル（任意）',
+      textureFilesOptional: 'テクスチャ画像（任意・複数選択）',
+      exportName: '出力ファイル名',
+      loadingModel: 'モデルを読み込み中...',
+      previewPlaceholder: 'プレビューを開始するにはモデルファイルを読み込んでください',
+      noModel: '先にモデルファイルを選択して読み込んでください',
+      previewNotReady: 'プレビューの準備ができていません',
+      unsupportedFormat: 'OBJ / GLTF / GLB / STL のみ対応しています',
+      loadError: 'モデル読み込み失敗: {error}'
+      ,voxelResolution: 'ボクセル解像度（最大辺のブロック数）'
+      ,sampleDensity: '表面サンプル密度'
+      ,autoVoxelResolution: 'モデルサイズに応じてボクセル解像度を自動調整'
+      ,voxelAutoHint: '自動解像度が有効のため、手動の体素解像度入力は反映されません'
+      ,modelMetrics: 'モデル最大辺長: {size}, 三角面数: {triangles}'
+      ,showVoxelPreview: 'ボクセル建築プレビューを表示'
+      ,modelPreviewTitle: '元モデルプレビュー'
+      ,voxelPreviewTitle: 'ボクセル建築プレビュー'
+      ,refreshToPreview: '左側の「更新」をクリックしてボクセルプレビューを生成'
+      ,colorMatch: '色一致アルゴリズム'
+      ,matchModeRgb: 'RGBユークリッド距離'
+      ,matchModeWeighted: '重み付き距離'
+      ,matchModeRedmean: 'Redmean'
+      ,brightness: '明るさ'
+      ,contrast: 'コントラスト'
+      ,saturation: '彩度'
+      ,noSelectedBlocks: 'ブロックセレクターで少なくとも1つ選択してください'
+      ,noVoxelResult: 'ボクセル化結果が空です。解像度またはサンプル密度を上げてください'
+      ,voxelResult: 'ボクセル結果: {blocks} ブロック, サイズ {size}'
     }
   },
   individuation: {

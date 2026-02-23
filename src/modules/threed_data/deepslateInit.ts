@@ -209,6 +209,7 @@ export class InteractiveCanvas {
     }
 
     private animate() {
+        this.isAnimating = true
         if (this.keysPressed.size === 0) {
             this.isAnimating = false
             return
