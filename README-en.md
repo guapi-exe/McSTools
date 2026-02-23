@@ -59,6 +59,16 @@
 
 ---
 
+##  Latest Updates
+- **Map Art Generator Improvements**  
+  Performance issues have been optimized; heavy computation tasks were moved to the backend; multiple color diffusion and color-matching algorithms were added.
+- **Model-to-Blueprint Feature Completed**  
+  Now supports `OBJ`, `GLTF`, `GLB`, and `STL` model import, and uses the same block color library as the Map Art module.
+- **3D Rendering & Stability Optimization (Planned for Next Release)**  
+  The optimization plan is ready: reduce 3D model rendering pressure, improve memory usage, and lower crash risk. This is not yet implemented in the current release and will be shipped in the next update.
+
+---
+
 ![:Views](https://count.getloli.com/@guapi-exe_McSTools?name=guapi-exe_McSTools&theme=original-new&padding=8&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
 ##  Build Instructions
 ```bash

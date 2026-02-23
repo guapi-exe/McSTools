@@ -60,6 +60,16 @@
 
 ---
 
+##  最新更新
+- **地图画生成器优化**  
+  性能问题已专项优化；重计算任务迁移至后端处理；新增多种颜色扩散算法与颜色匹配算法。
+- **模型转蓝图功能完成**  
+  现已支持 `OBJ`、`GLTF`、`GLB`、`STL` 模型导入，并与地图画模块共用同一套方块颜色库。
+- **3D 渲染与稳定性优化（下个版本计划）**  
+  已完成方案设计：降低 3D 模型渲染压力、优化内存占用、降低崩溃风险；当前版本暂未实装，将在下次更新发布。
+
+---
+
 ![:浏览](https://count.getloli.com/@guapi-exe_McSTools?name=guapi-exe_McSTools&theme=original-new&padding=8&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
 ##  构建说明
 ```bash
