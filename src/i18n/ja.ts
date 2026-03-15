@@ -362,7 +362,8 @@ export default {
       title: 'デバッグモード',
       enable: 'デバッグモードを有効にする',
       open: 'デバッグを開く',
-      openDev: 'デバッグDEVを開く'
+      openDev: 'デバッグDEVを開く',
+      tip: 'このデバッグ入口は Tauri のデバッグビルドでのみ利用できます。`pnpm tauri:build:debug` でパッケージした後、ここから DevTools を開いてください。'
     },
     theme: {
       title: 'テーマ追従',

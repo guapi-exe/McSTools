@@ -356,7 +356,8 @@ export default {
       title: 'Debug Mode',
       enable: 'Enable Debug Mode',
       open: 'Open Debug',
-      openDev: 'Open Debug DEV'
+      openDev: 'Open Debug DEV',
+      tip: 'The debug entry is only available in Tauri debug builds. Package with `pnpm tauri:build:debug`, then open DevTools here.'
     },
     theme: {
       title: 'Theme Follow',

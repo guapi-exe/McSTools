@@ -1,17 +1,29 @@
 <script setup lang="ts">
-import {ref} from "vue";
+import {computed, defineAsyncComponent, ref, watch} from "vue";
 import {onBeforeRouteLeave} from "vue-router";
 import {isLeaving, navigationGuard} from "../modules/navigation.ts";
-import LocalData from "../units/schematics/localData.vue";
-import WebData from "../units/schematics/webData.vue";
 import MCS from "../static/img/fav512.png"
 import CMS from "../static/img/CMS.png"
 import {selectedSite} from "../modules/web_schematic/web_data.ts";
 import {opacity} from "../modules/theme.ts";
 import { useI18n } from 'vue-i18n';
 
+const LocalData = defineAsyncComponent(() => import("../units/schematics/localData.vue"))
+const WebData = defineAsyncComponent(() => import("../units/schematics/webData.vue"))
+
 const { t } = useI18n()
-const active = ref()
+const active = ref<'local' | 'web'>('local')
+const loadedPanels = ref<Record<'local' | 'web', boolean>>({
+  local: true,
+  web: false,
+})
+const shouldRenderLocal = computed(() => loadedPanels.value.local)
+const shouldRenderWeb = computed(() => loadedPanels.value.web)
+
+watch(active, (value) => {
+  loadedPanels.value[value] = true
+}, { immediate: true })
+
 const siteOptions = [
   {
     title: t('schematics.sites.mcs'),
@@ -101,10 +113,32 @@ onBeforeRouteLeave(navigationGuard)
         </v-toolbar>
         <v-window v-model="active">
           <v-window-item value="local">
-            <local-data />
+            <Suspense>
+              <template #default>
+                <keep-alive>
+                  <LocalData v-if="shouldRenderLocal" />
+                </keep-alive>
+              </template>
+              <template #fallback>
+                <div class="tab-loading">
+                  <v-progress-circular indeterminate color="info" size="28" />
+                </div>
+              </template>
+            </Suspense>
           </v-window-item>
           <v-window-item value="web">
-            <web-data />
+            <Suspense>
+              <template #default>
+                <keep-alive>
+                  <WebData v-if="shouldRenderWeb" />
+                </keep-alive>
+              </template>
+              <template #fallback>
+                <div class="tab-loading">
+                  <v-progress-circular indeterminate color="info" size="28" />
+                </div>
+              </template>
+            </Suspense>
           </v-window-item>
         </v-window>
 
@@ -143,5 +177,12 @@ onBeforeRouteLeave(navigationGuard)
 
 .v-toolbar {
   flex-shrink: 0;
+}
+
+.tab-loading {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

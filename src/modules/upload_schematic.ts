@@ -9,6 +9,11 @@ export const uploadStatus = ref<'idle' | 'uploading' | 'success' | 'error'>('idl
 export const uploadError = ref<string | null>(null);
 export const progressTimer = ref<number | null>(null)
 export const progressValue = ref(100)
+export const localSchematicsRefreshVersion = ref(0)
+
+export const markLocalSchematicsDirty = () => {
+    localSchematicsRefreshVersion.value += 1
+}
 
 export const handleUpload = async (update_id: number) => {
     if (files.value.length === 0) return;
@@ -37,6 +42,7 @@ export const handleUpload = async (update_id: number) => {
 
         uploadStatus.value = 'success';
         userData.value.schematics += files.value.length;
+        markLocalSchematicsDirty()
         startProgressTimer()
         toast.success(`蓝图${update_id == -1? '上传': '更新'}完毕`, {
             timeout: 2000

@@ -10,7 +10,12 @@ pub async fn open_dev(
             .ok_or("Unable to retrieve the main window")?;
 
         window.open_devtools();
+        return Ok(());
     }
 
-    Ok(())
+    #[cfg(not(all(debug_assertions, target_os = "windows")))]
+    {
+        let _ = app;
+        Err("当前仅调试包支持打开开发者工具，请使用 debug 构建。".to_string())
+    }
 }

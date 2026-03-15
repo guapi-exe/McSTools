@@ -399,7 +399,8 @@ export default {
       title: '调试模式',
       enable: '启用调试模式',
       open: '开启调试',
-      openDev: '开启调试DEV'
+      openDev: '开启调试DEV',
+      tip: '调试模式入口仅在 Tauri 调试包中可用。请使用 `pnpm tauri:build:debug` 打包后，再到此处打开开发者工具。'
     },
     theme: {
       title: '跟随主题',

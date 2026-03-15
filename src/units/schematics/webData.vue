@@ -108,7 +108,10 @@ const schematic_load_MCS = async ({ done }: LoadParams) => {
     done('empty')
     return
   }
-  if (!hasMore_MCS.value) return;
+  if (isLoading_MCS.value) {
+    done('ok')
+    return
+  }
   try {
     isLoading_MCS.value = true;
 
@@ -137,9 +140,15 @@ const schematic_load_MCS = async ({ done }: LoadParams) => {
 const downloadAndUpload =async  (uuid: string, type:number) => {
   try {
     downLoading_MCS.value = true
-    const url = `https://www.mcschematic.top/api/schematicFile?uuid=${uuid}`
+    const url = `https://mcschematic.top/api/schematicFile?uuid=${uuid}`
 
-    const response = await fetch(url)
+    const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        }
+    )
     if (!response.ok) {
       throw new Error(`下载失败: ${response.status} ${response.statusText}`)
     }
@@ -171,7 +180,10 @@ const schematic_load_CMS = async ({ done }: LoadParams) => {
     done('empty')
     return
   }
-  if (!hasMore_CMS.value) return;
+  if (isLoading_CMS.value) {
+    done('ok')
+    return
+  }
 
   try {
     isLoading_CMS.value = true;
@@ -228,8 +240,8 @@ const reload_CMS = async () => {
     autoPage_CMS.value += 1;
 
     hasMore_CMS.value = schematic.length == 20;
-    if (!hasMore_CMS.value) loadState_CMS.value('empty')
-    else loadState_CMS.value('ok');
+    if (!hasMore_CMS.value) loadState_CMS.value?.('empty')
+    else loadState_CMS.value?.('ok');
   } catch (error) {
     toast.error(`加载失败:${error}`, {
       timeout: 3000
@@ -243,7 +255,7 @@ const reload_MCS = async () => {
   autoPage_MCS.value = 0
   hasMore_MCS.value = true;
   isLoading_MCS.value = false;
-  loadState_MCS.value('ok');
+  loadState_MCS.value?.('ok');
   schematics_MCS.value = []
   if (!hasMore_MCS.value) {
     return
@@ -264,8 +276,8 @@ const reload_MCS = async () => {
     autoPage_MCS.value += 1;
 
     hasMore_MCS.value = data.length == 15;
-    if (!hasMore_MCS.value) loadState_MCS.value('empty')
-    else loadState_MCS.value('ok');
+    if (!hasMore_MCS.value) loadState_MCS.value?.('empty')
+    else loadState_MCS.value?.('ok');
   } catch (error) {
     toast.error(`加载失败:${error}`, {
       timeout: 3000
@@ -448,7 +460,6 @@ watch(
           density="compact"
           variant="outlined"
           prepend-inner-icon="mdi-magnify"
-          @change="reload_CMS"
         ></v-text-field>
             </v-col>
 
@@ -463,7 +474,6 @@ watch(
           prepend-inner-icon="mdi-shape"
           item-title="text"
           item-value="value"
-          @change="reload_CMS"
         >
         </v-select>
             </v-col>
@@ -478,7 +488,6 @@ watch(
           prepend-inner-icon="mdi-sort"
           item-title="text"
           item-value="value"
-          @change="reload_CMS"
         ></v-select>
             </v-col>
           </v-row>

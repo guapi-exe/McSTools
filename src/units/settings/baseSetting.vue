@@ -136,6 +136,7 @@ const clearData = async () => {
               </template>
             </v-list-item>
           </v-list>
+
         </v-card-text>
       </v-card>
     </v-col>
@@ -183,6 +184,14 @@ const clearData = async () => {
               </template>
             </v-list-item>
           </v-list>
+
+          <v-alert
+              type="info"
+              variant="tonal"
+              class="mx-4 mb-4"
+          >
+            {{ $t('settings.debug.tip') }}
+          </v-alert>
         </v-card-text>
       </v-card>
     </v-col>

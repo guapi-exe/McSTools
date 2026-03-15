@@ -7,7 +7,7 @@ import {
   SchematicsData,
   schematicTypeList
 } from "../../modules/schematics_data.ts";
-import {nextTick, onMounted, ref, watch} from "vue";
+import {nextTick, onActivated, onMounted, ref, watch} from "vue";
 import dayjs from "dayjs";
 import {clear_tools, fetch_data} from "../../modules/tools_data.ts";
 import {activeTab} from "../../modules/layout.ts";
@@ -23,6 +23,11 @@ import {selectClassification, selectLoading, toast} from "../../modules/others.t
 import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
 import {opacity} from "../../modules/theme.ts";
 import {useI18n} from "vue-i18n";
+import {localSchematicsRefreshVersion} from "../../modules/upload_schematic.ts";
+
+const PAGE_SIZE = 20
+const BULK_PAGE_SIZE = 100
+
 const router = useRouter()
 const loadState = ref()
 const autoPage = ref(1)
@@ -45,10 +50,23 @@ const showCreateTagDialog = ref(false);
 const newTagName = ref('');
 const filterPanel = ref<InstanceType<typeof HTMLElement> | null>(null);
 const countMap = ref<Record<string, number>>({});
+const lastHandledRefreshVersion = ref(0)
+const selectingAll = ref(false)
+const exportingSelected = ref(false)
 const filters = ref({
   keyword: '',
 })
 const { t: $t } = useI18n()
+
+const getCurrentClassification = () => {
+  const value = selectClassification.value
+
+  if (Array.isArray(value)) {
+    return value[0] || ''
+  }
+
+  return typeof value === 'string' ? value : ''
+}
 
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
@@ -75,52 +93,49 @@ const selectSchematic = async(id: number) => {
   }
 
 }
-interface LoadParams {
-  done: (status: 'ok' | 'error' | 'empty') => void
-}
 const reload = async () => {
-  autoPage.value = 0;
+  autoPage.value = 1;
   hasMore.value = true;
   isLoading.value = false;
+  selectedIds.value = []
   schematics.value = []
-  if (!hasMore.value) {
-    return
-  }
   if (!hasMore.value || isLoading.value) return;
 
   try {
     isLoading.value = true;
 
-    const { data, page, page_size } = await fetchSchematics({
+    const { data } = await fetchSchematics({
       filter: filters.value.keyword,
-      classification: selectClassification.value,
+      classification: getCurrentClassification(),
       page: autoPage.value,
-      page_size: 20
+      page_size: PAGE_SIZE
     });
-    console.log(page, page_size, selectClassification.value)
     schematics.value = [...schematics.value, ...data];
     autoPage.value += 1;
 
-    hasMore.value = data.length == 20;
-    if (!hasMore.value) loadState.value('empty');
-    else loadState.value('ok');
+    hasMore.value = data.length === PAGE_SIZE;
+    if (!hasMore.value) loadState.value?.('empty');
+    else loadState.value?.('ok');
   } catch (error) {
     toast.error(`加载失败:${error}`, {
       timeout: 3000
     });
-    //console.error('加载失败:', error);
   } finally {
     isLoading.value = false;
   }
 }
 
 const loadCounts = async () => {
-  const map: Record<string, number> = {};
-  for (const tag of tags.value) {
-    map[tag] = await fetchSchematicCount(tag);
+  if (tags.value.length === 0) {
+    countMap.value = {};
+    return;
   }
-  console.log(map);
-  countMap.value = map;
+
+  const counts = await Promise.all(
+      tags.value.map(async (tag) => [tag, await fetchSchematicCount(tag)] as const)
+  )
+
+  countMap.value = Object.fromEntries(counts)
 };
 
 const openCreateTagDialog = async () => {
@@ -142,6 +157,11 @@ const createTag = async () => {
 
   newTagName.value = ''
   showCreateTagDialog.value = false
+  await loadCounts()
+}
+
+interface LoadParams {
+  done: (status: 'ok' | 'error' | 'empty') => void
 }
 
 const schematic_load = async ({ done }: LoadParams) => {
@@ -154,16 +174,15 @@ const schematic_load = async ({ done }: LoadParams) => {
 
   try {
     isLoading.value = true;
-    const { data, page, page_size } = await fetchSchematics({
+    const { data } = await fetchSchematics({
       filter: filters.value.keyword,
-      classification: selectClassification.value[0] || '',
+      classification: getCurrentClassification(),
       page: autoPage.value,
-      page_size: 20
+      page_size: PAGE_SIZE
     });
-    console.log(data, page, page_size)
     schematics.value = [...schematics.value, ...data];
     autoPage.value += 1;
-    hasMore.value = data.length == 20;
+    hasMore.value = data.length === PAGE_SIZE;
     done('ok')
   } catch (error) {
     console.error('加载失败:', error);
@@ -223,7 +242,6 @@ const handleDragEnter = (bp: SchematicsData) => {
 }
 
 const handleDragLeave = (bp: SchematicsData) => {
-  console.log(bp.id)
   if (draggingOverId.value === bp.id) {
   }
 }
@@ -265,6 +283,8 @@ const confirmDeleteClassification = async () => {
 
     showDeleteDialog2.value = false
     selectClassification.value = ''
+    await syncClassificationState()
+    await reload()
   } catch (error) {
     console.error('删除失败:', error)
   }
@@ -273,19 +293,13 @@ const confirmDeleteClassification = async () => {
 const confirmDelete = async () => {
   try {
     await delete_schematic(selectedBpId.value)
-    const index = schematics.value.findIndex(
-        item => item.id === selectedBpId.value
-    )
-    userData.value.schematics -= 1;
-    if (index !== -1) {
-      schematics.value.splice(index, 1)
-
-      userData.value.schematics = Math.max(
-          userData.value.schematics - 1,
-          0
-      )
+    selectedIds.value = selectedIds.value.filter(id => id !== selectedBpId.value)
+    if (userData.value) {
+      userData.value.schematics = Math.max((userData.value.schematics ?? 0) - 1, 0)
     }
     showDeleteDialog.value = false
+    await loadCounts()
+    await reload()
   } catch (error) {
     console.error('删除失败:', error)
   }
@@ -305,7 +319,7 @@ const formatTime = (time: any) => {
   return dayjs(time).format('YYYY/MM/DD HH:mm')
 }
 
-onMounted(async () => {
+const syncClassificationState = async () => {
   await fetchUserClassification();
   if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
     tags.value = userData.value.classification
@@ -316,9 +330,58 @@ onMounted(async () => {
   }
 
   await loadCounts();
+}
+
+const fetchAllMatchingSchematics = async () => {
+  const allSchematics: SchematicsData[] = []
+  let page = 1
+
+  while (true) {
+    const { data } = await fetchSchematics({
+      filter: filters.value.keyword,
+      classification: getCurrentClassification(),
+      page,
+      page_size: BULK_PAGE_SIZE,
+    })
+
+    allSchematics.push(...data)
+
+    if (data.length < BULK_PAGE_SIZE) {
+      break
+    }
+
+    page += 1
+  }
+
+  return allSchematics
+}
+
+onMounted(async () => {
+  await syncClassificationState();
+  await reload()
+  lastHandledRefreshVersion.value = localSchematicsRefreshVersion.value
 });
-const selectAll = () => {
-  selectedIds.value = schematics.value.map(bp => bp.id)
+
+onActivated(async () => {
+  if (lastHandledRefreshVersion.value === localSchematicsRefreshVersion.value) {
+    return
+  }
+
+  await syncClassificationState()
+  await reload()
+  lastHandledRefreshVersion.value = localSchematicsRefreshVersion.value
+})
+
+const selectAll = async () => {
+  try {
+    selectingAll.value = true
+    const allSchematics = await fetchAllMatchingSchematics()
+    selectedIds.value = allSchematics.map(bp => bp.id)
+  } catch (error) {
+    toast.error(`全选失败:${error}`, { timeout: 3000 })
+  } finally {
+    selectingAll.value = false
+  }
 }
 const clearAll = () => {
   selectedIds.value = []
@@ -331,8 +394,26 @@ const batchExport = async () => {
     toast.error("请至少选择一个蓝图！", { timeout: 2000 })
     return
   }
-  const selectedBps = schematics.value.filter(b => selectedIds.value.includes(b.id))
-  await batchExportSchematics(selectedBps)
+
+  try {
+    exportingSelected.value = true
+    const selectedIdSet = new Set(selectedIds.value)
+    let selectedBps = schematics.value.filter(b => selectedIdSet.has(b.id))
+
+    if (selectedBps.length !== selectedIds.value.length) {
+      const allSchematics = await fetchAllMatchingSchematics()
+      selectedBps = allSchematics.filter(b => selectedIdSet.has(b.id))
+    }
+
+    if (selectedBps.length === 0) {
+      toast.error("未找到可导出的蓝图！", { timeout: 2000 })
+      return
+    }
+
+    await batchExportSchematics(selectedBps)
+  } finally {
+    exportingSelected.value = false
+  }
 }
 
 </script>
@@ -658,7 +739,6 @@ const batchExport = async () => {
               </div>
             </template>
           </v-infinite-scroll>
-
         </v-list>
       </v-main>
 
@@ -781,6 +861,7 @@ const batchExport = async () => {
           size="small"
           color="success"
           @click="batchExport"
+          :loading="exportingSelected"
           :disabled="selectedIds.length === 0"
       >
         批量导出
@@ -790,6 +871,7 @@ const batchExport = async () => {
           size="small"
           color="success"
           @click="selectAll"
+          :loading="selectingAll"
       >
         全选
       </v-btn>

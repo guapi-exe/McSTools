@@ -9,7 +9,7 @@ import resourceSetting from "../units/settings/resourceSetting.vue";
 import { useI18n } from 'vue-i18n';
 
 const { t: $t } = useI18n()
-const active = ref(0)
+const active = ref('base')
 
 onBeforeRouteLeave(navigationGuard)
 </script>

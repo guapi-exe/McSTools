@@ -143,6 +143,10 @@ import {resources_Init} from "./modules/threed_data/deepslateInit.ts";
 import {detectTheme, toast} from "./modules/others.ts";
 import {change_data, showSaveDialog} from "./modules/snbt_to_json.ts";
 
+type IdleCapableWindow = Window & {
+  requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+}
+
 const theme = useTheme()
 const selectedTheme = ref('grey')
 const autoUpdateEnabled = ref(true);
@@ -162,8 +166,52 @@ const { locale } = useI18n()
 const checkScroll = () => {
   const mainContent = document.getElementById('app') as HTMLElement
   const scrollY = mainContent?.scrollTop || 0
-  console.log(scrollY)
   showBackToTop.value = scrollY > 300
+}
+
+const runWhenBrowserIdle = (task: () => void | Promise<void>, timeout = 1200) => {
+  const idleWindow = window as IdleCapableWindow
+
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    idleWindow.requestIdleCallback(() => {
+      void task()
+    }, { timeout })
+    return
+  }
+
+  window.setTimeout(() => {
+    void task()
+  }, 32)
+}
+
+const preloadNonCriticalResources = async () => {
+  const [appVersionResult, jeBlocksResult, mapArtResult, resourcesResult, updateResult] = await Promise.allSettled([
+    getAppVersion(),
+    fetchJeBlocks(),
+    fetchMapArtsData(),
+    resources_Init(),
+    autoUpdateEnabled.value ? checkUpdate(true) : Promise.resolve(null),
+  ])
+
+  if (appVersionResult.status === 'fulfilled') {
+    appData.value = appVersionResult.value
+  }
+
+  if (jeBlocksResult.status === 'fulfilled') {
+    jeBlocks.value = jeBlocksResult.value
+  }
+
+  if (mapArtResult.status === 'fulfilled') {
+    mapArtData.value = mapArtResult.value
+  }
+
+  if (resourcesResult.status === 'rejected') {
+    toast.error(`资源加载失败:${resourcesResult.reason}`, {timeout: 3000})
+  }
+
+  if (updateResult.status === 'rejected') {
+    console.error('检查更新失败:', updateResult.reason)
+  }
 }
 
 const scrollToTop = () => {
@@ -218,30 +266,27 @@ onMounted(async () => {
       mainContent.addEventListener('scroll', checkScroll)
     }
   })
-  let storedLocale = await appStore.get('locale', 'zh-CN')
+  const [storedLocaleValue, storedThemeValue, storedAutoUpdate] = await Promise.all([
+    appStore.get('locale', 'zh-CN'),
+    appStore.get('selectedTheme', 'grey'),
+    appStore.get('autoUpdate', true),
+  ])
+
+  let storedLocale = storedLocaleValue
   if (storedLocale === 'zh') storedLocale = 'zh-CN'
   if (storedLocale === 'zh_tw') storedLocale = 'zh-TW'
   locale.value = storedLocale
-  selectedTheme.value = await appStore.get('selectedTheme', 'grey')
-  autoUpdateEnabled.value = await appStore.get('autoUpdate', true)
+  selectedTheme.value = storedThemeValue
+  autoUpdateEnabled.value = storedAutoUpdate
   theme.global.name.value = selectedTheme.value
-  await initTheme()
-  await invoke("close_splashscreen")
-  await fetchUserData()
+  await Promise.all([
+    initTheme(),
+    fetchUserData(),
+  ])
   await detectTheme(theme);
+  await invoke("close_splashscreen")
 
-  appData.value = await getAppVersion()
-  jeBlocks.value = await fetchJeBlocks()
-  mapArtData.value = await fetchMapArtsData()
-  try{
-    await resources_Init()
-  }catch (e) {
-    toast.error(`资源加载失败:${e}`, {timeout: 3000})
-  }
-
-  if (autoUpdateEnabled.value){
-    await checkUpdate(true)
-  }
+  runWhenBrowserIdle(preloadNonCriticalResources)
 })
 
 </script>

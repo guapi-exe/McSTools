@@ -399,7 +399,8 @@
             title: '除錯模式',
             enable: '啟用除錯模式',
             open: '開啟除錯',
-            openDev: '開啟開發者模式'
+            openDev: '開啟開發者模式',
+            tip: '除錯模式入口僅在 Tauri 偵錯包中可用。請使用 `pnpm tauri:build:debug` 打包後，再到此處開啟開發者工具。'
         },
         theme: {
             title: '跟隨主題',
