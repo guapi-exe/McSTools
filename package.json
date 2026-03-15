@@ -27,7 +27,7 @@
     "@vueuse/core": "13.1.0",
     "axios": "1.9.0",
     "dayjs": "1.11.13",
-    "deepslate": "0.23.6",
+    "deepslate": "file:./deepslate",
     "echarts": "5.6.0",
     "file-saver": "^2.0.5",
     "gl-matrix": "^3.4.3",

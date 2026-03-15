@@ -1,0 +1,1 @@
+{"version":3,"file":"Heightmap.d.ts","sourceRoot":"","sources":["../../src/worldgen/Heightmap.ts"],"names":[],"mappings":"AACA,oBAAY,SAAS,GAAG,kBAAkB,GAAG,eAAe,GAAG,gBAAgB,GAAG,aAAa,GAAG,iBAAiB,GAAG,2BAA2B,CAAA;AAEjJ,yBAAiB,SAAS,CAAC;IAC1B,SAAgB,QAAQ,CAAC,GAAG,EAAE,OAAO,GAAG,SAAS,GAAG,SAAS,CAM5D;CACD"}

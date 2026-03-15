@@ -1,0 +1,1 @@
+{"version":3,"file":"Rotation.d.ts","sourceRoot":"","sources":["../../src/core/Rotation.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,MAAM,EAAE,MAAM,aAAa,CAAA;AAGzC,oBAAY,QAAQ;IACnB,IAAI,SAAS;IACb,YAAY,iBAAiB;IAC7B,aAAa,QAAQ;IACrB,mBAAmB,wBAAwB;CAC3C;AAED,yBAAiB,QAAQ,CAAA;IACxB,SAAgB,SAAS,CAAC,MAAM,EAAE,MAAM,YAEvC;CACD"}

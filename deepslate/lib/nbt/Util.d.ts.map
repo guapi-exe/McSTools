@@ -1,0 +1,1 @@
+{"version":3,"file":"Util.d.ts","sourceRoot":"","sources":["../../src/nbt/Util.ts"],"names":[],"mappings":"AAAA,wBAAgB,aAAa,CAAC,KAAK,EAAE,UAAU,WAG9C;AAED,wBAAgB,aAAa,CAAC,KAAK,EAAE,UAAU,WAI9C;AAED,wBAAgB,gBAAgB,CAAC,KAAK,EAAE,UAAU,sBASjD;AAED,wBAAgB,UAAU,CAAC,GAAG,EAAE,MAAM,YAqBrC;AAED,wBAAgB,UAAU,CAAC,KAAK,EAAE,SAAS,CAAC,MAAM,CAAC,UAgClD"}

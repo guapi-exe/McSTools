@@ -157,7 +157,124 @@ const raycastBlocks = (
 
 type ViewType = 'free' | 'front' | 'side' | 'top';
 const currentView = ref<ViewType>('free');
+let layerUpdateScheduled = false;
+let layerUpdateInProgress = false;
+let pendingLayerTarget: number | null = null;
+let renderedStructureRef: Structure | null = null;
+let lastAppliedLayer = -1;
+let lastAppliedSingleLayerMode = false;
+let cacheMode: 'single' | 'cumulative' | null = null;
+let cumulativeStructureCache: Structure | null = null;
+let cumulativeTopLayer = -1;
+let cumulativeMaterialMap = new Map<string, number>();
+const singleLayerStructureCache = new Map<number, Structure>();
+const singleLayerMaterialCache = new Map<number, {id: string, name: string, count: number}[]>();
+const MAX_SINGLE_LAYER_CACHE = 12;
+
+type LayerUpdateResult = {
+  structureChanged: boolean,
+  changedChunkPositions?: [number, number, number][],
+};
+
+const toMaterialOverview = (materialMap: Map<string, number>) => {
+  return Array.from(materialMap.entries())
+      .map(([id, count]) => ({
+        id,
+        name: id.split(':').pop() || id,
+        count
+      }))
+      .sort((a, b) => b.count - a.count);
+};
+
+const addLayerToStructure = (
+  targetStructure: Structure,
+  layerY: number,
+  materialMap?: Map<string, number>,
+  changedChunkKeys?: Set<string>,
+  chunkSize: number = 16,
+) => {
+  const layerBlocks = layers.value[layerY];
+  if (!layerBlocks) return;
+  layerBlocks.forEach(block => {
+    targetStructure.addBlock(block.pos, block.block.id, block.block.properties);
+
+    if (changedChunkKeys) {
+      const chunkX = Math.floor(block.pos[0] / chunkSize);
+      const chunkY = Math.floor(block.pos[1] / chunkSize);
+      const chunkZ = Math.floor(block.pos[2] / chunkSize);
+      changedChunkKeys.add(`${chunkX},${chunkY},${chunkZ}`);
+    }
+
+    if (materialMap) {
+      const blockId = block.block.id;
+      if (blockId) {
+        materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
+      }
+    }
+  });
+};
+
+const resetStructureCaches = () => {
+  cacheMode = null;
+  cumulativeStructureCache = null;
+  cumulativeTopLayer = -1;
+  cumulativeMaterialMap.clear();
+  singleLayerStructureCache.clear();
+  singleLayerMaterialCache.clear();
+  renderedStructureRef = null;
+  lastAppliedLayer = -1;
+  lastAppliedSingleLayerMode = false;
+};
+
+const applyLayerToRenderer = async (targetLayer: number) => {
+  const updateResult = updateStructure(targetLayer);
+  const renderer = structureRenderer.value;
+  const nextStructure = structure_l.value;
+  if (!renderer || !nextStructure || !updateResult) return;
+
+  if (lastAppliedLayer === targetLayer && lastAppliedSingleLayerMode === once_threeD.value) {
+    interactiveCanvas.value?.redraw();
+    return;
+  }
+
+  if (updateResult.structureChanged || renderedStructureRef !== nextStructure) {
+    renderer.setStructure(nextStructure);
+    renderedStructureRef = nextStructure;
+  } else if (updateResult.changedChunkPositions && updateResult.changedChunkPositions.length > 0) {
+    await renderer.updateStructureBuffersAsync(updateResult.changedChunkPositions as any, 2000);
+  }
+
+  lastAppliedLayer = targetLayer;
+  lastAppliedSingleLayerMode = once_threeD.value;
+  interactiveCanvas.value?.redraw();
+};
+
+const scheduleLayerUpdate = (targetLayer: number) => {
+  pendingLayerTarget = targetLayer;
+  if (layerUpdateScheduled) return;
+  layerUpdateScheduled = true;
+
+  requestAnimationFrame(async () => {
+    layerUpdateScheduled = false;
+    if (layerUpdateInProgress) return;
+    layerUpdateInProgress = true;
+    try {
+      while (pendingLayerTarget !== null) {
+        const target = pendingLayerTarget;
+        pendingLayerTarget = null;
+        await applyLayerToRenderer(target);
+      }
+    } finally {
+      layerUpdateInProgress = false;
+      if (pendingLayerTarget !== null) {
+        scheduleLayerUpdate(pendingLayerTarget);
+      }
+    }
+  });
+};
+
 const loadStructure = async () => {
+  resetStructureCaches();
   const schematic_data = await fetchSchematicData(schematic_id.value)
   const schematic_size = schematic_data.size
   const totalVolume = schematic_size.width * schematic_size.height * schematic_size.length
@@ -280,55 +397,86 @@ const loadStructure = async () => {
   layers.value = layersObj;
 }
 
-const updateStructure = (targetLayer: number) => {
+const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => {
   if (!size_l.value) return;
+  const activeChunkSize = Math.max(1, Math.floor(((structureRenderer.value as any)?.getChunkSize?.() ?? 16)));
 
-  const newStructure = new Structure([...size_l.value]);
   if (once_threeD.value) {
-    const materialMap = new Map<string, number>();
-    layers.value[targetLayer].forEach(block => {
-      const blockId = block.block.id;
-      if (blockId) {
-        materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
-      }
-      newStructure.addBlock(block.pos, block.block.id, block.block.properties);
-    });
-    materialOverview.value = Array.from(materialMap.entries())
-        .map(([id, count]) => ({
-          id,
-          name: id.split(':').pop() || id,
-          count
-        }))
-        .sort((a, b) => b.count - a.count);
-  }else {
-    const materialMap = new Map<string, number>();
-    for (let y = 0; y <= targetLayer; y++) {
-      if (layers.value[y]) {
-        layers.value[y].forEach(block => {
-          const blockId = block.block.id;
-          if (blockId) {
-            materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
-          }
-          newStructure.addBlock(block.pos, block.block.id, block.block.properties);
-        });
+    cacheMode = 'single';
+    let cachedStructure = singleLayerStructureCache.get(targetLayer);
+    let cachedMaterials = singleLayerMaterialCache.get(targetLayer);
+
+    if (!cachedStructure || !cachedMaterials) {
+      const targetStructure = new Structure([...size_l.value]);
+      const materialMap = new Map<string, number>();
+      addLayerToStructure(targetStructure, targetLayer, materialMap, undefined, activeChunkSize);
+
+      cachedStructure = targetStructure;
+      cachedMaterials = toMaterialOverview(materialMap);
+
+      singleLayerStructureCache.set(targetLayer, cachedStructure);
+      singleLayerMaterialCache.set(targetLayer, cachedMaterials);
+
+      if (singleLayerStructureCache.size > MAX_SINGLE_LAYER_CACHE) {
+        const oldestKey = singleLayerStructureCache.keys().next().value;
+        if (oldestKey !== undefined) {
+          singleLayerStructureCache.delete(oldestKey);
+          singleLayerMaterialCache.delete(oldestKey);
+        }
       }
     }
-    materialOverview.value = Array.from(materialMap.entries())
-        .map(([id, count]) => ({
-          id,
-          name: id.split(':').pop() || id,
-          count
-        }))
-        .sort((a, b) => b.count - a.count);
+
+    const structureChanged = structure_l.value !== cachedStructure;
+    structure_l.value = cachedStructure;
+    materialOverview.value = cachedMaterials;
+    return { structureChanged };
   }
 
-  structure_l.value = newStructure;
+  if (cacheMode !== 'cumulative') {
+    cumulativeStructureCache = null;
+    cumulativeTopLayer = -1;
+    cumulativeMaterialMap = new Map<string, number>();
+  }
+  cacheMode = 'cumulative';
+
+  if (!cumulativeStructureCache || targetLayer < cumulativeTopLayer) {
+    const rebuilt = new Structure([...size_l.value]);
+    const materialMap = new Map<string, number>();
+    for (let y = 0; y <= targetLayer; y++) {
+      addLayerToStructure(rebuilt, y, materialMap, undefined, activeChunkSize);
+    }
+    cumulativeStructureCache = rebuilt;
+    cumulativeTopLayer = targetLayer;
+    cumulativeMaterialMap = materialMap;
+
+    structure_l.value = cumulativeStructureCache;
+    materialOverview.value = toMaterialOverview(cumulativeMaterialMap);
+    return { structureChanged: true };
+  } else if (targetLayer > cumulativeTopLayer) {
+    const changedChunkKeys = new Set<string>();
+    for (let y = cumulativeTopLayer + 1; y <= targetLayer; y++) {
+      addLayerToStructure(cumulativeStructureCache, y, cumulativeMaterialMap, changedChunkKeys, activeChunkSize);
+    }
+    cumulativeTopLayer = targetLayer;
+
+    structure_l.value = cumulativeStructureCache;
+    materialOverview.value = toMaterialOverview(cumulativeMaterialMap);
+    return {
+      structureChanged: false,
+      changedChunkPositions: Array.from(changedChunkKeys).map(key => key.split(',').map(Number) as [number, number, number]),
+    };
+  }
+
+  structure_l.value = cumulativeStructureCache;
+  materialOverview.value = toMaterialOverview(cumulativeMaterialMap);
+
+  return { structureChanged: false };
 }
 const reloadRenderer = async () => {
   if (structureRenderer.value) return;
 
   const structureCanvas = document.getElementById('structure-display') as HTMLCanvasElement;
-  let structureGl = structureCanvas.getContext('webgl', { preserveDrawingBuffer: true })!;
+  let structureGl = structureCanvas.getContext('webgl', { preserveDrawingBuffer: false, antialias: false })!;
 
   gl_ctx.value = structureGl;
   if (interactiveCanvas.value) {
@@ -345,10 +493,13 @@ const reloadRenderer = async () => {
       blocks_resources.value,
       {
         facesPerBuffer: 500,
-        chunkSize: 16,
         useInvisibleBlockBuffer: false,
+        atlasMipmaps: false,
+        includeBlockPosBuffer: false,
+        versionTag: `mcstools@${schematicData.value.game_version ?? 'unknown'}`,
       }
   );
+  renderedStructureRef = structure_l.value ?? null;
 
   interactiveCanvas.value = new InteractiveCanvas(
       structureCanvas,
@@ -366,8 +517,6 @@ const reloadRenderer = async () => {
         if (hoveredBlock.value) {
           const pos = hoveredBlock.value.pos;
           structureRenderer.value.drawOutline(view, pos);
-          structureRenderer.value.drawOutline(view, [pos[0] + 0.002, pos[1] + 0.002, pos[2] + 0.002] as any);
-          structureRenderer.value.drawOutline(view, [pos[0] - 0.002, pos[1] - 0.002, pos[2] - 0.002] as any);
         }
       },
       [size_l.value[0] / 2, size_l.value[1] / 2, size_l.value[2] / 2]
@@ -464,6 +613,8 @@ const loadInit = async () => {
     loading_threeD.value = true;
     await loadStructure();
     console.log("done")
+    lastAppliedLayer = -1;
+    lastAppliedSingleLayerMode = false;
     currentLayer.value = size_l.value[1] - 1;
     if (size_l.value[0] * size_l.value[1] * size_l.value[2] >= 100 * 100 * 100) {
       once_threeD.value = true;
@@ -478,28 +629,17 @@ const loadInit = async () => {
   }
 }
 watch(currentLayer, (newVal) => {
-  updateStructure(newVal);
-
-  const renderer = structureRenderer.value;
-  if (renderer) {
-    renderer.setStructure(structure_l.value);
-    renderer.updateStructureBuffers();
-    interactiveCanvas.value?.redraw();
-  }
+  scheduleLayerUpdate(newVal);
 });
 
 
 watch(once_threeD, () => {
-  updateStructure(currentLayer.value);
-
-  const renderer = structureRenderer.value;
-  renderer.setStructure(structure_l.value);
-  renderer.updateStructureBuffers();
-  interactiveCanvas.value?.redraw();
+  scheduleLayerUpdate(currentLayer.value);
 });
 
 const destroyData = () => {
   console.log('clean')
+  resetStructureCaches();
   loading_threeD.value = false;
   layers.value = {};
   layerMap.clear();

@@ -1,0 +1,1 @@
+{"version":3,"file":"FixedBiomeSource.d.ts","sourceRoot":"","sources":["../../../src/worldgen/biome/FixedBiomeSource.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,UAAU,EAAE,MAAM,qBAAqB,CAAA;AAEhD,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,kBAAkB,CAAA;AAEnD,qBAAa,gBAAiB,YAAW,WAAW;IAElD,OAAO,CAAC,QAAQ,CAAC,KAAK;gBAAL,KAAK,EAAE,UAAU;IAG5B,QAAQ;WAID,QAAQ,CAAC,GAAG,EAAE,OAAO;CAKnC"}

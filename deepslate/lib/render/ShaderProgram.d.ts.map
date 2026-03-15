@@ -1,0 +1,1 @@
+{"version":3,"file":"ShaderProgram.d.ts","sourceRoot":"","sources":["../../src/render/ShaderProgram.ts"],"names":[],"mappings":"AAAA,qBAAa,aAAa;IACzB,OAAO,CAAC,QAAQ,CAAC,EAAE,CAAuB;IAC1C,OAAO,CAAC,QAAQ,CAAC,OAAO,CAAc;gBAE1B,EAAE,EAAE,qBAAqB,EAAE,QAAQ,EAAE,MAAM,EAAE,QAAQ,EAAE,MAAM;IAKlE,UAAU;IAIjB,OAAO,CAAC,iBAAiB;IAgBzB,OAAO,CAAC,UAAU;CAclB"}

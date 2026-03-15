@@ -1,0 +1,1 @@
+{"version":3,"file":"BlockColors.d.ts","sourceRoot":"","sources":["../../src/render/BlockColors.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,KAAK,EAAE,MAAM,kBAAkB,CAAA;AAqBxC,eAAO,MAAM,WAAW,EAAE;IACzB,CAAC,GAAG,EAAE,MAAM,GAAG,CAAC,KAAK,EAAE;QAAE,CAAC,GAAG,EAAE,MAAM,GAAG,MAAM,CAAA;KAAE,KAAK,KAAK,CAAC;CA+B3D,CAAA"}

@@ -1,0 +1,26 @@
+import type { Random } from './random/index.js';
+export declare function square(x: number): number;
+export declare function clamp(x: number, min: number, max: number): number;
+export declare function lerp(a: number, b: number, c: number): number;
+export declare function floatLerp(a: number, b: number, c: number): number;
+export declare function lerp2(a: number, b: number, c: number, d: number, e: number, f: number): number;
+export declare function lerp3(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number): number;
+export declare function lazyLerp(a: number, b: () => number, c: () => number): number;
+export declare function lazyLerp2(a: number, b: number, c: () => number, d: () => number, e: () => number, f: () => number): number;
+export declare function lazyLerp3(a: number, b: number, c: number, d: () => number, e: () => number, f: () => number, g: () => number, h: () => number, i: () => number, j: () => number, k: () => number): number;
+export declare function clampedLerp(a: number, b: number, c: number): number;
+export declare function inverseLerp(a: number, b: number, c: number): number;
+export declare function smoothstep(x: number): number;
+export declare function map(a: number, b: number, c: number, d: number, e: number): number;
+export declare function clampedMap(a: number, b: number, c: number, d: number, e: number): number;
+export declare function intFloor(a: number): number;
+export declare function longFloor(a: number): number;
+export declare function binarySearch(n: number, n2: number, predicate: (value: number) => boolean): number;
+export declare function getSeed(x: number, y: number, z: number): bigint;
+export declare function longfromBytes(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number): bigint;
+export declare function isPowerOfTwo(x: number): boolean;
+export declare function upperPowerOfTwo(x: number): number;
+export declare function randomBetweenInclusive(random: Random, min: number, max: number): number;
+export declare function nextInt(random: Random, min: number, max: number): number;
+export declare function shuffle(array: unknown[], random: Random): void;
+//# sourceMappingURL=Util.d.ts.map

@@ -1,0 +1,78 @@
+{
+  "name": "deepslate",
+  "description": "Library for rendering and emulating parts of Minecraft",
+  "version": "0.24.0",
+  "author": "Misode",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/misode/deepslate.git"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "unpkg": "./dist/deepslate.umd.cjs",
+  "types": "./lib/index.d.ts",
+  "files": [
+    "lib/*",
+    "dist/*",
+    "!**/*.tsbuildinfo"
+  ],
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./core": {
+      "types": "./lib/core/main.d.ts",
+      "default": "./lib/core/main.js"
+    },
+    "./math": {
+      "types": "./lib/math/main.d.ts",
+      "default": "./lib/math/main.js"
+    },
+    "./nbt": {
+      "types": "./lib/nbt/main.d.ts",
+      "default": "./lib/nbt/main.js"
+    },
+    "./render": {
+      "types": "./lib/render/main.d.ts",
+      "default": "./lib/render/main.js"
+    },
+    "./util": {
+      "types": "./lib/util/main.d.ts",
+      "default": "./lib/util/main.js"
+    },
+    "./worldgen": {
+      "types": "./lib/worldgen/main.d.ts",
+      "default": "./lib/worldgen/main.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b src --clean && tsc -b src && vite build",
+    "dev": "tsc -b -w src",
+    "test": "vitest -r ./test",
+    "demo": "vite ./demo",
+    "benchmark": "esno benchmarks/index.ts",
+    "lint": "eslint . --ext .ts",
+    "version": "bash scripts/version.sh",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "gl-matrix": "^3.3.0",
+    "md5": "^2.3.0",
+    "pako": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/md5": "^2.3.1",
+    "@types/pako": "^1.0.1",
+    "@typescript-eslint/eslint-plugin": "^5.42.1",
+    "@typescript-eslint/parser": "^5.42.1",
+    "benny": "^3.7.1",
+    "eslint": "^8.27.0",
+    "esno": "^0.16.3",
+    "typescript": "^4.8.4",
+    "vite": "^3.2.3",
+    "vitest": "^0.25.1"
+  }
+}

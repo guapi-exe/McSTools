@@ -1,0 +1,1 @@
+{"version":3,"file":"NbtParser.d.ts","sourceRoot":"","sources":["../../src/nbt/NbtParser.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,kBAAkB,CAAA;AAa/C,OAAO,KAAK,EAAE,MAAM,EAAE,MAAM,kBAAkB,CAAA;AAG9C;;GAEG;AACH,yBAAiB,SAAS,CAAC;IAS1B,SAAgB,OAAO,CAAC,MAAM,EAAE,YAAY,GAAG,MAAM,CAwEpD;CA0FD"}
