@@ -410,6 +410,54 @@ export default {
       }
     }
   },
+  updater: {
+    dialog: {
+      title: '新しいバージョン {version} が見つかりました',
+      releaseDate: '公開日: {date}',
+      downloading: 'ダウンロード中',
+      downloaded: 'ダウンロード済み',
+      speed: 'ダウンロード速度',
+      eta: '推定残り時間',
+      unknownTotal: '合計サイズ不明',
+      calculating: '計算中...',
+      almostDone: 'まもなく完了',
+      installingHint: 'インストール完了までアプリを閉じないでください',
+      updateNow: '今すぐ更新',
+      remindLater: '後で通知',
+      backgroundDownload: 'バックグラウンドでダウンロード'
+    },
+    restart: {
+      title: '更新の準備ができました',
+      installedComplete: 'インストールが完了しました',
+      autoRestart: '{seconds} 秒後に自動的に再起動します',
+      restartNow: '今すぐ再起動',
+      restartLater: '後で再起動'
+    },
+    status: {
+      waiting: 'ダウンロード待機中',
+      preparing: '更新パッケージを準備中',
+      downloading: '更新パッケージをダウンロード中',
+      downloadingUnknownSize: '更新パッケージをダウンロード中（合計サイズ不明）',
+      installing: 'ダウンロード完了、更新をインストール中',
+      installedAutoRestart: 'インストール完了、{seconds} 秒後に自動再起動します'
+    },
+    toast: {
+      foundVersion: '新しいバージョン {version} が見つかりました。公開日: {date}。更新内容: {body}',
+      noVersion: '新しいバージョンは見つかりませんでした',
+      notAvailable: '利用可能な更新が見つかりませんでした',
+      checkFailed: '更新の確認に失敗しました: {error}',
+      downloadFailed: '更新のダウンロードに失敗しました: {error}',
+      restartingSoon: '更新が完了しました。まもなく再起動します'
+    },
+    units: {
+      unknown: '不明'
+    },
+    time: {
+      hoursMinutesSeconds: '{hours}時間 {minutes}分 {seconds}秒',
+      minutesSeconds: '{minutes}分 {seconds}秒',
+      seconds: '{seconds}秒'
+    }
+  },
   messages: {
     clearSuccess: 'リソースファイルをクリアしました。5秒後に再起動します',
     error: 'エラーが発生しました: {error}',

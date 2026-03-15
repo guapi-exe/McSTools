@@ -447,6 +447,54 @@
             }
         }
     },
+    updater: {
+        dialog: {
+            title: '發現新版本 {version}',
+            releaseDate: '發布日期: {date}',
+            downloading: '下載中',
+            downloaded: '已下載',
+            speed: '下載速度',
+            eta: '預計剩餘時間',
+            unknownTotal: '總大小未知',
+            calculating: '計算中...',
+            almostDone: '即將完成',
+            installingHint: '請勿關閉應用程式，正在完成安裝',
+            updateNow: '立即更新',
+            remindLater: '稍後提醒',
+            backgroundDownload: '背景下載'
+        },
+        restart: {
+            title: '更新準備就緒',
+            installedComplete: '已安裝完成',
+            autoRestart: '{seconds} 秒後自動重新啟動',
+            restartNow: '立即重新啟動',
+            restartLater: '稍後重新啟動'
+        },
+        status: {
+            waiting: '等待下載',
+            preparing: '正在準備下載更新包',
+            downloading: '正在下載更新包',
+            downloadingUnknownSize: '正在下載更新包（總大小未知）',
+            installing: '下載完成，正在安裝更新',
+            installedAutoRestart: '已安裝完成，{seconds} 秒後自動重新啟動'
+        },
+        toast: {
+            foundVersion: '發現新版本: {version}，發布日期 {date}，更新說明：{body}',
+            noVersion: '未發現新版本',
+            notAvailable: '未找到可用更新',
+            checkFailed: '檢查更新失敗: {error}',
+            downloadFailed: '更新下載失敗: {error}',
+            restartingSoon: '更新完成，即將自動重新啟動'
+        },
+        units: {
+            unknown: '未知'
+        },
+        time: {
+            hoursMinutesSeconds: '{hours}小時 {minutes}分 {seconds}秒',
+            minutesSeconds: '{minutes}分 {seconds}秒',
+            seconds: '{seconds}秒'
+        }
+    },
     messages: {
         clearSuccess: '已清除資源檔案，將在5秒後重新啟動',
         error: '發生錯誤: {error}',

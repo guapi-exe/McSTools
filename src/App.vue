@@ -23,26 +23,55 @@
       >
         <v-card-title class="headline">
           <v-icon class="mr-2">mdi-update</v-icon>
-          发现新版本 {{ updateInfo?.version }}
+          {{ $t('updater.dialog.title', { version: updateInfo?.version ?? '-' }) }}
         </v-card-title>
 
         <v-card-text>
           <div v-if="updateState === UpdateState.Pending">
-            <p>发布日期: {{ updateInfo?.date }}</p>
+            <p>{{ $t('updater.dialog.releaseDate', { date: updateInfo?.date ?? '-' }) }}</p>
             <pre>{{ updateInfo?.body }}</pre>
           </div>
 
           <div v-else-if="updateState === UpdateState.Downloading">
             <v-progress-linear
-                :value="updateProgress"
+                :model-value="updateProgress"
+                :indeterminate="updateTotalBytes === null"
                 color="info"
                 height="25"
                 striped
             >
-              <strong>{{ updateProgress }}</strong>
+              <strong>{{ updateTotalBytes === null ? $t('updater.dialog.downloading') : `${updateProgress}%` }}</strong>
             </v-progress-linear>
+            <div class="text-body-2 mt-3">
+              {{ updateStatusText }}
+            </div>
             <div class="text-caption mt-2">
-              已下载: {{ (updateProgress/ 1024 / 1024).toFixed(2)  }}MB
+              {{ $t('updater.dialog.downloaded') }}: {{ formatBytes(updateDownloadedBytes) }}
+              <span v-if="updateTotalBytes !== null"> / {{ formatBytes(updateTotalBytes) }}</span>
+            </div>
+            <div class="text-caption mt-1">
+              {{ $t('updater.dialog.speed') }}: {{ formatSpeed(updateDownloadSpeed) }}
+            </div>
+            <div class="text-caption mt-1">
+              {{ $t('updater.dialog.eta') }}: {{ formatRemainingTime(updateRemainingSeconds, updateTotalBytes) }}
+            </div>
+          </div>
+
+          <div v-else-if="updateState === UpdateState.Installing" class="installing-state">
+            <v-progress-circular
+                indeterminate
+                color="info"
+                size="48"
+                width="5"
+            />
+            <div class="text-body-1 mt-4 font-weight-medium">
+              {{ updateStatusText }}
+            </div>
+            <div class="text-caption mt-2 text-medium-emphasis">
+              {{ $t('updater.dialog.installingHint') }}
+              <span class="installing-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
             </div>
           </div>
         </v-card-text>
@@ -57,6 +86,7 @@
           </v-btn>
           <v-btn
               text
+              :disabled="updateState === UpdateState.Installing"
               @click="updateDialog = false"
           >
             {{ updateState === UpdateState.Pending ? '稍后提醒' : '后台下载' }}
@@ -69,11 +99,14 @@
       <v-card>
         <v-card-title class="headline">
           <v-icon color="success" class="mr-2">mdi-check-circle</v-icon>
-          更新准备就绪
+          {{ $t('updater.restart.title') }}
         </v-card-title>
 
         <v-card-text>
-          新版本已下载完成，是否立即重启应用生效？
+          <div>{{ $t('updater.restart.installedComplete') }}</div>
+          <div class="text-caption mt-2 text-medium-emphasis">
+            {{ $t('updater.restart.autoRestart', { seconds: restartCountdownSeconds }) }}
+          </div>
         </v-card-text>
 
         <v-card-actions>
@@ -81,14 +114,14 @@
               color="info"
               @click="relaunch()"
           >
-            立即重启
+            {{ $t('updater.restart.restartNow') }}
           </v-btn>
           <v-spacer />
           <v-btn
               text
               @click="restartDialog = false"
           >
-            稍后重启
+            {{ $t('updater.restart.restartLater') }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -133,10 +166,16 @@ import {
   checkUpdate,
   confirmUpdate,
   restartDialog,
+  restartCountdownSeconds,
   updateDialog,
+  updateDownloadedBytes,
+  updateDownloadSpeed,
   updateInfo,
   updateProgress,
+  updateRemainingSeconds,
+  updateStatusText,
   updateState,
+  updateTotalBytes,
   UpdateState
 } from "./modules/chuck_update.ts";
 import {resources_Init} from "./modules/threed_data/deepslateInit.ts";
@@ -161,7 +200,64 @@ const backgroundStyle = ref({
 })
 
 const showBackToTop = ref(false)
-const { locale } = useI18n()
+const { locale, t: $t } = useI18n()
+
+const formatBytes = (bytes: number | null) => {
+  if (bytes === null || Number.isNaN(bytes)) {
+    return $t('updater.units.unknown')
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes / 1024
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  return `${value.toFixed(2)} ${units[unitIndex]}`
+}
+
+const formatSpeed = (bytesPerSecond: number) => {
+  if (!bytesPerSecond || bytesPerSecond <= 0) {
+    return $t('updater.dialog.calculating')
+  }
+
+  return `${formatBytes(bytesPerSecond)}/s`
+}
+
+const formatRemainingTime = (seconds: number | null, totalBytes: number | null) => {
+  if (totalBytes === null) {
+    return $t('updater.dialog.unknownTotal')
+  }
+
+  if (seconds === null) {
+    return $t('updater.dialog.calculating')
+  }
+
+  if (seconds <= 0) {
+    return $t('updater.dialog.almostDone')
+  }
+
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+
+  if (hours > 0) {
+    return $t('updater.time.hoursMinutesSeconds', { hours, minutes, seconds: secs })
+  }
+
+  if (minutes > 0) {
+    return $t('updater.time.minutesSeconds', { minutes, seconds: secs })
+  }
+
+  return $t('updater.time.seconds', { seconds: secs })
+}
 
 const checkScroll = () => {
   const mainContent = document.getElementById('app') as HTMLElement
@@ -297,6 +393,51 @@ onMounted(async () => {
 }
 ::-webkit-scrollbar {
   width: 0 !important;height: 0;
+}
+
+.installing-state {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.installing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.installing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: installing-dot-pulse 1.2s infinite ease-in-out;
+}
+
+.installing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.installing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes installing-dot-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.3;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
 <style lang="css" src="./assets/css/app.css"></style>

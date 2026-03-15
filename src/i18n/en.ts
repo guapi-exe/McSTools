@@ -404,6 +404,54 @@ export default {
       }
     }
   },
+  updater: {
+    dialog: {
+      title: 'New version found: {version}',
+      releaseDate: 'Release date: {date}',
+      downloading: 'Downloading',
+      downloaded: 'Downloaded',
+      speed: 'Speed',
+      eta: 'Estimated time remaining',
+      unknownTotal: 'Total size unknown',
+      calculating: 'Calculating...',
+      almostDone: 'Almost done',
+      installingHint: 'Please do not close the app while installation completes',
+      updateNow: 'Update Now',
+      remindLater: 'Remind Me Later',
+      backgroundDownload: 'Download in Background'
+    },
+    restart: {
+      title: 'Update Ready',
+      installedComplete: 'Installation complete',
+      autoRestart: 'Automatically restarting in {seconds} seconds',
+      restartNow: 'Restart Now',
+      restartLater: 'Restart Later'
+    },
+    status: {
+      waiting: 'Waiting to download',
+      preparing: 'Preparing the update package',
+      downloading: 'Downloading the update package',
+      downloadingUnknownSize: 'Downloading the update package (unknown total size)',
+      installing: 'Download complete, installing update',
+      installedAutoRestart: 'Installed successfully, automatically restarting in {seconds} seconds'
+    },
+    toast: {
+      foundVersion: 'New version found: {version}. Released on {date}. Notes: {body}',
+      noVersion: 'No updates available',
+      notAvailable: 'No available update was found',
+      checkFailed: 'Update check failed: {error}',
+      downloadFailed: 'Update download failed: {error}',
+      restartingSoon: 'Update finished. Restarting soon'
+    },
+    units: {
+      unknown: 'Unknown'
+    },
+    time: {
+      hoursMinutesSeconds: '{hours}h {minutes}m {seconds}s',
+      minutesSeconds: '{minutes}m {seconds}s',
+      seconds: '{seconds}s'
+    }
+  },
   messages: {
     clearSuccess: 'Resource files cleared, will restart in 5 seconds',
     error: 'An error occurred: {error}',

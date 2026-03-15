@@ -447,6 +447,54 @@ export default {
       }
     }
   },
+  updater: {
+    dialog: {
+      title: '发现新版本 {version}',
+      releaseDate: '发布日期: {date}',
+      downloading: '下载中',
+      downloaded: '已下载',
+      speed: '下载速度',
+      eta: '预计剩余时间',
+      unknownTotal: '总大小未知',
+      calculating: '计算中...',
+      almostDone: '即将完成',
+      installingHint: '请勿关闭应用，正在完成安装',
+      updateNow: '立即更新',
+      remindLater: '稍后提醒',
+      backgroundDownload: '后台下载'
+    },
+    restart: {
+      title: '更新准备就绪',
+      installedComplete: '已安装完成',
+      autoRestart: '{seconds} 秒后自动重启',
+      restartNow: '立即重启',
+      restartLater: '稍后重启'
+    },
+    status: {
+      waiting: '等待下载',
+      preparing: '正在准备下载更新包',
+      downloading: '正在下载更新包',
+      downloadingUnknownSize: '正在下载更新包（总大小未知）',
+      installing: '下载完成，正在安装更新',
+      installedAutoRestart: '已安装完成，{seconds} 秒后自动重启'
+    },
+    toast: {
+      foundVersion: '发现新版本: {version}，发布日期 {date}，更新说明：{body}',
+      noVersion: '未发现新版本',
+      notAvailable: '未找到可用更新',
+      checkFailed: '检查更新失败: {error}',
+      downloadFailed: '更新下载失败: {error}',
+      restartingSoon: '更新完毕，即将自动重启'
+    },
+    units: {
+      unknown: '未知'
+    },
+    time: {
+      hoursMinutesSeconds: '{hours}小时 {minutes}分 {seconds}秒',
+      minutesSeconds: '{minutes}分 {seconds}秒',
+      seconds: '{seconds}秒'
+    }
+  },
   messages: {
     clearSuccess: '已清除资源文件，将在5秒后重启',
     error: '发生错误: {error}',
