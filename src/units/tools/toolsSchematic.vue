@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import {defineProps, onMounted, reactive, ref} from "vue";
+import {defineProps, onMounted, reactive, ref, watch} from "vue";
 import {SchematicsData, schematicTypeList} from "../../modules/schematics_data.ts";
 import dayjs from "dayjs";
 import {files, handleUpload, progressValue, uploadError, uploadStatus} from "../../modules/upload_schematic.ts";
 import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
-import {schematic_id} from "../../modules/tools_data.ts";
+import {fetch_data, schematic_id} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import {userData} from "../../modules/user_data.ts";
 import {opacity} from "../../modules/theme.ts";
@@ -16,11 +16,15 @@ const props = defineProps<{
   data: SchematicsData | undefined,
 }>()
 const tags = ref<string[]>([])
-const showDeleteDialog = ref(false)
+const showLmVersionDialog = ref(false)
+const showBeClearAirDialog = ref(false)
 const lastTags = ref<string[]>([]);
 const editing = ref(false)
 const lmVersion = ref(6)
 const editLoading = ref(false)
+const checkingBeAir = ref(false)
+const beAirActionLoading = ref(false)
+const hasBeAirBlocks = ref(false)
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
   return [`X${length}`, `Y${width}`, `Z${height}`]
@@ -92,6 +96,7 @@ const saveTags = async (newTags: string[]) => {
 
 
 const setLmVersion = async () => {
+  if (!props.data) return;
   props.data.lm_version = lmVersion.value;
   const result = await invoke<boolean>('convert_lm', {
     id: schematic_id.value,
@@ -102,25 +107,75 @@ const setLmVersion = async () => {
       timeout: 3000
     });
   }
-  showDeleteDialog.value = false;
+  showLmVersionDialog.value = false;
 }
 
-onMounted(() => {
-  if(props.data){
-    schematicEdit.name = props.data.name;
+const loadBeAirState = async () => {
+  if (!props.data || props.data.schematic_type !== 5) {
+    hasBeAirBlocks.value = false
+    return
+  }
 
-    if ((props.data.schematic_tags && typeof props.data.schematic_tags === 'string') && props.data.schematic_tags != "{}") {
-      schematicEdit.schematic_tags = props.data.schematic_tags
-          ? props.data.schematic_tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
-          : [];
-    } else {
-      schematicEdit.schematic_tags = [];
+  try {
+    checkingBeAir.value = true
+    hasBeAirBlocks.value = await invoke<boolean>('be_has_air', {
+      id: props.data.id,
+    })
+  } catch (error) {
+    hasBeAirBlocks.value = false
+    toast.error(`发生了一个错误:${error}`, { timeout: 3000 })
+  } finally {
+    checkingBeAir.value = false
+  }
+}
+
+const clearBeAirBlocks = async () => {
+  if (!props.data) return
+
+  try {
+    beAirActionLoading.value = true
+    const result = await invoke<boolean>('be_clear_air', {
+      id: props.data.id,
+    })
+    if (result) {
+      hasBeAirBlocks.value = false
+      showBeClearAirDialog.value = false
+      await fetch_data(props.data.id)
+      toast.success($t('toolsSchematic.clearAirBlocksSuccess'), {
+        timeout: 3000,
+      })
+    }
+  } catch (error) {
+    toast.error(`发生了一个错误:${error}`, { timeout: 3000 })
+  } finally {
+    beAirActionLoading.value = false
+  }
+}
+
+watch(
+  () => props.data?.id,
+  async () => {
+    if (props.data) {
+      schematicEdit.name = props.data.name;
+
+      if ((props.data.schematic_tags && typeof props.data.schematic_tags === 'string') && props.data.schematic_tags != "{}") {
+        schematicEdit.schematic_tags = props.data.schematic_tags
+            ? props.data.schematic_tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+            : [];
+      } else {
+        schematicEdit.schematic_tags = [];
+      }
+
+      schematicEdit.description = props.data.description;
+      lmVersion.value = props.data.lm_version;
     }
 
-    schematicEdit.description = props.data.description;
+    await loadBeAirState()
+  },
+  { immediate: true }
+)
 
-    lmVersion.value = props.data.lm_version;
-  }
+onMounted(() => {
   if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
     tags.value = userData.value.classification
         ? userData.value.classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
@@ -188,7 +243,7 @@ onMounted(() => {
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>{{$t('toolsSchematic.type')}}：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4] }} </v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.type')}}：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4 | 5] }} </v-list-item-title>
             </v-list-item>
 
             <v-list-item>
@@ -223,7 +278,23 @@ onMounted(() => {
                       variant="text"
                       size="x-small"
                       icon="mdi-pencil"
-                      @click="showDeleteDialog = true;"
+                      @click="showLmVersionDialog = true;"
+                  ></v-btn>
+                </v-list-item-action>
+              </template>
+            </v-list-item>
+            <v-list-item v-if="props.data.schematic_type == 5 && hasBeAirBlocks">
+              <v-list-item-title class="d-flex align-center">
+                <span>{{$t('toolsSchematic.airBlocks')}}：{{$t('toolsSchematic.clearable')}}</span>
+              </v-list-item-title>
+              <template v-slot:append>
+                <v-list-item-action class="ml-2">
+                  <v-btn
+                      variant="text"
+                      size="x-small"
+                      icon="mdi-air-filter"
+                      :loading="beAirActionLoading || checkingBeAir"
+                      @click="showBeClearAirDialog = true"
                   ></v-btn>
                 </v-list-item-action>
               </template>
@@ -404,7 +475,7 @@ onMounted(() => {
     </v-alert>
   </div>
 
-  <v-dialog v-model="showDeleteDialog" max-width="600" persistent>
+  <v-dialog v-model="showLmVersionDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
         :style="{ '--surface-alpha': opacity }"
@@ -436,13 +507,50 @@ onMounted(() => {
         <v-spacer></v-spacer>
         <v-btn
             color="grey-darken-1"
-            @click="showDeleteDialog = false"
+            @click="showLmVersionDialog = false"
         >
           {{$t('toolsSchematic.cancel')}}
         </v-btn>
         <v-btn
             color="info"
             @click="setLmVersion"
+        >
+          {{$t('toolsSchematic.confirmEdit')}}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog v-model="showBeClearAirDialog" max-width="600" persistent>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
+    >
+      <v-card-title class="headline">
+        <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+        {{$t('toolsSchematic.clearAirBlocks')}}
+      </v-card-title>
+
+      <v-card-subtitle class="text-caption text-grey-darken-1">
+        {{$t('toolsSchematic.clearAirBlocksHint')}}
+      </v-card-subtitle>
+      <v-card-text>
+        <span class="text-caption text-grey-darken-1">
+          {{$t('toolsSchematic.confirmClearAirBlocks')}}
+        </span>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            @click="showBeClearAirDialog = false"
+        >
+          {{$t('toolsSchematic.cancel')}}
+        </v-btn>
+        <v-btn
+            color="info"
+            :loading="beAirActionLoading"
+            @click="clearBeAirBlocks"
         >
           {{$t('toolsSchematic.confirmEdit')}}
         </v-btn>
