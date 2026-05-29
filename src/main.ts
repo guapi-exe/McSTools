@@ -36,6 +36,14 @@ const installBrowserGuards = () => {
 
 installBrowserGuards()
 
+if (new URLSearchParams(window.location.search).has('3dblocksSmoke')) {
+    import('./modules/3DBLOCKS/testing/browserSmoke.ts')
+        .then(({runAndReportThreeDBlocksBrowserSmoke}) => runAndReportThreeDBlocksBrowserSmoke())
+        .catch((error) => {
+            console.error('[3DBLOCKS smoke] failed', error)
+        })
+}
+
 const app = createApp(App)
 app.use(router)
 app.use(vuetify)

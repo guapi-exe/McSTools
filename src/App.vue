@@ -178,7 +178,7 @@ import {
   updateTotalBytes,
   UpdateState
 } from "./modules/chuck_update.ts";
-import {resources_Init} from "./modules/threed_data/deepslateInit.ts";
+import {loadThreeDBlocksResources} from "./modules/3DBLOCKS";
 import {detectTheme, toast} from "./modules/others.ts";
 import {change_data, showSaveDialog} from "./modules/snbt_to_json.ts";
 
@@ -285,7 +285,7 @@ const preloadNonCriticalResources = async () => {
     getAppVersion(),
     fetchJeBlocks(),
     fetchMapArtsData(),
-    resources_Init(),
+    loadThreeDBlocksResources(),
     autoUpdateEnabled.value ? checkUpdate(true) : Promise.resolve(null),
   ])
 

@@ -33,6 +33,7 @@ const loadState = ref()
 const autoPage = ref(1)
 const showDeleteDialog = ref(false)
 const showDeleteDialog2 = ref(false)
+const showBatchDeleteDialog = ref(false)
 const selectedBpId = ref(null)
 const draggingOverId = ref<number | null>(null)
 const selectedBpName = ref('')
@@ -53,10 +54,17 @@ const countMap = ref<Record<string, number>>({});
 const lastHandledRefreshVersion = ref(0)
 const selectingAll = ref(false)
 const exportingSelected = ref(false)
+const deletingSelected = ref(false)
 const filters = ref({
   keyword: '',
 })
 const { t: $t } = useI18n()
+
+const keepActionMenuOpen = () => {
+  requestAnimationFrame(() => {
+    open.value = true
+  })
+}
 
 const getCurrentClassification = () => {
   const value = selectClassification.value
@@ -374,6 +382,7 @@ onActivated(async () => {
 
 const selectAll = async () => {
   try {
+    checks.value = true
     selectingAll.value = true
     const allSchematics = await fetchAllMatchingSchematics()
     selectedIds.value = allSchematics.map(bp => bp.id)
@@ -381,10 +390,20 @@ const selectAll = async () => {
     toast.error(`全选失败:${error}`, { timeout: 3000 })
   } finally {
     selectingAll.value = false
+    keepActionMenuOpen()
   }
 }
 const clearAll = () => {
   selectedIds.value = []
+  keepActionMenuOpen()
+}
+
+const toggleMultiSelect = () => {
+  checks.value = !checks.value
+  if (!checks.value) {
+    selectedIds.value = []
+  }
+  keepActionMenuOpen()
 }
 
 const isSelected = (id: number) => selectedIds.value.includes(id)
@@ -413,6 +432,48 @@ const batchExport = async () => {
     await batchExportSchematics(selectedBps)
   } finally {
     exportingSelected.value = false
+    keepActionMenuOpen()
+  }
+}
+
+const openBatchDeleteDialog = () => {
+  if (selectedIds.value.length === 0) {
+    toast.error("请至少选择一个蓝图！", { timeout: 2000 })
+    keepActionMenuOpen()
+    return
+  }
+
+  showBatchDeleteDialog.value = true
+  keepActionMenuOpen()
+}
+
+const confirmBatchDelete = async () => {
+  const idsToDelete = Array.from(new Set(selectedIds.value))
+  if (idsToDelete.length === 0) {
+    showBatchDeleteDialog.value = false
+    return
+  }
+
+  try {
+    deletingSelected.value = true
+    for (const id of idsToDelete) {
+      await delete_schematic(id)
+    }
+
+    selectedIds.value = []
+    if (userData.value) {
+      userData.value.schematics = Math.max((userData.value.schematics ?? 0) - idsToDelete.length, 0)
+    }
+    showBatchDeleteDialog.value = false
+    await loadCounts()
+    await reload()
+    toast.success($t('localData.deleteSuccess', { count: idsToDelete.length }), { timeout: 3000 })
+  } catch (error) {
+    console.error('批量删除失败:', error)
+    toast.error($t('localData.deleteFailed', { error: String(error) }), { timeout: 3000 })
+  } finally {
+    deletingSelected.value = false
+    keepActionMenuOpen()
   }
 }
 
@@ -832,60 +893,107 @@ const batchExport = async () => {
       </v-card-actions>
     </v-card>
   </v-dialog>
-  <v-fab
-      key="fixed"
-      size="large"
-      location="right bottom"
-      :app="true"
-      :color="open ? 'info' : 'success'"
-      icon
-  >
-    <v-icon>{{ open ? 'mdi-close' : 'mdi-folder-multiple-plus-outline' }}</v-icon>
-    <v-speed-dial
-        v-model="open"
-        location="left center"
-        activator="parent"
-        transition="slide-x-reverse-transition"
+  <v-dialog v-model="showBatchDeleteDialog" max-width="600" persistent>
+    <v-card
+        class="v-theme--custom"
+        :style="{ '--surface-alpha': opacity }"
     >
-      <v-btn
-          prepend-icon="mdi-filter-multiple-outline"
-          size="small"
-          :color="checks? 'error' : 'success'"
-          @click.stop="checks = !checks"
-      >
-        {{ checks ? '退出多选' : '多选' }}
-      </v-btn>
+      <v-card-title class="headline">
+        <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+        {{ $t('localData.confirmDelete') }}
+      </v-card-title>
 
-      <v-btn
-          prepend-icon="mdi-download"
-          size="small"
-          color="success"
-          @click="batchExport"
-          :loading="exportingSelected"
-          :disabled="selectedIds.length === 0"
-      >
-        批量导出
-      </v-btn>
-      <v-btn
-          prepend-icon="mdi-check-all"
-          size="small"
-          color="success"
-          @click="selectAll"
-          :loading="selectingAll"
-      >
-        全选
-      </v-btn>
+      <v-card-text>
+        {{ $t('localData.confirmBatchDeleteBlueprints', { count: selectedIds.length }) }}
+        {{ $t('localData.thisActionCannotBeUndone') }}
+      </v-card-text>
 
-      <v-btn
-          prepend-icon="mdi-close-circle-multiple-outline"
-          size="small"
-          color="error"
-          @click="clearAll"
-      >
-        取消全选
-      </v-btn>
-    </v-speed-dial>
-  </v-fab>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            :disabled="deletingSelected"
+            @click="showBatchDeleteDialog = false"
+        >
+          {{ $t('localData.cancel') }}
+        </v-btn>
+        <v-btn
+            color="error"
+            :loading="deletingSelected"
+            @click="confirmBatchDelete"
+        >
+          {{ $t('localData.batchDelete') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+  <div class="local-action-menu" @click.stop>
+    <transition name="local-action-panel">
+      <div v-if="open" class="local-action-panel">
+        <v-btn
+            prepend-icon="mdi-filter-multiple-outline"
+            size="small"
+            :color="checks? 'error' : 'success'"
+            @click.stop="toggleMultiSelect"
+        >
+          {{ checks ? $t('localData.exitMultiSelect') : $t('localData.multiSelect') }}
+        </v-btn>
+
+        <v-btn
+            prepend-icon="mdi-download"
+            size="small"
+            color="success"
+            @click.stop="batchExport"
+            :loading="exportingSelected"
+            :disabled="selectedIds.length === 0"
+        >
+          {{ $t('localData.batchExport') }}
+        </v-btn>
+
+        <v-btn
+            prepend-icon="mdi-delete-sweep"
+            size="small"
+            color="error"
+            @click.stop="openBatchDeleteDialog"
+            :loading="deletingSelected"
+            :disabled="selectedIds.length === 0"
+        >
+          {{ $t('localData.batchDelete') }}
+        </v-btn>
+
+        <v-btn
+            prepend-icon="mdi-check-all"
+            size="small"
+            color="success"
+            @click.stop="selectAll"
+            :loading="selectingAll"
+        >
+          {{ $t('localData.selectAll') }}
+        </v-btn>
+
+        <v-btn
+            prepend-icon="mdi-close-circle-multiple-outline"
+            size="small"
+            color="error"
+            @click.stop="clearAll"
+        >
+          {{ $t('localData.clearAll') }}
+        </v-btn>
+      </div>
+    </transition>
+
+    <v-btn
+        key="fixed"
+        class="local-action-toggle"
+        size="large"
+        :color="open ? 'info' : 'success'"
+        icon
+        elevation="8"
+        @click.stop="open = !open"
+    >
+      <v-icon>{{ open ? 'mdi-close' : 'mdi-folder-multiple-plus-outline' }}</v-icon>
+    </v-btn>
+  </div>
 
 </template>
 
@@ -953,6 +1061,50 @@ const batchExport = async () => {
 }
 .blueprint-item.drag-ready:hover {
   background: rgba(25, 118, 210, 0.05);
+}
+
+.local-action-menu {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1800;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.local-action-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100vw - 104px);
+  padding: 10px;
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+}
+
+.local-action-panel :deep(.v-btn) {
+  justify-content: flex-start;
+  min-width: 156px;
+}
+
+.local-action-toggle {
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.local-action-panel-enter-active,
+.local-action-panel-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.local-action-panel-enter-from,
+.local-action-panel-leave-to {
+  opacity: 0;
+  transform: translateX(12px) scale(0.98);
 }
 
 </style>

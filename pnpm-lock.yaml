@@ -57,8 +57,8 @@ dependencies:
     specifier: 1.11.13
     version: 1.11.13
   deepslate:
-    specifier: file:./deepslate
-    version: file:deepslate
+    specifier: 0.24.0
+    version: 0.24.0
   echarts:
     specifier: 5.6.0
     version: 5.6.0
@@ -2520,9 +2520,8 @@ packages:
       tslib: 2.3.0
     dev: false
 
-  file:deepslate:
-    resolution: {directory: deepslate, type: directory}
-    name: deepslate
+  /deepslate@0.24.0:
+    resolution: {integrity: sha512-j0Ej3N06dJ0zhY8UW3KtTRFadpGmk1eHNCY57tX4FKutFVzQGcieljeNiJ/slUdZBeh1HZxtJzGMbC9+RIN0Tg==}
     dependencies:
       gl-matrix: 3.4.4
       md5: 2.3.0

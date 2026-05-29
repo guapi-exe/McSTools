@@ -41,6 +41,24 @@ export interface SchematicData {
     size: Size,
 }
 
+export interface SchematicPreviewBlockState {
+    id: string,
+    properties: Record<string, string>,
+}
+
+export interface SchematicPreviewMaterial {
+    id: string,
+    count: number,
+}
+
+export interface SchematicPreviewData {
+    size: Size,
+    palette: SchematicPreviewBlockState[],
+    blocks: number[],
+    materials: SchematicPreviewMaterial[],
+    tile_entities_list: TileEntitiesList,
+}
+
 
 export async function fetchSchematicData(
     schematicId: number
@@ -49,6 +67,19 @@ export async function fetchSchematicData(
         return await invoke<SchematicData>('get_schematic_data', {id: schematicId})
     } catch (error) {
         toast.error(`发生了一个错误:${error}`, {
+            timeout: 3000
+        });
+        throw new Error(`err: ${error}`);
+    }
+}
+
+export async function fetchSchematicPreviewData(
+    schematicId: number
+): Promise<SchematicPreviewData> {
+    try {
+        return await invoke<SchematicPreviewData>('get_schematic_preview_data', {id: schematicId})
+    } catch (error) {
+        toast.error(`发生了一个错误: ${error}`, {
             timeout: 3000
         });
         throw new Error(`err: ${error}`);

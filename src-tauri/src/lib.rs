@@ -26,8 +26,8 @@ use modules::map_art::{create_map_art, create_map_art_from_pixels};
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_str,
-    update_schematic_name_description, get_schematic_data, update_schematic_classification_tauri,
-    save_snbt
+    update_schematic_name_description, get_schematic_data, get_schematic_preview_data,
+    update_schematic_classification_tauri, save_snbt
 };
 use split_schematic::split_schematic::schematic_split;
 use tauri::Manager;
@@ -100,6 +100,7 @@ pub fn run() {
             get_unique_block,
             get_schematic_str,
             get_schematic_data,
+            get_schematic_preview_data,
             get_schematic_convert_data
         ])
         .run(tauri::generate_context!())

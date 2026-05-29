@@ -4,7 +4,7 @@ import {ref} from "vue";
 import {appStore} from "./store.ts";
 import {initTheme} from "./theme.ts";
 import {ThemeInstance} from "vuetify/framework";
-import { blockIconSpriteMap } from "./threed_data/load_resource";
+import { blockIconSpriteMap } from "./3DBLOCKS";
 export const toast = useToast();
 export const selectLoading = ref();
 export const selectClassification = ref<string>('');

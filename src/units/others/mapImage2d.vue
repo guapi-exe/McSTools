@@ -88,6 +88,9 @@ const fsScale = ref(1)
 const fsOffset = reactive({ x: 0, y: 0 })
 const fsDragging = ref(false)
 const fsDragStart = reactive({ x: 0, y: 0 })
+const TEXTURE_EXPORT_BLOCK_SIZE = 32
+const TEXTURE_EXPORT_MAX_DIMENSION = 8192
+const TEXTURE_EXPORT_MAX_PIXELS = 8192 * 8192
 const fsCanvasStyle = computed(() => ({
   transform: `translate(${fsOffset.x}px, ${fsOffset.y}px) scale(${fsScale.value})`,
   transformOrigin: 'center center',
@@ -111,6 +114,7 @@ const openFullscreen = async () => {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.imageSmoothingEnabled = false
   ctx.drawImage(finallyImage.value, 0, 0)
   resetFullscreenView()
 }
@@ -281,6 +285,33 @@ const updateSize = async() => {
   exportSettings.width = Math.round(image_data.value.width * resize.value);
   exportSettings.height = Math.round(image_data.value.height * resize.value)
 }
+
+const getTextureExportBlockSize = () => {
+  const width = Math.max(1, Math.round(exportSettings.width))
+  const height = Math.max(1, Math.round(exportSettings.height))
+  const blockCount = width * height
+  const dimensionLimit = Math.floor(TEXTURE_EXPORT_MAX_DIMENSION / Math.max(width, height))
+  const pixelLimit = Math.floor(Math.sqrt(TEXTURE_EXPORT_MAX_PIXELS / blockCount))
+  return Math.max(1, Math.min(TEXTURE_EXPORT_BLOCK_SIZE, dimensionLimit || 1, pixelLimit || 1))
+}
+
+const downloadCanvasAsPng = async (canvas: HTMLCanvasElement, filename: string) => {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('无法编码 PNG 图片')
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.download = filename
+  link.href = url
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+const safeExportFileName = () => {
+  const baseName = image_data.value?.name || 'map-art'
+  return `${baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')}-block-texture.png`
+}
+
 const exportSchematicData = async() => {
   exportLoading.value = true
   try {
@@ -327,13 +358,39 @@ const exportSchematicData = async() => {
 const exportImage = async() => {
   exportImageLoading.value = true
   try {
-    let canvas = finallyImage.value
-    const dataUrl = canvas.toDataURL('image/png');
-
-    const link = document.createElement('a');
-    link.download = 'result.png';
-    link.href = dataUrl;
-    link.click();
+    if (!image_data.value || !imageBuild.value) return
+    imageBuild.value.updateBlocksData(selectedBlocks.value)
+    const blockSize = getTextureExportBlockSize()
+    const canvas = await imageBuild.value.generatePixelArt(
+        image_data.value.file,
+        blockSize,
+        {width: exportSettings.width, height:exportSettings.height},
+        exportSettings.dithering,
+        replaceAir.value,
+        exportSettings.targetRotation as 0 | 90 | 180| 270,
+        {
+          matchMode: exportSettings.matchMode,
+          brightness: exportSettings.brightness,
+          contrast: exportSettings.contrast,
+          saturation: exportSettings.saturation,
+          gamma: exportSettings.gamma,
+        },
+        {
+          mode: exportSettings.ditherMode,
+          adaptiveThreshold: exportSettings.adaptiveThreshold,
+        },
+        {
+          maxCanvasPixels: TEXTURE_EXPORT_MAX_PIXELS,
+          maxDimension: TEXTURE_EXPORT_MAX_DIMENSION,
+          resizeSmoothing: false,
+        }
+    )
+    await downloadCanvasAsPng(canvas, safeExportFileName())
+    if (blockSize < 16) {
+      toast.info(`当前地图画尺寸较大，导出图已自动降为每方块 ${blockSize}px`, {
+        timeout: 3000
+      })
+    }
   }catch (err) {
     toast.error(`导出失败:${err}`, {
       timeout: 3000
@@ -992,6 +1049,8 @@ onBeforeMount(async() => {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   transition: opacity 0.3s ease;
 }
 
@@ -1011,6 +1070,8 @@ onBeforeMount(async() => {
 .fullscreen-canvas {
   max-width: none;
   max-height: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   will-change: transform;
   user-select: none;
 }

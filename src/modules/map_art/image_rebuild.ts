@@ -16,7 +16,6 @@ export class MapArtProcessor {
 
     private idToBlockMap: Map<string, SubData>
     private colorToIdsMap: Map<string, Set<string>>
-    private MAX_CANVAS_PIXELS = 4096 * 4096;
     private MAX_DIMENSION = 8192;
     private MAX_INPUT_PIXELS = 8192 * 8192;
     private MAX_DITHER_PIXELS = 8192 * 8192;
@@ -173,6 +172,11 @@ export class MapArtProcessor {
         rotation?: 0 | 90 | 180 | 270,
         colorOptions?: ColorMatchOptions,
         ditherOptions?: DitherOptions,
+        renderOptions?: {
+            maxCanvasPixels?: number
+            maxDimension?: number
+            resizeSmoothing?: boolean
+        },
     ): Promise<HTMLCanvasElement> {
         const selectedBlocks = this.getSelectedBlocks()
         if (selectedBlocks.length === 0) {
@@ -205,17 +209,20 @@ export class MapArtProcessor {
             : data
 
         const blockCount = width * height
-        const maxBlockSize = Math.max(1, Math.floor(Math.sqrt(this.MAX_PREVIEW_CANVAS_PIXELS / blockCount)))
+        const maxCanvasPixels = renderOptions?.maxCanvasPixels ?? this.MAX_PREVIEW_CANVAS_PIXELS
+        const maxDimension = renderOptions?.maxDimension ?? this.MAX_DIMENSION
+        const maxBlockSize = Math.max(1, Math.floor(Math.sqrt(maxCanvasPixels / blockCount)))
         const renderBlockSize = Math.max(1, Math.min(blockSize, maxBlockSize))
 
         let outputCanvas = document.createElement('canvas')
         outputCanvas.width = width * renderBlockSize
         outputCanvas.height = height * renderBlockSize
-        if (outputCanvas.width * outputCanvas.height > this.MAX_PREVIEW_CANVAS_PIXELS) {
+        if (outputCanvas.width * outputCanvas.height > maxCanvasPixels) {
             throw new Error('预览尺寸过大，请进一步降低分辨率')
         }
         const ctx = outputCanvas.getContext('2d')
-        if (!ctx) throw new Error('无法创建画布上下文')
+        if (!ctx) throw new Error('Cannot create canvas context')
+        ctx.imageSmoothingEnabled = false
 
         const batchSize = Math.max(2048, Math.min(16384, Math.floor((width * height) / 200)))
         const nearestCache = new Map<number, string>()
@@ -238,18 +245,26 @@ export class MapArtProcessor {
                 await this.yieldToMainThread()
             }
         }
-        if (outputCanvas.width * outputCanvas.height >= 4096 * 4096){
+        if (
+            outputCanvas.width > maxDimension
+            || outputCanvas.height > maxDimension
+            || outputCanvas.width * outputCanvas.height > maxCanvasPixels
+        ){
             const scaleFactor = Math.min(
-                this.MAX_DIMENSION / outputCanvas.width,
-                this.MAX_DIMENSION / outputCanvas.height,
-                Math.sqrt(this.MAX_CANVAS_PIXELS / (outputCanvas.width * outputCanvas.height))
+                maxDimension / outputCanvas.width,
+                maxDimension / outputCanvas.height,
+                Math.sqrt(maxCanvasPixels / (outputCanvas.width * outputCanvas.height))
             );
 
             const targetSize = {
                 width: Math.floor(outputCanvas.width * scaleFactor),
                 height: Math.floor(outputCanvas.height * scaleFactor)
             };
-            outputCanvas = await this.resizeImageCanvas(outputCanvas, targetSize);
+            outputCanvas = await this.resizeImageCanvas(
+                outputCanvas,
+                targetSize,
+                renderOptions?.resizeSmoothing ?? false
+            );
         }
 
         return outputCanvas
@@ -326,12 +341,13 @@ export class MapArtProcessor {
 
     private async resizeImageCanvas(
         originalCanvas: HTMLCanvasElement,
-        targetSize?: { width: number; height: number }
+        targetSize?: { width: number; height: number },
+        imageSmoothingEnabled: boolean = false
     ): Promise<HTMLCanvasElement> {
         if (!targetSize ||
             (targetSize.width === originalCanvas.width &&
                 targetSize.height === originalCanvas.height)) {
-            return originalCanvas.cloneNode(true) as HTMLCanvasElement;
+            return originalCanvas;
         }
 
         const sourceCanvas = document.createElement('canvas');
@@ -351,8 +367,10 @@ export class MapArtProcessor {
         });
         if (!targetCtx) throw new Error('无法创建目标画布上下文');
 
-        targetCtx.imageSmoothingEnabled = true;
-        targetCtx.imageSmoothingQuality = 'high';
+        targetCtx.imageSmoothingEnabled = imageSmoothingEnabled;
+        if (imageSmoothingEnabled) {
+            targetCtx.imageSmoothingQuality = 'high';
+        }
 
         targetCtx.drawImage(
             sourceCanvas,

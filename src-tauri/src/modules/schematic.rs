@@ -9,6 +9,7 @@ use crate::database::db_control::DatabaseState;
 use crate::database::db_data::Schematic;
 use crate::litematica::lm_schematic::LmSchematic;
 use crate::modules::modules_data::convert_data::get_unique_block_str;
+use crate::utils::block_state_pos_list::{BlockData, BlockPos};
 use crate::utils::minecraft_data::je_blocks_data::BlocksData;
 use crate::utils::minecraft_data::versions_data::VersionData;
 use crate::utils::requirements::{get_requirements, RequirementStr};
@@ -17,9 +18,122 @@ use crate::word_edit::we_schematic::WeSchematic;
 use anyhow::Result;
 use chrono::{Local};
 use fastnbt::Value;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::Arc;
 use tauri::State;
 use crate::be_schematic::be_schematic::BESchematic;
+
+#[derive(Debug, serde::Serialize)]
+pub struct SchematicPreviewBlockState {
+    pub id: String,
+    pub properties: BTreeMap<String, String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SchematicPreviewMaterial {
+    pub id: String,
+    pub count: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SchematicPreviewData {
+    pub size: crate::utils::schematic_data::Size,
+    pub palette: Vec<SchematicPreviewBlockState>,
+    pub blocks: Vec<i32>,
+    pub materials: Vec<SchematicPreviewMaterial>,
+    pub tile_entities_list: crate::utils::tile_entities::TileEntitiesList,
+}
+
+fn is_air_block_id(id: &str) -> bool {
+    id.eq_ignore_ascii_case("minecraft:air") || id.eq_ignore_ascii_case("air")
+}
+
+fn preview_state_from_block(block: &BlockData) -> SchematicPreviewBlockState {
+    SchematicPreviewBlockState {
+        id: block.id.name.to_string(),
+        properties: block
+            .properties
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect(),
+    }
+}
+
+fn build_schematic_preview_data(data: SchematicData) -> SchematicPreviewData {
+    let mut min = BlockPos { x: 0, y: 0, z: 0 };
+    let mut has_blocks = false;
+    let mut non_air_count = 0usize;
+
+    for block in data.blocks.elements.iter() {
+        let block_id = block.block.id.name.as_ref();
+        if is_air_block_id(block_id) {
+            continue;
+        }
+
+        if !has_blocks {
+            min = block.pos;
+            has_blocks = true;
+        } else {
+            min.x = min.x.min(block.pos.x);
+            min.y = min.y.min(block.pos.y);
+            min.z = min.z.min(block.pos.z);
+        }
+
+        non_air_count += 1;
+    }
+
+    let mut palette_lookup: HashMap<Arc<BlockData>, i32> = HashMap::new();
+    let mut palette = Vec::new();
+    let mut blocks = Vec::with_capacity(non_air_count.saturating_mul(4));
+    let mut material_counts: BTreeMap<String, u64> = BTreeMap::new();
+
+    for block in data.blocks.elements.iter() {
+        let block_id = block.block.id.name.as_ref();
+        if is_air_block_id(block_id) {
+            continue;
+        }
+
+        let block_data = Arc::clone(&block.block);
+        let palette_index = if let Some(index) = palette_lookup.get(&block_data) {
+            *index
+        } else {
+            let index = palette.len() as i32;
+            palette.push(preview_state_from_block(&block_data));
+            palette_lookup.insert(block_data, index);
+            index
+        };
+
+        blocks.push(block.pos.x - min.x);
+        blocks.push(block.pos.y - min.y);
+        blocks.push(block.pos.z - min.z);
+        blocks.push(palette_index);
+
+        let material_id = block_id.to_string();
+        *material_counts.entry(material_id).or_insert(0) += 1;
+    }
+
+    let mut materials = material_counts
+        .into_iter()
+        .map(|(id, count)| SchematicPreviewMaterial { id, count })
+        .collect::<Vec<_>>();
+    materials.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.id.cmp(&b.id)));
+
+    let mut tile_entities_list = data.tile_entities_list;
+    for tile_entity in tile_entities_list.elements.iter_mut() {
+        tile_entity.pos.x -= min.x;
+        tile_entity.pos.y -= min.y;
+        tile_entity.pos.z -= min.z;
+    }
+
+    SchematicPreviewData {
+        size: data.size,
+        palette,
+        blocks,
+        materials,
+        tile_entities_list,
+    }
+}
 
 #[tauri::command]
 pub async fn encode_uploaded_schematic(
@@ -632,6 +746,25 @@ pub async fn get_schematic_data(
         let v_type = schematic.schematic_type;
         let data = file_manager.get_schematic_data(id, version, sub_version, v_type)?;
         Ok(data)
+    }
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_schematic_preview_data(
+    db: State<'_, DatabaseState>,
+    file_manager: State<'_, FileManager>,
+    id: i64,
+) -> Result<SchematicPreviewData, String> {
+    async move {
+        let mut conn = db.0.get()?;
+        let schematic = find_schematic(&mut conn, id)?;
+        let version = schematic.version;
+        let sub_version = schematic.sub_type;
+        let v_type = schematic.schematic_type;
+        let data = file_manager.get_schematic_data(id, version, sub_version, v_type)?;
+        Ok(build_schematic_preview_data(data))
     }
         .await
         .map_err(|e: anyhow::Error| e.to_string())

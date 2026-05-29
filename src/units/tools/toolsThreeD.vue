@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, watch} from "vue";
-import {
-  Structure, StructureRenderer,
-} from "deepslate";
-import {InteractiveCanvas} from "../../modules/threed_data/deepslateInit.ts";
-import {fetchSchematicData} from "../../modules/schematic_data.ts";
+import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {open as openDialog} from "@tauri-apps/plugin-dialog";
+import {fetchSchematicPreviewData, type SchematicPreviewBlockState} from "../../modules/schematic_data.ts";
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
-import {blocks_resources} from "../../modules/threed_data/deepslateInit.ts";
 import {toast, getIconUrl} from "../../modules/others.ts";
+import {
+  BlockWorld,
+  InteractiveCanvas,
+  ThreeDBlocksRenderer,
+  blockResources,
+  ensureThreeDBlocksResources,
+  exportObjStructurePackageToDirectory,
+  loadThreeDBlocksResources,
+  type ObjStructureExportProgress,
+  type Vec3,
+} from "../../modules/3DBLOCKS";
 import {
   layers,
   layerMap,
@@ -24,11 +31,105 @@ import {
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
 const materialOverview = ref<{id: string, name: string, count: number}[]>([]);
+const selectedMaterialId = ref<string | null>(null);
 const progress = ref(0)
 const sureLoading = ref<boolean>(false);
 const showMaterialList = ref(true);
 const exportingView = ref(false);
+const exportingObjPackage = ref(false);
+const objExportProgress = ref<ObjStructureExportProgress | null>(null);
 const exportdata = ref(false);
+const previewFullscreen = ref(false);
+
+const LARGE_VOLUME_THRESHOLD = 100 * 100 * 100;
+const LARGE_BLOCK_THRESHOLD = 250_000;
+const PARSE_SLICE_SIZE = 20_000;
+const STRUCTURE_ADD_SLICE_SIZE = 8_000;
+const MESH_BUILD_SLICE_SIZE = 1_200;
+const MATERIAL_HIGHLIGHT_SLICE_SIZE = 25_000;
+
+let activeRunId = 0;
+let activeAbortController: AbortController | null = null;
+let activeLayerAbortController: AbortController | null = null;
+let activeObjExportAbortController: AbortController | null = null;
+let materialHighlightTaskId = 0;
+
+const isAbortError = (error: unknown) => (
+  error instanceof DOMException && error.name === 'AbortError'
+);
+
+const throwIfStale = (runId: number, signal?: AbortSignal) => {
+  if (signal?.aborted || runId !== activeRunId) {
+    throw new DOMException('3D preview task aborted', 'AbortError');
+  }
+};
+
+const yieldToUi = async (runId: number, signal?: AbortSignal) => {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  throwIfStale(runId, signal);
+};
+
+const startPreviewTask = () => {
+  activeAbortController?.abort();
+  activeLayerAbortController?.abort();
+  activeAbortController = new AbortController();
+  activeLayerAbortController = null;
+  activeRunId += 1;
+  return {runId: activeRunId, signal: activeAbortController.signal};
+};
+
+const abortPreviewTask = () => {
+  activeAbortController?.abort();
+  activeLayerAbortController?.abort();
+  activeObjExportAbortController?.abort();
+  activeAbortController = null;
+  activeLayerAbortController = null;
+  activeObjExportAbortController = null;
+  activeRunId += 1;
+};
+
+const formatExportBytes = (bytes: number) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
+const objExportPercent = computed(() => {
+  const percent = objExportProgress.value?.percent ?? 0;
+  return Math.max(0, Math.min(100, Math.round(percent)));
+});
+
+const objExportStatusText = computed(() => {
+  const status = objExportProgress.value;
+  if (!status) return $t('toolsThreeD.objExportPreparing');
+
+  if (status.stage === 'geometry') {
+    return $t('toolsThreeD.objExportGeometryProgress', {
+      built: status.builtChunks,
+      total: status.totalChunks,
+      triangles: status.triangleCount,
+      size: formatExportBytes(status.bytesWritten),
+    });
+  }
+
+  const keyByStage: Record<Exclude<typeof status.stage, 'geometry'>, string> = {
+    prepare: 'toolsThreeD.objExportPreparing',
+    material: 'toolsThreeD.objExportWritingMaterial',
+    texture: 'toolsThreeD.objExportWritingTexture',
+    done: 'toolsThreeD.objExportFinalizing',
+  };
+  return $t(keyByStage[status.stage]);
+});
+
+const cancelObjExport = () => {
+  activeObjExportAbortController?.abort();
+};
 
 const hoveredBlock = ref<{
   pos: [number, number, number], 
@@ -40,36 +141,32 @@ const showBlockInfo = ref(false);
 
 const tileEntitiesMap = ref<Map<string, any>>(new Map());
 
-const rayIntersectAABB = (
+const rayIntersectBounds = (
   rayOrigin: [number, number, number],
   rayDir: [number, number, number],
   boxMin: [number, number, number],
   boxMax: [number, number, number]
-): number | null => {
-  let tMin = -Infinity;
-  let tMax = Infinity;
+): { entry: number, exit: number } | null => {
+  let entry = -Infinity;
+  let exit = Infinity;
 
   for (let i = 0; i < 3; i++) {
     if (Math.abs(rayDir[i]) < 1e-8) {
       if (rayOrigin[i] < boxMin[i] || rayOrigin[i] > boxMax[i]) {
         return null;
       }
-    } else {
-      const t1 = (boxMin[i] - rayOrigin[i]) / rayDir[i];
-      const t2 = (boxMax[i] - rayOrigin[i]) / rayDir[i];
-      const tNear = Math.min(t1, t2);
-      const tFar = Math.max(t1, t2);
-      
-      tMin = Math.max(tMin, tNear);
-      tMax = Math.min(tMax, tFar);
-      
-      if (tMin > tMax || tMax < 0) {
-        return null;
-      }
+      continue;
     }
+
+    const t1 = (boxMin[i] - rayOrigin[i]) / rayDir[i];
+    const t2 = (boxMax[i] - rayOrigin[i]) / rayDir[i];
+    entry = Math.max(entry, Math.min(t1, t2));
+    exit = Math.min(exit, Math.max(t1, t2));
+    if (entry > exit) return null;
   }
-  
-  return tMin >= 0 ? tMin : tMax;
+
+  if (exit < 0) return null;
+  return {entry, exit};
 };
 
 const extractItemsFromNbt = (nbt: any): Array<{id: string, count: number, slot: number}> | undefined => {
@@ -108,50 +205,69 @@ const raycastBlocks = (
   rayOrigin: [number, number, number],
   rayDir: [number, number, number]
 ): { pos: [number, number, number], id: string, properties: Record<string, any>, items?: Array<{id: string, count: number, slot: number}> } | null => {
-  if (!structure_l.value || !size_l.value) return null;
+  const world = structure_l.value;
+  const size = size_l.value;
+  if (!world || !size) return null;
 
-  let closestHit: { pos: [number, number, number], id: string, properties: Record<string, any>, distance: number } | null = null;
+  const boundsHit = rayIntersectBounds(rayOrigin, rayDir, [0, 0, 0], size);
+  if (boundsHit === null) return null;
 
-  const layersToCheck = once_threeD.value
-    ? [currentLayer.value] 
-    : Array.from({ length: currentLayer.value + 1 }, (_, i) => i);
+  const startT = Math.max(0, boundsHit.entry);
+  const start: Vec3 = [
+    rayOrigin[0] + rayDir[0] * (startT + 1e-5),
+    rayOrigin[1] + rayDir[1] * (startT + 1e-5),
+    rayOrigin[2] + rayDir[2] * (startT + 1e-5),
+  ];
+  let x = Math.floor(start[0]);
+  let y = Math.floor(start[1]);
+  let z = Math.floor(start[2]);
 
-  for (const layerY of layersToCheck) {
-    const layerBlocks = layers.value[layerY];
-    if (!layerBlocks) continue;
+  const stepX = rayDir[0] > 0 ? 1 : -1;
+  const stepY = rayDir[1] > 0 ? 1 : -1;
+  const stepZ = rayDir[2] > 0 ? 1 : -1;
+  const tDeltaX = rayDir[0] !== 0 ? Math.abs(1 / rayDir[0]) : Infinity;
+  const tDeltaY = rayDir[1] !== 0 ? Math.abs(1 / rayDir[1]) : Infinity;
+  const tDeltaZ = rayDir[2] !== 0 ? Math.abs(1 / rayDir[2]) : Infinity;
+  let tMaxX = rayDir[0] !== 0 ? (((rayDir[0] > 0 ? x + 1 : x) - rayOrigin[0]) / rayDir[0]) : Infinity;
+  let tMaxY = rayDir[1] !== 0 ? (((rayDir[1] > 0 ? y + 1 : y) - rayOrigin[1]) / rayDir[1]) : Infinity;
+  let tMaxZ = rayDir[2] !== 0 ? (((rayDir[2] > 0 ? z + 1 : z) - rayOrigin[2]) / rayDir[2]) : Infinity;
+  const maxSteps = Math.max(1, size[0] + size[1] + size[2] + 16);
+  let currentT = startT;
 
-    for (const block of layerBlocks) {
-      const [x, y, z] = block.pos;
-      
-      const boxMin: [number, number, number] = [x, y, z];
-      const boxMax: [number, number, number] = [x + 1, y + 1, z + 1];
-      
-      const distance = rayIntersectAABB(rayOrigin, rayDir, boxMin, boxMax);
-      
-      if (distance !== null && (closestHit === null || distance < closestHit.distance)) {
-        closestHit = {
-          pos: block.pos,
-          id: block.block.id,
-          properties: block.block.properties,
-          distance
-        };
-      }
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (currentT > boundsHit.exit) break;
+    if (x < 0 || y < 0 || z < 0 || x >= size[0] || y >= size[1] || z >= size[2]) {
+      break;
+    }
+
+    const pos: Vec3 = [x, y, z];
+    const block = world.getBlock(pos);
+    if (block) {
+      const key = `${x},${y},${z}`;
+      const nbt = tileEntitiesMap.value.get(key);
+      return {
+        pos,
+        id: block.state.getName().toString(),
+        properties: block.state.getProperties(),
+        items: extractItemsFromNbt(nbt),
+      };
+    }
+
+    if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
+      x += stepX;
+      currentT = tMaxX;
+      tMaxX += tDeltaX;
+    } else if (tMaxY <= tMaxZ) {
+      y += stepY;
+      currentT = tMaxY;
+      tMaxY += tDeltaY;
+    } else {
+      z += stepZ;
+      currentT = tMaxZ;
+      tMaxZ += tDeltaZ;
     }
   }
 
-  if (closestHit) {
-    const key = `${closestHit.pos[0]},${closestHit.pos[1]},${closestHit.pos[2]}`;
-    const nbt = tileEntitiesMap.value.get(key);
-    const items = extractItemsFromNbt(nbt);
-    
-    return {
-      pos: closestHit.pos,
-      id: closestHit.id,
-      properties: closestHit.properties,
-      items
-    };
-  }
-  
   return null;
 };
 
@@ -160,16 +276,17 @@ const currentView = ref<ViewType>('free');
 let layerUpdateScheduled = false;
 let layerUpdateInProgress = false;
 let pendingLayerTarget: number | null = null;
-let renderedStructureRef: Structure | null = null;
+let renderedStructureRef: BlockWorld | null = null;
 let lastAppliedLayer = -1;
 let lastAppliedSingleLayerMode = false;
 let cacheMode: 'single' | 'cumulative' | null = null;
-let cumulativeStructureCache: Structure | null = null;
+let cumulativeStructureCache: BlockWorld | null = null;
 let cumulativeTopLayer = -1;
 let cumulativeMaterialMap = new Map<string, number>();
-const singleLayerStructureCache = new Map<number, Structure>();
+const singleLayerStructureCache = new Map<number, BlockWorld>();
 const singleLayerMaterialCache = new Map<number, {id: string, name: string, count: number}[]>();
 const MAX_SINGLE_LAYER_CACHE = 12;
+let layerPalette: SchematicPreviewBlockState[] = [];
 
 type LayerUpdateResult = {
   structureChanged: boolean,
@@ -186,32 +303,101 @@ const toMaterialOverview = (materialMap: Map<string, number>) => {
       .sort((a, b) => b.count - a.count);
 };
 
-const addLayerToStructure = (
-  targetStructure: Structure,
+const clearSelectedMaterialHighlight = (clearSelection = true, redraw = true) => {
+  materialHighlightTaskId += 1;
+  if (clearSelection) selectedMaterialId.value = null;
+  structureRenderer.value?.clearSelectionHighlights();
+  if (redraw) interactiveCanvas.value?.redraw();
+};
+
+const refreshSelectedMaterialHighlight = async (
+  runId: number = activeRunId,
+  signal: AbortSignal | undefined = activeAbortController?.signal,
+) => {
+  const materialId = selectedMaterialId.value;
+  const renderer = structureRenderer.value;
+  const world = structure_l.value;
+
+  if (!materialId || !renderer || !world) {
+    clearSelectedMaterialHighlight(false);
+    return;
+  }
+
+  const taskId = ++materialHighlightTaskId;
+  const positions: Vec3[] = [];
+  const blocks = world.getBlocks();
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (taskId !== materialHighlightTaskId || selectedMaterialId.value !== materialId) return;
+
+    const block = blocks[index];
+    if (block.state.getName().toString() === materialId) {
+      positions.push([block.pos[0], block.pos[1], block.pos[2]]);
+    }
+
+    if (index > 0 && index % MATERIAL_HIGHLIGHT_SLICE_SIZE === 0) {
+      await yieldToUi(runId, signal);
+    }
+  }
+
+  if (taskId !== materialHighlightTaskId || selectedMaterialId.value !== materialId) return;
+  renderer.setSelectionHighlightPositions(positions);
+  interactiveCanvas.value?.redraw();
+};
+
+const toggleMaterialHighlight = (materialId: string) => {
+  if (selectedMaterialId.value === materialId) {
+    clearSelectedMaterialHighlight();
+    return;
+  }
+
+  selectedMaterialId.value = materialId;
+  void refreshSelectedMaterialHighlight().catch((error) => {
+    if (!isAbortError(error)) {
+      console.error('[3DBLOCKS] material highlight failed', error);
+    }
+  });
+};
+
+const addLayerToStructure = async (
+  targetStructure: BlockWorld,
   layerY: number,
   materialMap?: Map<string, number>,
   changedChunkKeys?: Set<string>,
   chunkSize: number = 16,
+  runId: number = activeRunId,
+  signal?: AbortSignal,
 ) => {
   const layerBlocks = layers.value[layerY];
   if (!layerBlocks) return;
-  layerBlocks.forEach(block => {
-    targetStructure.addBlock(block.pos, block.block.id, block.block.properties);
+  for (let index = 0; index < layerBlocks.length; index += 4) {
+    const state = layerPalette[layerBlocks[index + 3]];
+    if (!state) continue;
+
+    const pos: Vec3 = [
+      layerBlocks[index],
+      layerBlocks[index + 1],
+      layerBlocks[index + 2],
+    ];
+    targetStructure.addBlock(pos, state.id, state.properties);
 
     if (changedChunkKeys) {
-      const chunkX = Math.floor(block.pos[0] / chunkSize);
-      const chunkY = Math.floor(block.pos[1] / chunkSize);
-      const chunkZ = Math.floor(block.pos[2] / chunkSize);
+      const chunkX = Math.floor(pos[0] / chunkSize);
+      const chunkY = Math.floor(pos[1] / chunkSize);
+      const chunkZ = Math.floor(pos[2] / chunkSize);
       changedChunkKeys.add(`${chunkX},${chunkY},${chunkZ}`);
     }
 
     if (materialMap) {
-      const blockId = block.block.id;
+      const blockId = state.id;
       if (blockId) {
         materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
       }
     }
-  });
+    if (index > 0 && (index / 4) % STRUCTURE_ADD_SLICE_SIZE === 0) {
+      await yieldToUi(runId, signal);
+    }
+  }
 };
 
 const resetStructureCaches = () => {
@@ -226,8 +412,13 @@ const resetStructureCaches = () => {
   lastAppliedSingleLayerMode = false;
 };
 
-const applyLayerToRenderer = async (targetLayer: number) => {
-  const updateResult = updateStructure(targetLayer);
+const applyLayerToRenderer = async (
+  targetLayer: number,
+  runId: number = activeRunId,
+  signal: AbortSignal | undefined = activeAbortController?.signal,
+) => {
+  const updateResult = await updateStructure(targetLayer, runId, signal);
+  throwIfStale(runId, signal);
   const renderer = structureRenderer.value;
   const nextStructure = structure_l.value;
   if (!renderer || !nextStructure || !updateResult) return;
@@ -238,166 +429,175 @@ const applyLayerToRenderer = async (targetLayer: number) => {
   }
 
   if (updateResult.structureChanged || renderedStructureRef !== nextStructure) {
-    renderer.setStructure(nextStructure);
+    await renderer.setStructureProgressiveAsync(nextStructure, MESH_BUILD_SLICE_SIZE, signal, () => {
+      interactiveCanvas.value?.redraw();
+    });
     renderedStructureRef = nextStructure;
   } else if (updateResult.changedChunkPositions && updateResult.changedChunkPositions.length > 0) {
-    await renderer.updateStructureBuffersAsync(updateResult.changedChunkPositions as any, 2000);
+    await renderer.updateStructureBuffersProgressiveAsync(updateResult.changedChunkPositions as any, MESH_BUILD_SLICE_SIZE, signal, () => {
+      interactiveCanvas.value?.redraw();
+    });
   }
 
+  throwIfStale(runId, signal);
+  await refreshSelectedMaterialHighlight(runId, signal);
+  throwIfStale(runId, signal);
   lastAppliedLayer = targetLayer;
   lastAppliedSingleLayerMode = once_threeD.value;
   interactiveCanvas.value?.redraw();
 };
 
 const scheduleLayerUpdate = (targetLayer: number) => {
-  pendingLayerTarget = targetLayer;
+  pendingLayerTarget = Number(targetLayer);
+
+  if (loading_threeD.value && !structureRenderer.value) return;
+
+  if (layerUpdateInProgress) {
+    activeLayerAbortController?.abort();
+    return;
+  }
+
   if (layerUpdateScheduled) return;
+
+  const runId = activeRunId;
   layerUpdateScheduled = true;
 
   requestAnimationFrame(async () => {
     layerUpdateScheduled = false;
-    if (layerUpdateInProgress) return;
+    if (runId !== activeRunId || layerUpdateInProgress) return;
+
     layerUpdateInProgress = true;
     try {
-      while (pendingLayerTarget !== null) {
+      while (pendingLayerTarget !== null && runId === activeRunId) {
         const target = pendingLayerTarget;
         pendingLayerTarget = null;
-        await applyLayerToRenderer(target);
+
+        activeLayerAbortController = new AbortController();
+        const signal = activeLayerAbortController.signal;
+        await applyLayerToRenderer(target, runId, signal);
+      }
+    } catch (error) {
+      if (!isAbortError(error)) {
+        console.error('[3DBLOCKS] layer update failed', error);
       }
     } finally {
+      activeLayerAbortController = null;
       layerUpdateInProgress = false;
-      if (pendingLayerTarget !== null) {
+      if (pendingLayerTarget !== null && runId === activeRunId) {
         scheduleLayerUpdate(pendingLayerTarget);
       }
     }
   });
 };
 
-const loadStructure = async () => {
+const loadStructure = async (runId: number, signal: AbortSignal) => {
+  throwIfStale(runId, signal);
   resetStructureCaches();
-  const schematic_data = await fetchSchematicData(schematic_id.value)
+  const schematic_data = await fetchSchematicPreviewData(schematic_id.value)
+  throwIfStale(runId, signal);
   const schematic_size = schematic_data.size
   const totalVolume = schematic_size.width * schematic_size.height * schematic_size.length
-  const isLargeStructure = totalVolume >= 100 * 100 * 100
+  const flatBlocks = schematic_data.blocks ?? [];
+  const palette = schematic_data.palette ?? [];
+  const validBlockCount = Math.floor(flatBlocks.length / 4);
+  const isLargeStructure = totalVolume >= LARGE_VOLUME_THRESHOLD || validBlockCount >= LARGE_BLOCK_THRESHOLD
   if (isLargeStructure) {
     once_threeD.value = true
   }
-  const structure = new Structure([schematic_size.width, schematic_size.height, schematic_size.length])
-  const blocks = schematic_data.blocks
+  const structure = new BlockWorld([schematic_size.width, schematic_size.height, schematic_size.length])
   const tile_entities_list = schematic_data.tile_entities_list
 
-  layerMap.clear()
-  layers.value = {}
-  
-  tileEntitiesMap.value.clear();
+  const nextTileEntities = new Map<string, any>();
   if (tile_entities_list?.elements) {
-    for (const te of tile_entities_list.elements) {
+    for (let index = 0; index < tile_entities_list.elements.length; index += 1) {
+      const te = tile_entities_list.elements[index];
       const { x, y, z } = te.pos;
       const key = `${x},${y},${z}`;
-      tileEntitiesMap.value.set(key, te.nbt);
+      nextTileEntities.set(key, te.nbt);
+      if (index > 0 && index % PARSE_SLICE_SIZE === 0) {
+        await yieldToUi(runId, signal);
+      }
     }
   }
-  
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  const normalizedBlocks: Array<{
-    x: number,
-    y: number,
-    z: number,
-    id: string,
-    properties: Record<string, any>
-  }> = [];
-  const materialMap = new Map<string, number>();
+
   progress.value = 0;
-  const CHUNK_SIZE = 10000;
-  let chunkCounter = 0;
-  for (let i = 0; i < blocks.elements.length; i += CHUNK_SIZE) {
-    const chunkEnd = Math.min(i + CHUNK_SIZE, blocks.elements.length);
-    for (let j = i; j < chunkEnd; j++) {
-      const element = blocks.elements[j];
-      const pos = element.pos;
-      if (!element.block) {
-        continue;
-      }
-      const blockId = element.block.id;
-      if (typeof blockId !== 'string' || blockId.toLowerCase() === 'minecraft:air') {
-        continue;
-      }
-      if (typeof pos.x !== 'number' || typeof pos.y !== 'number' || typeof pos.z !== 'number') {
-        continue;
-      }
-      const x = Math.round(pos.x);
-      const y = Math.round(pos.y);
-      const z = Math.round(pos.z);
+  layerPalette = palette;
+  const layerCounts = new Map<number, number>();
+  const flatSliceSize = PARSE_SLICE_SIZE * 4;
 
-      normalizedBlocks.push({
-        x,
-        y,
-        z,
-        id: blockId,
-        properties: element.block.properties || {}
-      });
-
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (z < minZ) minZ = z;
-      materialMap.set(blockId, (materialMap.get(blockId) || 0) + 1);
+  for (let i = 0; i < flatBlocks.length; i += flatSliceSize) {
+    const chunkEnd = Math.min(i + flatSliceSize, flatBlocks.length);
+    for (let j = i; j < chunkEnd; j += 4) {
+      const layerY = flatBlocks[j + 1];
+      layerCounts.set(layerY, (layerCounts.get(layerY) || 0) + 1);
     }
 
-    progress.value = Math.floor((i / blocks.elements.length) * 40);
-    chunkCounter++;
-    if (chunkCounter % 4 === 0) {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    }
+    progress.value = Math.floor((i / Math.max(1, flatBlocks.length)) * 20);
+    await yieldToUi(runId, signal);
   }
 
-  materialOverview.value = Array.from(materialMap.entries())
-      .map(([id, count]) => ({
-        id,
-        name: id.split(':').pop() || id,
-        count
-      }))
-      .sort((a, b) => b.count - a.count);
-  for (let i = 0; i < normalizedBlocks.length; i += CHUNK_SIZE) {
-    const chunkEnd = Math.min(i + CHUNK_SIZE, normalizedBlocks.length);
-    for (let j = i; j < chunkEnd; j++) {
-      const block = normalizedBlocks[j];
-      const rx = block.x - minX;
-      const ry = block.y - minY;
-      const rz = block.z - minZ;
+  const nextLayers: Record<number, Int32Array> = {};
+  const layerOffsets = new Map<number, number>();
+  for (const [layerY, count] of layerCounts) {
+    nextLayers[layerY] = new Int32Array(count * 4);
+    layerOffsets.set(layerY, 0);
+  }
+
+  let processedBlocks = 0;
+  for (let i = 0; i < flatBlocks.length; i += flatSliceSize) {
+    const chunkEnd = Math.min(i + flatSliceSize, flatBlocks.length);
+    for (let j = i; j < chunkEnd; j += 4) {
+      const rx = flatBlocks[j];
+      const ry = flatBlocks[j + 1];
+      const rz = flatBlocks[j + 2];
+      const paletteIndex = flatBlocks[j + 3];
+      const state = palette[paletteIndex];
+      if (!state) continue;
+
+      const layerBlocks = nextLayers[ry];
+      const offset = layerOffsets.get(ry) ?? 0;
+      layerBlocks[offset] = rx;
+      layerBlocks[offset + 1] = ry;
+      layerBlocks[offset + 2] = rz;
+      layerBlocks[offset + 3] = paletteIndex;
+      layerOffsets.set(ry, offset + 4);
 
       if (!isLargeStructure || !once_threeD.value) {
-        structure.addBlock([rx, ry, rz], block.id, block.properties);
+        structure.addBlock([rx, ry, rz], state.id, state.properties || {});
       }
 
-      if (!layerMap.has(ry)) {
-        layerMap.set(ry, []);
-      }
-      layerMap.get(ry)!.push({
-        pos: [rx, ry, rz],
-        block: {
-          id: block.id,
-          properties: block.properties
-        }
-      });
+      processedBlocks += 1;
     }
-    progress.value = 40 + Math.floor((i / Math.max(1, normalizedBlocks.length)) * 60);
-    if ((i / CHUNK_SIZE) % 4 === 0) {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    }
+
+    progress.value = 20 + Math.floor((processedBlocks / Math.max(1, validBlockCount)) * 80);
+    await yieldToUi(runId, signal);
   }
-  normalizedBlocks.length = 0
-  const layersObj: Record<number, any> = {};
-  for (const [y, blocks] of layerMap) {
-    layersObj[y] = blocks;
+  throwIfStale(runId, signal);
+
+  layerMap.clear();
+  for (const [layerY, layerBlocks] of Object.entries(nextLayers)) {
+    layerMap.set(Number(layerY), layerBlocks);
   }
+  tileEntitiesMap.value = nextTileEntities;
   structure_l.value = structure;
-  size_l.value = [schematic_size.width, schematic_size.height, schematic_size.length] as any;
-  layers.value = layersObj;
+  size_l.value = [schematic_size.width, schematic_size.height, schematic_size.length];
+  layers.value = nextLayers;
+  materialOverview.value = (schematic_data.materials ?? [])
+      .map((material) => ({
+        id: material.id,
+        name: material.id.split(':').pop() || material.id,
+        count: material.count,
+      }))
+      .sort((a, b) => b.count - a.count);
+  progress.value = 100;
 }
 
-const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => {
+const updateStructure = async (
+  targetLayer: number,
+  runId: number = activeRunId,
+  signal?: AbortSignal,
+): Promise<LayerUpdateResult | undefined> => {
+  throwIfStale(runId, signal);
   if (!size_l.value) return;
   const activeChunkSize = Math.max(1, Math.floor(((structureRenderer.value as any)?.getChunkSize?.() ?? 16)));
 
@@ -407,9 +607,9 @@ const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => 
     let cachedMaterials = singleLayerMaterialCache.get(targetLayer);
 
     if (!cachedStructure || !cachedMaterials) {
-      const targetStructure = new Structure([...size_l.value]);
+      const targetStructure = new BlockWorld([...size_l.value]);
       const materialMap = new Map<string, number>();
-      addLayerToStructure(targetStructure, targetLayer, materialMap, undefined, activeChunkSize);
+      await addLayerToStructure(targetStructure, targetLayer, materialMap, undefined, activeChunkSize, runId, signal);
 
       cachedStructure = targetStructure;
       cachedMaterials = toMaterialOverview(materialMap);
@@ -440,10 +640,13 @@ const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => 
   cacheMode = 'cumulative';
 
   if (!cumulativeStructureCache || targetLayer < cumulativeTopLayer) {
-    const rebuilt = new Structure([...size_l.value]);
+    const rebuilt = new BlockWorld([...size_l.value]);
     const materialMap = new Map<string, number>();
     for (let y = 0; y <= targetLayer; y++) {
-      addLayerToStructure(rebuilt, y, materialMap, undefined, activeChunkSize);
+      await addLayerToStructure(rebuilt, y, materialMap, undefined, activeChunkSize, runId, signal);
+      if (y > 0 && y % 16 === 0) {
+        await yieldToUi(runId, signal);
+      }
     }
     cumulativeStructureCache = rebuilt;
     cumulativeTopLayer = targetLayer;
@@ -455,7 +658,10 @@ const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => 
   } else if (targetLayer > cumulativeTopLayer) {
     const changedChunkKeys = new Set<string>();
     for (let y = cumulativeTopLayer + 1; y <= targetLayer; y++) {
-      addLayerToStructure(cumulativeStructureCache, y, cumulativeMaterialMap, changedChunkKeys, activeChunkSize);
+      await addLayerToStructure(cumulativeStructureCache, y, cumulativeMaterialMap, changedChunkKeys, activeChunkSize, runId, signal);
+      if (y > 0 && y % 16 === 0) {
+        await yieldToUi(runId, signal);
+      }
     }
     cumulativeTopLayer = targetLayer;
 
@@ -472,34 +678,65 @@ const updateStructure = (targetLayer: number): LayerUpdateResult | undefined => 
 
   return { structureChanged: false };
 }
-const reloadRenderer = async () => {
+const reloadRenderer = async (runId: number, signal: AbortSignal) => {
+  throwIfStale(runId, signal);
   if (structureRenderer.value) return;
 
   const structureCanvas = document.getElementById('structure-display') as HTMLCanvasElement;
-  let structureGl = structureCanvas.getContext('webgl', { preserveDrawingBuffer: false, antialias: false })!;
+  const webglOptions: WebGLContextAttributes & {desynchronized?: boolean} = {
+    preserveDrawingBuffer: true,
+    antialias: false,
+    alpha: false,
+    powerPreference: 'high-performance',
+    desynchronized: false,
+  };
+  const structureGl = (
+    structureCanvas.getContext('webgl2', webglOptions)
+    || structureCanvas.getContext('webgl', webglOptions)
+  ) as WebGL2RenderingContext | WebGLRenderingContext | null;
+
+  if (!structureGl) {
+    throw new Error('WebGL is not available');
+  }
+
+  if (!blockResources.value) {
+    await loadThreeDBlocksResources();
+    throwIfStale(runId, signal);
+  }
+  const renderResources = ensureThreeDBlocksResources(blockResources.value);
 
   gl_ctx.value = structureGl;
   if (interactiveCanvas.value) {
-    camera_l.value = {
-      xRotation: (interactiveCanvas.value as any).xRotation,
-      yRotation: (interactiveCanvas.value as any).yRotation,
-      viewDist: (interactiveCanvas.value as any).viewDist
-    };
+    camera_l.value = interactiveCanvas.value.getCameraState();
   }
 
-  structureRenderer.value = new StructureRenderer(
+  structureRenderer.value = new ThreeDBlocksRenderer(
       structureGl,
       structure_l.value,
-      blocks_resources.value,
+      renderResources,
       {
-        facesPerBuffer: 500,
-        useInvisibleBlockBuffer: false,
         atlasMipmaps: false,
-        includeBlockPosBuffer: false,
+        deferInitialBuild: true,
+        lazyUpload: false,
+        maxPixelRatio: 1.25,
         versionTag: `mcstools@${schematicData.value.game_version ?? 'unknown'}`,
       }
   );
   renderedStructureRef = structure_l.value ?? null;
+
+  let hoverAnimationFrame: number | null = null;
+  let lastHoverAnimationRedraw = 0;
+  const scheduleHoverAnimation = () => {
+    if (hoverAnimationFrame !== null || runId !== activeRunId) return;
+    const delay = Math.max(0, 33 - (performance.now() - lastHoverAnimationRedraw));
+    hoverAnimationFrame = window.setTimeout(() => {
+      hoverAnimationFrame = null;
+      lastHoverAnimationRedraw = performance.now();
+      if (runId === activeRunId && hoveredBlock.value) {
+        interactiveCanvas.value?.redraw();
+      }
+    }, delay);
+  };
 
   interactiveCanvas.value = new InteractiveCanvas(
       structureCanvas,
@@ -507,38 +744,63 @@ const reloadRenderer = async () => {
       view => {
         const gl = gl_ctx.value;
         if (gl) {
-          gl.clearColor(0, 0, 0, 0);
+          gl.clearColor(0.9608, 0.9608, 0.9608, 1);
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         }
 
-        structureRenderer.value.drawStructure(view)
-        structureRenderer.value.drawGrid(view)
+        structureRenderer.value?.drawStructure(view)
+        structureRenderer.value?.drawSelectionHighlights(view)
+        structureRenderer.value?.drawGrid(view)
         
         if (hoveredBlock.value) {
           const pos = hoveredBlock.value.pos;
-          structureRenderer.value.drawOutline(view, pos);
+          structureRenderer.value?.drawOutline(view, pos);
+          scheduleHoverAnimation();
         }
       },
       [size_l.value[0] / 2, size_l.value[1] / 2, size_l.value[2] / 2]
   );
   
   let hoverThrottleTimer: number | null = null;
+  let hoverClearTimer: number | null = null;
   let pendingRayData: { rayOrigin: [number, number, number], rayDir: [number, number, number] } | null = null;
+
+  const clearHover = () => {
+    hoverClearTimer = null;
+    if (runId !== activeRunId) return;
+    if (hoveredBlock.value) {
+      hoveredBlock.value = null;
+      showBlockInfo.value = false;
+      interactiveCanvas.value?.redraw();
+    }
+  };
+
+  const scheduleClearHover = () => {
+    if (hoverClearTimer !== null || !hoveredBlock.value) return;
+    hoverClearTimer = window.setTimeout(clearHover, 80);
+  };
   
   const processHover = () => {
     hoverThrottleTimer = null;
+    if (runId !== activeRunId) return;
     
     if (!pendingRayData || !structure_l.value) {
-      if (hoveredBlock.value) {
-        hoveredBlock.value = null;
-        showBlockInfo.value = false;
-        interactiveCanvas.value?.redraw();
-      }
+      scheduleClearHover();
       return;
     }
     
     const { rayOrigin, rayDir } = pendingRayData;
     const hitBlock = raycastBlocks(rayOrigin, rayDir);
+
+    if (!hitBlock) {
+      scheduleClearHover();
+      return;
+    }
+
+    if (hoverClearTimer !== null) {
+      clearTimeout(hoverClearTimer);
+      hoverClearTimer = null;
+    }
     
     const prevPos = hoveredBlock.value?.pos;
     const newPos = hitBlock?.pos;
@@ -579,53 +841,117 @@ const switchView = (viewType: ViewType) => {
   const cam = interactiveCanvas.value as any;
 
   const maxDist = Math.max(...size_l.value) * 2;
+  const focus: [number, number, number] = [
+    size_l.value[0] / 2,
+    size_l.value[1] / 2,
+    size_l.value[2] / 2,
+  ];
 
   switch (viewType) {
     case 'front':
-      cam.xRotation = 0;
-      cam.yRotation = 0;
-      cam.viewDist = maxDist / 2;
+      cam.setOrbitView(0, 0, maxDist / 2, focus);
       break;
     case 'side':
-      cam.xRotation = 0;
-      cam.yRotation = Math.PI / 2;
-      cam.viewDist = maxDist / 2;
+      cam.setOrbitView(0, Math.PI / 2, maxDist / 2, focus);
       break;
     case 'top':
-      cam.xRotation = Math.PI / 2;
-      cam.yRotation = 0;
-      cam.viewDist = maxDist / 2;
+      cam.setOrbitView(Math.PI / 2, 0, maxDist / 2, focus);
+      break;
+    case 'free':
+      cam.redraw();
       break;
   }
-
-  cam.redraw();
 }
 
-onMounted(async () => {
+const requestPreviewRedraw = () => {
+  requestAnimationFrame(() => {
+    interactiveCanvas.value?.redraw();
+    window.setTimeout(() => interactiveCanvas.value?.redraw(), 80);
+  });
+};
+
+const getPreviewElement = () => document.getElementById('structure-preview-pane') as HTMLElement | null;
+
+const syncPreviewFullscreen = () => {
+  const element = getPreviewElement();
+  previewFullscreen.value = !!element && document.fullscreenElement === element;
+  requestPreviewRedraw();
+};
+
+const togglePreviewFullscreen = async () => {
+  const element = getPreviewElement();
+  if (!element) return;
+
+  if (previewFullscreen.value && document.fullscreenElement !== element) {
+    previewFullscreen.value = false;
+    requestPreviewRedraw();
+    return;
+  }
+
+  try {
+    if (document.fullscreenElement === element) {
+      await document.exitFullscreen();
+    } else {
+      await element.requestFullscreen();
+    }
+  } catch (error) {
+    previewFullscreen.value = !previewFullscreen.value;
+  } finally {
+    requestPreviewRedraw();
+  }
+};
+
+const prepareCurrentSchematic = async () => {
+  destroyData();
   let size = schematicData.value.sizes
   const [length, width, height] = size.split(',').map(Number);
-  if (length * width * height >= 100*100*100) sureLoading.value = true
+  if (length * width * height >= LARGE_VOLUME_THRESHOLD) sureLoading.value = true
   else await loadInit();
+};
+
+onMounted(async () => {
+  document.addEventListener('fullscreenchange', syncPreviewFullscreen);
+  await prepareCurrentSchematic();
 })
 
 const loadInit = async () => {
+  const {runId, signal} = startPreviewTask();
   try {
+    resetViewData();
     loading_threeD.value = true;
-    await loadStructure();
-    console.log("done")
+    await loadStructure(runId, signal);
+    throwIfStale(runId, signal);
     lastAppliedLayer = -1;
     lastAppliedSingleLayerMode = false;
     currentLayer.value = size_l.value[1] - 1;
-    if (size_l.value[0] * size_l.value[1] * size_l.value[2] >= 100 * 100 * 100) {
+    if (size_l.value[0] * size_l.value[1] * size_l.value[2] >= LARGE_VOLUME_THRESHOLD) {
       once_threeD.value = true;
       toast.info($t('toolsThreeD.largeSizeSingleLayer'), {timeout: 3000})
     }
-    await reloadRenderer();
+    await reloadRenderer(runId, signal);
+    throwIfStale(runId, signal);
+
+    if (once_threeD.value) {
+      await applyLayerToRenderer(currentLayer.value, runId, signal);
+    } else {
+      const renderer = structureRenderer.value;
+      if (renderer) {
+        await renderer.updateStructureBuffersProgressiveAsync(undefined, MESH_BUILD_SLICE_SIZE, signal, () => {
+          interactiveCanvas.value?.redraw();
+        });
+        renderedStructureRef = structure_l.value ?? null;
+        interactiveCanvas.value?.redraw();
+      }
+    }
 
   }catch (e) {
-    toast.error($t('toolsThreeD.error', {error: String(e)}), {timeout: 3000});
+    if (!isAbortError(e)) {
+      toast.error($t('toolsThreeD.error', {error: String(e)}), {timeout: 3000});
+    }
   }finally {
-    loading_threeD.value = false;
+    if (runId === activeRunId) {
+      loading_threeD.value = false;
+    }
   }
 }
 watch(currentLayer, (newVal) => {
@@ -637,18 +963,35 @@ watch(once_threeD, () => {
   scheduleLayerUpdate(currentLayer.value);
 });
 
-const destroyData = () => {
-  console.log('clean')
+watch(schematic_id, () => {
+  void prepareCurrentSchematic();
+});
+
+const resetViewData = () => {
+  clearSelectedMaterialHighlight(true, false);
+  structureRenderer.value?.dispose();
+  interactiveCanvas.value?.dispose?.();
   resetStructureCaches();
   loading_threeD.value = false;
+  layerPalette = [];
   layers.value = {};
   layerMap.clear();
   structure_l.value = undefined;
   size_l.value = undefined;
   camera_l.value = undefined;
+  once_threeD.value = false;
   currentLayer.value = 0;
-  structureRenderer.value = undefined;
-  interactiveCanvas.value = undefined;
+  structureRenderer.value = null;
+  interactiveCanvas.value = null;
+  gl_ctx.value = null;
+}
+
+const destroyData = () => {
+  abortPreviewTask();
+  pendingLayerTarget = null;
+  layerUpdateScheduled = false;
+  layerUpdateInProgress = false;
+  resetViewData();
 }
 
 const exportCurrentView = async () => {
@@ -714,7 +1057,88 @@ const exportCurrentView = async () => {
   }
 };
 
+const getObjExportBaseName = () => {
+  const sourceName = schematicData.value?.name || `structure_${schematic_id.value}`;
+  const maxLayer = size_l.value ? Math.max(0, size_l.value[1] - 1) : currentLayer.value;
+  const layerSuffix = once_threeD.value
+    ? `layer_${currentLayer.value}`
+    : (currentLayer.value >= maxLayer ? 'full' : `to_layer_${currentLayer.value}`);
+  return `${sourceName}_${layerSuffix}`;
+};
+
+const exportCurrentStructureObjPackage = async () => {
+  if (exportingObjPackage.value) return;
+
+  const world = structure_l.value;
+  const gl = gl_ctx.value;
+  const resources = blockResources.value ? ensureThreeDBlocksResources(blockResources.value) : null;
+
+  if (!world || !gl || !resources || loading_threeD.value) {
+    toast.error($t('toolsThreeD.objExportNoStructure'), {timeout: 3000});
+    return;
+  }
+
+  const runId = activeRunId;
+  const previewSignal = activeAbortController?.signal;
+  const baseName = getObjExportBaseName();
+  const exportAbortController = new AbortController();
+  const abortExportOnPreviewAbort = () => exportAbortController.abort();
+
+  try {
+    exportingObjPackage.value = true;
+    objExportProgress.value = null;
+    activeObjExportAbortController?.abort();
+    activeObjExportAbortController = exportAbortController;
+    previewSignal?.addEventListener('abort', abortExportOnPreviewAbort, {once: true});
+
+    const targetDirectory = await openDialog({
+      title: $t('toolsThreeD.objExportSelectDirectory'),
+      directory: true,
+      multiple: false,
+      recursive: true,
+      canCreateDirectories: true,
+    });
+
+    if (!targetDirectory) return;
+    throwIfStale(runId, previewSignal);
+
+    const result = await exportObjStructurePackageToDirectory({
+      world,
+      resources,
+      gl,
+      name: baseName,
+      targetDirectory,
+      chunkSize: structureRenderer.value?.getChunkSize(),
+      blocksPerSlice: MESH_BUILD_SLICE_SIZE,
+      signal: exportAbortController.signal,
+      onProgress: (nextProgress) => {
+        objExportProgress.value = nextProgress;
+      },
+    });
+
+    throwIfStale(runId, previewSignal);
+    toast.success($t('toolsThreeD.objExportSuccess', {triangles: result.triangleCount}), {timeout: 3000});
+  } catch (error) {
+    if (isAbortError(error)) {
+      toast.info($t('toolsThreeD.objExportCancelled'), {timeout: 2500});
+      return;
+    }
+    const message = error instanceof Error && error.message === 'No exportable geometry'
+      ? $t('toolsThreeD.objExportEmpty')
+      : $t('toolsThreeD.objExportError', {error: String(error)});
+    toast.error(message, {timeout: 3000});
+  } finally {
+    previewSignal?.removeEventListener('abort', abortExportOnPreviewAbort);
+    if (activeObjExportAbortController === exportAbortController) {
+      activeObjExportAbortController = null;
+    }
+    exportingObjPackage.value = false;
+    objExportProgress.value = null;
+  }
+};
+
 onBeforeUnmount(async () => {
+  document.removeEventListener('fullscreenchange', syncPreviewFullscreen);
   destroyData();
 });
 </script>
@@ -724,7 +1148,13 @@ onBeforeUnmount(async () => {
     <v-col v-if="showMaterialList" cols="3">
       <v-container style="max-height: 100vh; overflow-y: auto;">
         <v-list lines="two" class="scrollable-list">
-          <v-list-item v-for="(material, i) in materialOverview" :key="i" class="material-item d-flex justify-space-between">
+          <v-list-item
+            v-for="material in materialOverview"
+            :key="material.id"
+            class="material-item d-flex justify-space-between"
+            :class="{ 'material-item-selected': selectedMaterialId === material.id }"
+            @click="toggleMaterialHighlight(material.id)"
+          >
             <template #prepend>
               <v-avatar size="40" rounded="0" class="mr-2 avatar-bg">
                 <img :src="getIconUrl(material.id)" :alt="material.id">
@@ -740,7 +1170,11 @@ onBeforeUnmount(async () => {
             </v-list-item-subtitle>
 
             <template #append>
-              <v-chip size="small" color="blue" class="ml-2">
+              <v-chip
+                size="small"
+                :color="selectedMaterialId === material.id ? 'amber-darken-2' : 'blue'"
+                class="ml-2"
+              >
                 <v-icon start icon="mdi-cube"></v-icon>
                 {{ material.count }}
               </v-chip>
@@ -751,7 +1185,12 @@ onBeforeUnmount(async () => {
 
     </v-col>
 
-    <v-col :cols="showMaterialList ? 9 : 12" style="height: 100vh; display: flex; justify-content: center; align-items: center; position: relative;">
+    <v-col :cols="showMaterialList ? 9 : 12" class="preview-column">
+      <div
+        id="structure-preview-pane"
+        class="preview-pane"
+        :class="{ 'preview-pane-fullscreen': previewFullscreen }"
+      >
       <canvas class="gpu-canvas" id="structure-display" width="1150" height="800"></canvas>
 
       <div class="top-controls">
@@ -760,6 +1199,13 @@ onBeforeUnmount(async () => {
           variant="text"
           @click="showMaterialList = !showMaterialList"
           :title="showMaterialList ? $t('toolsThreeD.hideMaterialList') : $t('toolsThreeD.showMaterialList')"
+        ></v-btn>
+
+        <v-btn
+          :icon="previewFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
+          variant="text"
+          @click="togglePreviewFullscreen"
+          :title="previewFullscreen ? '退出全屏' : '全屏预览'"
         ></v-btn>
 
         <v-btn-toggle
@@ -802,6 +1248,18 @@ onBeforeUnmount(async () => {
         >
           {{$t('toolsThreeD.exportView')}}
         </v-btn>
+        <v-btn
+          color="secondary"
+          variant="outlined"
+          prepend-icon="mdi-cube-send"
+          :loading="exportingObjPackage"
+          :disabled="loading_threeD || !structure_l || !gl_ctx"
+          @click="exportCurrentStructureObjPackage"
+          class="ml-2"
+          size="small"
+        >
+          {{$t('toolsThreeD.exportObjPackage')}}
+        </v-btn>
       </div>
 
       <!-- 右侧滑块控制 -->
@@ -809,7 +1267,7 @@ onBeforeUnmount(async () => {
         <input
             type="range"
             class="vertical-slider"
-            v-model="currentLayer"
+            v-model.number="currentLayer"
             :min="0"
             :max="size_l ? size_l[1] - 1 : 0"
         />
@@ -837,6 +1295,29 @@ onBeforeUnmount(async () => {
             ></div>
           </div>
           <p>{{ progress }}%</p>
+        </div>
+      </div>
+
+      <div v-if="exportingObjPackage" class="loading-overlay export-progress-overlay">
+        <div class="loader export-progress-card">
+          <div class="spinner"></div>
+          <p class="export-progress-title">{{$t('toolsThreeD.objExporting')}}</p>
+          <div class="progress-container export-progress-track">
+            <div
+              class="progress-bar"
+              :style="{ width: objExportPercent + '%' }"
+            ></div>
+          </div>
+          <p class="export-progress-percent">{{ objExportPercent }}%</p>
+          <p class="export-progress-detail">{{ objExportStatusText }}</p>
+          <v-btn
+            color="error"
+            variant="outlined"
+            size="small"
+            @click="cancelObjExport"
+          >
+            {{$t('toolsThreeD.objExportCancel')}}
+          </v-btn>
         </div>
       </div>
 
@@ -904,6 +1385,7 @@ onBeforeUnmount(async () => {
         </v-card-text>
       </v-card>
 
+      </div>
     </v-col>
   </v-row>
 </template>
@@ -915,18 +1397,57 @@ onBeforeUnmount(async () => {
   width: 100%;
 }
 
+.preview-column {
+  min-width: 0;
+}
+
+.preview-pane {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+.preview-pane-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  width: 100vw;
+  height: 100vh;
+}
+
+.preview-pane:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: #f5f5f5;
+}
+
 .gpu-canvas {
   image-rendering: crisp-edges;
   touch-action: none;
-  transform-style: preserve-3d;
-  will-change: transform;
 }
 
 #structure-display {
+  aspect-ratio: 1150 / 800;
+  width: min(100%, 1150px);
+  height: auto;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+.preview-pane-fullscreen #structure-display,
+.preview-pane:fullscreen #structure-display {
+  width: min(100vw, calc(100vh * 1.4375));
+  height: min(100vh, calc(100vw / 1.4375));
+  max-width: none;
+  max-height: none;
+  box-shadow: none;
 }
 
 @keyframes spin {
@@ -940,8 +1461,10 @@ onBeforeUnmount(async () => {
   top: 20px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   z-index: 100;
+  max-width: calc(100% - 40px);
   background: rgba(255, 255, 255, 0.9);
   padding: 8px;
   border-radius: 8px;
@@ -959,6 +1482,7 @@ onBeforeUnmount(async () => {
   gap: 15px;
   z-index: 100;
 }
+
 .spinner {
   width: 40px;
   height: 40px;
@@ -967,6 +1491,64 @@ onBeforeUnmount(async () => {
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
+
+.export-progress-overlay {
+  z-index: 260;
+  background: rgba(245, 247, 250, 0.86);
+}
+
+.export-progress-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: min(520px, calc(100vw - 40px));
+  padding: 24px 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.export-progress-card .spinner {
+  align-self: center;
+}
+
+.export-progress-card .v-btn {
+  align-self: center;
+}
+
+.export-progress-title,
+.export-progress-percent,
+.export-progress-detail {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.export-progress-title {
+  margin: 12px 0 14px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.export-progress-track {
+  width: 100%;
+}
+
+.export-progress-percent {
+  margin: 10px 0 0;
+  text-align: center;
+  color: #263238;
+}
+
+.export-progress-detail {
+  min-height: 42px;
+  margin: 8px 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #455a64;
+  word-break: break-word;
+}
+
 .vertical-slider {
   writing-mode: bt-lr;
   -webkit-appearance: slider-vertical;
@@ -992,7 +1574,9 @@ onBeforeUnmount(async () => {
 }
 
 .material-item {
-  transition: background 0.3s ease;
+  cursor: pointer;
+  border-left: 4px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
 .button-group {
   display: flex;
@@ -1003,8 +1587,9 @@ onBeforeUnmount(async () => {
   background: rgba(255, 152, 0, 0.15);
 }
 
-.selected-item {
-  background: rgba(255, 152, 0, 0.3);
+.material-item-selected {
+  background: rgba(255, 193, 7, 0.22);
+  border-left-color: #f5b301;
   font-weight: bold;
 }
 
@@ -1035,8 +1620,13 @@ onBeforeUnmount(async () => {
   top: 20px;
   min-width: 280px;
   max-width: 350px;
-  z-index: 200;
+  max-height: min(45vh, 420px);
+  z-index: 140;
+  pointer-events: none;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 220, 180, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 0 18px rgba(0, 220, 180, 0.22);
 }
 
 .properties-list {

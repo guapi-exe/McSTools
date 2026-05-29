@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "test:3dblocks": "pnpm run build && node scripts/3dblocks-browser-smoke.cjs",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build:debug": "tauri build --debug",
-    "tauri:build": "tauri build"
+    "tauri": "node scripts/tauri-run.cjs",
+    "tauri:dev": "node scripts/tauri-run.cjs dev",
+    "tauri:build:debug": "node scripts/tauri-run.cjs build --debug",
+    "tauri:build": "node scripts/tauri-run.cjs build"
   },
   "dependencies": {
     "@actions/github": "6.0.0",
@@ -30,7 +31,7 @@
     "@vueuse/core": "13.1.0",
     "axios": "1.9.0",
     "dayjs": "1.11.13",
-    "deepslate": "file:./deepslate",
+    "deepslate": "0.24.0",
     "echarts": "5.6.0",
     "file-saver": "^2.0.5",
     "gl-matrix": "^3.4.3",
