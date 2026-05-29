@@ -1,7 +1,7 @@
 import {check, type DownloadEvent, Update} from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import {toast} from "./others.ts";
-import {ref} from "vue";
+import {ref, shallowRef} from "vue";
 import i18n from "../i18n";
 
 export enum UpdateState {
@@ -19,7 +19,7 @@ export const updateTotalBytes = ref<number | null>(null);
 export const updateDownloadSpeed = ref(0);
 export const updateRemainingSeconds = ref<number | null>(null);
 export const updateStatusText = ref('');
-export const updateInfo = ref<Update | null>(null);
+export const updateInfo = shallowRef<Update | null>(null);
 export const updateState = ref(UpdateState.Pending);
 export const restartCountdownSeconds = ref(3);
 
