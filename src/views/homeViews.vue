@@ -4,8 +4,7 @@ import createImg from '../static/img/create.jpg'
 import lmImg from '../static/img/Litematica.jpg'
 import weImg from '../static/img/wordEdit.png'
 import beImg from '../static/img/grass_block.png'
-import {onBeforeUnmount, onMounted, ref} from "vue";
-import {opacity} from "../modules/theme.ts";
+import {onActivated, onBeforeUnmount, onDeactivated, onMounted, ref} from "vue";
 import {onBeforeRouteLeave} from 'vue-router'
 import {
   files,
@@ -16,26 +15,29 @@ import {
   uploadStatus
 } from "../modules/upload_schematic.ts";
 import {userData} from "../modules/user_data.ts";
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {navigationGuard} from "../modules/navigation.ts";
 import {createTimeManager} from '../modules/time_data.ts'
 import {messageList} from "../modules/messages.ts";
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n()
-const timeManager = createTimeManager()
+const timeManager = createTimeManager(false)
+const timeComponent = timeManager.useInComponent()
 const {
   currentDate,
   hours,
   minutes,
   seconds,
   isNewSecond,
-} = timeManager.useInComponent()
+} = timeComponent
+timeComponent.setup()
 const currentIndex = ref(0)
 const displayText = ref('')
 const isDragging = ref(false);
 const isAnimating = ref(false)
 let intervalId: number | null = null
 let timeoutId: number | null = null
+let messageTimer: number | null = null
 const randomHanChar = () => {
   const symbols = '~!@#$%^&*()_+?？；;，。.、你更下二一三四我'
   return Math.random() > 0.3
@@ -96,13 +98,51 @@ const onDrop = async (e: any) => {
   console.log(files);
   await handleUpload(-1);
 }
-onMounted(() => {
-  setInterval(() => {
-    currentIndex.value = (currentIndex.value + 1) % messageList.value.length
-    switchMessage()
-  }, 10000)
+// The home page stays cached by KeepAlive, so its clock/carousel intervals
+// must pause while the user is on another page — otherwise they tick for the
+// whole app lifetime.
+const startMessageCarousel = () => {
+  if (!messageTimer) {
+    messageTimer = window.setInterval(() => {
+      currentIndex.value = (currentIndex.value + 1) % messageList.value.length
+      switchMessage()
+    }, 10000)
+  }
+}
 
+const pauseHomeActivity = () => {
+  timeManager.stop()
+  if (messageTimer) {
+    window.clearInterval(messageTimer)
+    messageTimer = null
+  }
+  if (intervalId) {
+    clearInterval(intervalId)
+    intervalId = null
+  }
+  if (timeoutId) {
+    clearTimeout(timeoutId)
+    timeoutId = null
+  }
+  isAnimating.value = false
+}
+
+const resumeHomeActivity = () => {
+  timeManager.start()
+  startMessageCarousel()
   switchMessage()
+}
+
+onMounted(() => {
+  resumeHomeActivity()
+})
+
+onActivated(() => {
+  resumeHomeActivity()
+})
+
+onDeactivated(() => {
+  pauseHomeActivity()
 })
 
 onBeforeUnmount(() => {
@@ -111,26 +151,27 @@ onBeforeUnmount(() => {
     }
   if (intervalId) clearInterval(intervalId)
   if (timeoutId) clearTimeout(timeoutId)
+  if (messageTimer) {
+    window.clearInterval(messageTimer)
+    messageTimer = null
+  }
 })
 onBeforeRouteLeave(navigationGuard)
 </script>
 
-<template class="page-wrapper">
+<template>
+  <div class="page-view">
   <v-row no-gutters class="mb-4 animate-row"
-         :class="{ 'animate-row-out': isLeaving }"
-         transition="scroll-x-transition"
   >
     <v-col>
       <v-card
           class="mx-auto v-theme--custom text-primary"
-          :style="{ '--surface-alpha': opacity }"
-          elevation="4"
-          transition="slide-x-transition"
+          elevation="2"
       >
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-3" :style="{ '--surface-alpha': opacity + 0.2 }">
+        <v-toolbar density="compact" class="bg-surface-container pa-3">
           <v-toolbar-title>
             <v-icon icon="mdi-tools" class="mr-2 text-medium-emphasis"></v-icon>
-            <span class="text-h5 text-medium-emphasis">{{ t('home.title') }}</span>
+            <span class="text-h6 text-medium-emphasis">{{ t('home.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -247,7 +288,6 @@ onBeforeRouteLeave(navigationGuard)
   </v-row>
   <v-row
       class="animate-row"
-      :class="{ 'animate-row-out': isLeaving }"
       style="height: 500px"
   >
     <v-col cols="8" class="h-100">
@@ -256,14 +296,13 @@ onBeforeRouteLeave(navigationGuard)
       v-theme--custom text-primary
       flex-column
       h-100"
-              elevation="4"
-              :style="{ '--surface-alpha': opacity }"
+              elevation="2"
               @dragover.prevent="onDragOver"
               @dragleave="onDragLeave"
               @drop.prevent="onDrop"
 
       >
-        <v-card-title class="text-h6 bg-blue-lighten-5">
+        <v-card-title class="text-h6 bg-surface-container">
           <v-icon icon="mdi-cloud-upload" class="mr-2"></v-icon>
           {{ t('home.upload.title') }}
         </v-card-title>
@@ -291,7 +330,7 @@ onBeforeRouteLeave(navigationGuard)
                 bg-color="grey-lighten-3"
                 :label="t('home.upload.selectFile')"
                 multiple
-                accept=".nbt, .json, .schem, .litematic, .mcstructure"
+                accept=".nbt, .json, .schem, .schematic, .litematic, .mcstructure"
                 :max-file-size="100 * 1024 * 1024"
                 :loading="uploadStatus === 'uploading'"
                 :error-messages="uploadError"
@@ -382,9 +421,8 @@ onBeforeRouteLeave(navigationGuard)
       <v-card class="
       h-100
       v-theme--custom text-primary "
-              :style="{ '--surface-alpha': opacity }"
-              elevation="4">
-        <v-card-title class="text-h6 bg-green-lighten-5">
+              elevation="2">
+        <v-card-title class="text-h6 bg-surface-container">
           <v-icon icon="mdi-format-list-checks" class="mr-2"></v-icon>
           {{ t('home.supportedTypes.title') }}
         </v-card-title>
@@ -481,7 +519,7 @@ onBeforeRouteLeave(navigationGuard)
       </v-card>
     </v-col>
   </v-row>
-
+  </div>
 </template>
 
 <style scoped lang="css" src="../assets/css/home.css"></style>

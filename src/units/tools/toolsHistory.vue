@@ -2,16 +2,37 @@
 import {schematicTypeList} from "../../modules/schematics_data.ts";
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
-import {computed, defineProps, ref} from "vue";
+import {computed, defineProps, ref, watch, onMounted} from "vue";
 import {HistoryRecordData} from "../../modules/history_data.ts";
 import dayjs from "dayjs";
 import {Requirement} from "../../modules/requirements.ts";
-import {getIconUrl} from "../../modules/others.ts";
+import {getIconUrl, toast} from "../../modules/others.ts";
 import {copySchematic} from "../../modules/copy_file.ts";
+import {fetch_history, schematic_id} from "../../modules/tools_data.ts";
 
 const props = defineProps<{
   data: HistoryRecordData | undefined,
 }>()
+
+// History is the heaviest payload of a schematic load (it parses every past
+// requirements/blocks snapshot), so it is fetched lazily — only when this
+// panel is actually opened with no history present yet.
+const loadingHistory = ref(false)
+const ensureHistory = async () => {
+  if (props.data || loadingHistory.value || !schematic_id.value) return
+  loadingHistory.value = true
+  try {
+    await fetch_history(schematic_id.value)
+  } catch (error) {
+    toast.error(`加载失败:${error}`, {timeout: 3000})
+  } finally {
+    loadingHistory.value = false
+  }
+}
+onMounted(ensureHistory)
+// Selecting a different blueprint clears the records first — refetch for the
+// new id once it is known.
+watch([() => props.data, schematic_id], () => ensureHistory())
 
 const indexId = ref(0)
 
@@ -25,11 +46,11 @@ const formatTime = (time: any) => {
 }
 
 const reversedSchematics = computed(() => {
-  return [...props.data.schematic].reverse();
+  return props.data ? [...props.data.schematic].reverse() : [];
 });
 
 const reversedRequirements = computed(() => {
-  return [...props.data.requirements].reverse();
+  return props.data ? [...props.data.requirements].reverse() : [];
 });
 
 export interface Different {
@@ -81,6 +102,16 @@ const showDiff = (index: number) => {
 </script>
 
 <template>
+  <v-alert
+      v-if="loadingHistory"
+      type="info"
+      variant="tonal"
+      density="compact"
+      class="mb-4"
+  >
+    <v-progress-circular indeterminate size="18" width="2" class="mr-2" />
+    {{ $t('common.loading') }}
+  </v-alert>
   <v-row no-gutters
          class="mb-4"
   >

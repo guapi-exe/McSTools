@@ -3,15 +3,13 @@
     background: rgba(var(--v-theme-surface), var(--surface-alpha, 1)) !important;
 }
 
+/* Toolbars sit one layer above cards; they read the raised alpha set on the
+   app root so pages no longer need to inline it. */
 [data-v-app] .v-toolbar {
     border-color: rgba(var(--v-border-color), var(--v-border-opacity));
-    background: rgba(var(--v-theme-surface), var(--surface-alpha, 1)) !important;
+    background: rgba(var(--v-theme-surface-container), var(--surface-alpha-raised, 1)) !important;
     border-style: solid;
     border-width: 0;
-}
-
-[data-v-app] .text-medium-emphasis {
-    color: rgba(var(--v-theme-on-background)) !important;
 }
 
 [data-v-app] .text-medium-emphasis {
@@ -26,12 +24,83 @@
 [data-v-app] .v-layout-list {
     color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
 }
+
+/* With a custom wallpaper the theme background layer must step aside, or it
+   paints over the image on every theme except the transparent-blue one. The
+   wallpaper's own dimming gradient already carries the theme mood. */
+.v-application.has-custom-bg .v-application__background {
+    background: transparent !important;
+}
+
+/* Consistent page-card shape and a subtle lift for clickable cards. */
+.page-view .v-card {
+    border-radius: var(--radius-card);
+}
+
+.page-view .v-card--link {
+    transition:
+        transform var(--motion-fast) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.page-view .v-card--link:hover {
+    transform: translateY(-2px);
+}
+
+/* Vuetify computes hover/focus overlays as
+   `calc(<opacity> * var(--v-theme-<color>-overlay-multiplier))`, but the
+   per-color multiplier variables are not part of our custom palettes. The
+   calc becomes invalid and the overlay falls back to opacity:1 — a solid
+   black hover inside any .bg-* element (toolbars, the primary sidebar, colored
+   FABs). Re-pin every affected overlay to the plain theme opacities; the
+   multiplier was always 1 in practice. */
+.v-btn:hover > .v-btn__overlay,
+.v-btn:focus-visible > .v-btn__overlay,
+.v-btn:focus > .v-btn__overlay,
+.v-btn--active > .v-btn__overlay,
+.v-btn[aria-haspopup="menu"][aria-expanded="true"] > .v-btn__overlay,
+.v-btn--active:hover > .v-btn__overlay,
+.v-btn[aria-haspopup="menu"][aria-expanded="true"]:hover > .v-btn__overlay,
+.v-btn-toggle > .v-btn.v-btn--active:not(.v-btn--disabled) > .v-btn__overlay,
+.v-chip:hover > .v-chip__overlay,
+.v-list-item:hover > .v-list-item__overlay,
+.v-list-item:focus-visible > .v-list-item__overlay,
+.v-list-item:focus > .v-list-item__overlay,
+.v-list-item--active > .v-list-item__overlay,
+.v-expansion-panel-title:hover > .v-expansion-panel-title__overlay,
+.v-expansion-panel-title:focus-visible > .v-expansion-panel-title__overlay,
+.v-selection-control__input:hover::before {
+    opacity: var(--v-hover-opacity, 0.04) !important;
+}
+
+.v-btn--active:hover > .v-btn__overlay,
+.v-btn-toggle > .v-btn.v-btn--active:not(.v-btn--disabled):hover > .v-btn__overlay,
+.v-list-item--active:hover > .v-list-item__overlay,
+.v-expansion-panel-title--focusable.v-expansion-panel-title--active:hover .v-expansion-panel-title__overlay {
+    opacity: calc(var(--v-activated-opacity, 0.04) + var(--v-hover-opacity, 0.04)) !important;
+}
+
+.v-ripple__animation--in {
+    opacity: 0.25 !important;
+}
+
+.v-btn:focus-visible::after {
+    opacity: 0.25 !important;
+}
+
+.v-list-item:focus-visible::after {
+    opacity: 0.15 !important;
+}
+
 .full-screen-card {
     height: 100vh;
     position: fixed;
     top: 0;
-    left: 0;
-    right: 0;
+    /* Keep fixed pages inside Vuetify's application content area.  The
+       global navigation drawer publishes this offset as a layout variable;
+       using it here prevents the page from starting underneath the drawer. */
+    left: var(--v-layout-left, 0px);
+    right: var(--v-layout-right, 0px);
     bottom: 0;
     overflow: hidden;
     display: flex;

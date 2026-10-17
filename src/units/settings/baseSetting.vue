@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import {isLeaving, navigationGuard} from "../../modules/navigation.ts";
-import {opacity} from "../../modules/theme.ts";
+import {navigationGuard} from "../../modules/navigation.ts";
 import {onBeforeRouteLeave} from "vue-router";
 import {onMounted, ref} from "vue";
 import {appStore} from "../../modules/store.ts";
@@ -78,17 +77,17 @@ const clearData = async () => {
 
 </script>
 
-<template class="page-wrapper">
+<template>
+  <div class="page-view">
   <v-row no-gutters
          class="mb-4 animate-row"
-         :class="{ 'animate-row-out': isLeaving }"
   >
     <v-col cols="12" class="mb-4">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon icon="mdi-update" class="mr-2"></v-icon>
-            <span class="text-h7">{{ $t('settings.update.title') }}</span>
+            <span class="text-h6">{{ $t('settings.update.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -141,11 +140,11 @@ const clearData = async () => {
       </v-card>
     </v-col>
     <v-col cols="12" class="mb-4">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class=" text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon class="mr-2 "><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"><path fill="#333333" fill-rule="evenodd" d="m7.04 1.361l.139-.057H21.32l.14.057l1.178 1.179l.057.139V16.82l-.057.14l-1.179 1.178l-.139.057H14V18a2 2 0 0 0-.548-1.375h7.673V2.875H7.375v7.282a5.7 5.7 0 0 0-1.571-.164V2.679l.057-.14L7.04 1.362zm9.531 9.452l-2.809 2.8a2 2 0 0 0-.348-.467l-.419-.42l2.236-2.235l-3.606-3.694l.813-.833l4.133 4.133zM9.62 14.82l1.32-1.32L12 14.56l-1.72 1.72l.22.22V18H12v1.45h-1.5v.1a6 6 0 0 1-.41 1.45L12 22.94L10.94 24l-1.65-1.65A4.3 4.3 0 0 1 6 24a4.31 4.31 0 0 1-3.29-1.65L1.06 24L0 22.94L1.91 21a6 6 0 0 1-.41-1.42v-.08H0V18h1.5v-1.5l.22-.22L0 14.56l1.06-1.06l1.32 1.32a3.73 3.73 0 0 1 7.24 0m-2.029-.661A2.25 2.25 0 0 0 3.75 15.75h4.5a2.25 2.25 0 0 0-.659-1.591m.449 7.38A3.33 3.33 0 0 0 9 19.5v-2.25H3v2.25a3.33 3.33 0 0 0 3 3a3.33 3.33 0 0 0 2.04-.96z" clip-rule="evenodd"/></svg></v-icon>
-            <span class="text-h7">{{ $t('settings.debug.title') }}</span>
+            <span class="text-h6">{{ $t('settings.debug.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -196,13 +195,13 @@ const clearData = async () => {
       </v-card>
     </v-col>
     <v-col cols="12" class="mb-4">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class="text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon class="mr-2 ">
               mdi-palette
             </v-icon>
-            <span class="text-h7">{{ $t('settings.theme.title') }}</span>
+            <span class="text-h6">{{ $t('settings.theme.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -227,13 +226,13 @@ const clearData = async () => {
       </v-card>
     </v-col>
     <v-col cols="12" class="mb-4">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class=" text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon class="mr-2 ">
               mdi-file-cabinet
             </v-icon>
-            <span class="text-h7">{{ $t('settings.resources.title') }}</span>
+            <span class="text-h6">{{ $t('settings.resources.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -277,13 +276,13 @@ const clearData = async () => {
       </v-card>
     </v-col>
     <v-col cols="12" class="mb-4">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class=" text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon class="mr-2">
               mdi-translate
             </v-icon>
-            <span class="text-h7">{{ $t('settings.language.title') }}</span>
+            <span class="text-h6">{{ $t('settings.language.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -340,6 +339,7 @@ const clearData = async () => {
       </template>
     </v-card>
   </v-dialog>
+  </div>
 </template>
 
 <style scoped>

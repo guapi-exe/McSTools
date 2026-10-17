@@ -1,21 +1,21 @@
 use crate::building_gadges::bg_schematic_data::BgSchematicData;
 use crate::building_gadges::template_json_representation::{deserialize, int_to_rel_pos};
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
+use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::TileEntitiesList;
 use base64::Engine;
 use fastnbt::Value::Compound;
-use fastnbt::{from_bytes, Value as FastNbtValue, Value};
+use fastnbt::{Value as FastNbtValue, Value, from_bytes};
 use fastsnbt::from_str;
 use flate2::read::GzDecoder;
+use serde::Deserializer;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::sync::Arc;
-use serde::Deserializer;
-use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct BgSchematic {
@@ -55,8 +55,7 @@ impl BgSchematic {
                     Ok(0)
                 } else if normalized_json().contains("body") {
                     Ok(1)
-                }
-                else {
+                } else {
                     Ok(0)
                 }
             }
@@ -111,42 +110,38 @@ impl BgSchematic {
                     data: nbt,
                 })
             }
-            1 => {
-                match self.try_parse()
-                {
-                    Ok(_) => {
-                        let data = self.parse_json(&self.json)?;
-                        let body = data
-                            .get("body")
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| SchematicError::TypeMismatch {
-                                expected: "string",
-                                actual: data["body"].to_string(),
-                            })?;
+            1 => match self.try_parse() {
+                Ok(_) => {
+                    let data = self.parse_json(&self.json)?;
+                    let body = data.get("body").and_then(|v| v.as_str()).ok_or_else(|| {
+                        SchematicError::TypeMismatch {
+                            expected: "string",
+                            actual: data["body"].to_string(),
+                        }
+                    })?;
 
-                        let nbt: FastNbtValue = self.parse_base64(body)?;
+                    let nbt: FastNbtValue = self.parse_base64(body)?;
 
-                        Ok(BgSchematicData {
-                            type_version,
-                            data: nbt,
-                        })
-                    }
-                    Err(_) => {
-                        let output = self.json.replace("\r\n", "");
-                        let data: Value = from_str(&output).unwrap();
-                        let Compound(root) = data else {
-                            return Err(SchematicError::RootNotCompound);
-                        };
-                        let body = root.get_str("body")?;
-                        let nbt: FastNbtValue = self.parse_base64(body)?;
-
-                        Ok(BgSchematicData {
-                            type_version,
-                            data: nbt,
-                        })
-                    }
+                    Ok(BgSchematicData {
+                        type_version,
+                        data: nbt,
+                    })
                 }
-            }
+                Err(_) => {
+                    let output = self.json.replace("\r\n", "");
+                    let data: Value = from_str(&output).unwrap();
+                    let Compound(root) = data else {
+                        return Err(SchematicError::RootNotCompound);
+                    };
+                    let body = root.get_str("body")?;
+                    let nbt: FastNbtValue = self.parse_base64(body)?;
+
+                    Ok(BgSchematicData {
+                        type_version,
+                        data: nbt,
+                    })
+                }
+            },
             2 => {
                 let output = self.json.replace("\r\n", "");
                 let root: Value = from_str(&output).unwrap();
@@ -231,7 +226,7 @@ impl BgSchematic {
                             x: bounds.get_i32("maxX")?,
                             y: bounds.get_i32("maxY")?,
                             z: bounds.get_i32("maxZ")?,
-                        }
+                        },
                     ),
                     Err(_) => (
                         BlockPos {
@@ -243,8 +238,8 @@ impl BgSchematic {
                             x: header.get_i32("maxX")?,
                             y: header.get_i32("maxY")?,
                             z: header.get_i32("maxZ")?,
-                        }
-                    )
+                        },
+                    ),
                 };
 
                 let height = ((end_pos.y - start_pos.y) + 1).abs();

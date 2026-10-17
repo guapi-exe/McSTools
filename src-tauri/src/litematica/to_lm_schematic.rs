@@ -1,7 +1,8 @@
-use crate::utils::block_state_pos_list::{
-    BlockData, BlockId, BlockPos, BlockStatePos,
-};
+use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos};
+use crate::utils::entities::EntitiesList;
 use crate::utils::schematic_data::{SchematicData, SchematicError};
+use crate::utils::tile_entities::TileEntitiesList;
+use anyhow::Result;
 use chrono::Utc;
 use fastnbt::Value;
 use fastnbt::Value::Compound;
@@ -10,11 +11,8 @@ use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
-use anyhow::Result;
-use crate::utils::tile_entities::TileEntitiesList;
-use crate::utils::entities::{EntitiesList};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug)]
 pub struct ToLmSchematic {
@@ -135,7 +133,9 @@ impl ToLmSchematic {
 
             for block_pos in block_list.elements.iter() {
                 let block_data = &block_pos.block;
-                if let std::collections::hash_map::Entry::Vacant(e) = index_map.entry(block_data.clone()) {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    index_map.entry(block_data.clone())
+                {
                     let index = unique.len();
                     unique.push(block_data.clone());
                     e.insert(index);
@@ -173,34 +173,34 @@ impl ToLmSchematic {
     }
     pub fn get_block_id_list(&self) -> Vec<i32> {
         let total_blocks = (self.length * self.width * self.height) as usize;
+        // Overlapping Litematica regions are legal. Resolve duplicate
+        // coordinates in source order so output does not depend on Rayon
+        // scheduling (the previous atomic stores were last-writer-wins but
+        // not deterministic).
+        let mut block_ids = vec![0i32; total_blocks];
+        for block in &self.blocks {
+            let dx = i64::from(block.pos.x) - i64::from(self.start_pos.x);
+            let dy = i64::from(block.pos.y) - i64::from(self.start_pos.y);
+            let dz = i64::from(block.pos.z) - i64::from(self.start_pos.z);
+            let id = dy * i64::from(self.width) * i64::from(self.length)
+                + dz * i64::from(self.width)
+                + dx;
 
-        let atomic_block_list: Vec<AtomicI32> =
-            (0..total_blocks).map(|_| AtomicI32::new(0)).collect();
-        let atomic_block_list = Arc::new(atomic_block_list);
-
-        self.blocks.par_iter().for_each(|block| {
-            let dx = block.pos.x - self.start_pos.x;
-            let dy = block.pos.y - self.start_pos.y;
-            let dz = block.pos.z - self.start_pos.z;
-
-            let id = (dy * self.width * self.length) + (dz * self.width) + dx;
-
-            if id >= 0 && (id as usize) < atomic_block_list.len() {
-                let state_id = self
+            if id >= 0
+                && usize::try_from(id)
+                    .ok()
+                    .is_some_and(|index| index < total_blocks)
+            {
+                block_ids[id as usize] = self
                     .block_state_to_index
                     .get(&block.block)
-                    .map(|v| *v as i32)
+                    .copied()
+                    .and_then(|state| i32::try_from(state).ok())
                     .unwrap_or(0);
-
-                atomic_block_list[id as usize].store(state_id, Ordering::Relaxed);
             }
-        });
+        }
 
-        Arc::try_unwrap(atomic_block_list)
-            .unwrap()
-            .into_iter()
-            .map(|atomic| atomic.into_inner())
-            .collect()
+        block_ids
     }
     pub fn encode_block_states(&self) -> Vec<u64> {
         let state_ids = self.get_block_id_list();
@@ -249,10 +249,8 @@ impl ToLmSchematic {
             .collect()
     }
     fn build_tile_entities_list(&self) -> Vec<Value> {
-        if self.tile_entities.original_type != 2 {
-            return vec![];
-        }
-        self.tile_entities.elements
+        self.tile_entities
+            .elements
             .iter()
             .map(|te| {
                 let nx = te.pos.x + 1;
@@ -280,11 +278,11 @@ impl ToLmSchematic {
             .collect()
     }
     fn build_entities_list(&self) -> Vec<Value> {
-        if self.entities.original_type != 2 {
-            return vec![];
-        }
-
-        self.entities.elements.iter().map(|e| e.nbt.clone()).collect()
+        self.entities
+            .elements
+            .iter()
+            .map(|e| e.nbt.clone())
+            .collect()
     }
     pub fn lm_palette(&self) -> Value {
         let mut palette = Vec::new();
@@ -356,15 +354,25 @@ impl ToLmSchematic {
         region.insert("Size".to_string(), Compound(size));
 
         region.insert("BlockStatePalette".to_string(), self.lm_palette());
-        region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        region.insert(
+            "TileEntities".to_string(),
+            Value::List(self.build_tile_entities_list()),
+        );
         //region.insert("TileEntities".to_string(), Value::List(vec![]));
-        region.insert("Entities".to_string(), Value::List(self.build_entities_list()));
+        region.insert(
+            "Entities".to_string(),
+            Value::List(self.build_entities_list()),
+        );
         regions.insert("null".to_string(), Compound(region));
         Compound(regions)
     }
     pub fn lm_schematic(&self, version: i32) -> Value {
+        self.lm_schematic_for_data_version(version, 3465)
+    }
+
+    pub fn lm_schematic_for_data_version(&self, version: i32, data_version: i32) -> Value {
         let mut nbt = HashMap::new();
-        nbt.insert("MinecraftDataVersion".to_string(), Value::Int(3465));
+        nbt.insert("MinecraftDataVersion".to_string(), Value::Int(data_version));
         nbt.insert("Version".to_string(), Value::Int(version));
         let metadata = self.lm_metadata();
         nbt.insert("Metadata".to_string(), metadata);

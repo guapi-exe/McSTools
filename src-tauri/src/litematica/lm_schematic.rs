@@ -1,8 +1,9 @@
 use crate::litematica::lm_schematic_data::{LmMetadata, RegionData, RegionList, RegionNameList};
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
+use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
-use crate::utils::tile_entities::TileEntitiesList;
+use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
 use fastnbt::Value;
 use fastnbt::Value::Compound;
 use flate2::read::GzDecoder;
@@ -11,7 +12,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Arc;
-use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct LmSchematic {
@@ -117,8 +117,21 @@ impl LmSchematic {
         })
     }
 
-    pub fn process_regions(&self) -> Result<(RegionList, RegionNameList, HashMap<String, TileEntitiesList>, HashMap<String, EntitiesList>), SchematicError> {
+    pub fn process_regions(
+        &self,
+    ) -> Result<
+        (
+            RegionList,
+            RegionNameList,
+            HashMap<String, TileEntitiesList>,
+            HashMap<String, EntitiesList>,
+        ),
+        SchematicError,
+    > {
         let regions = self.get_regions()?;
+        // Litematica v1 stored block entities and entities in wrapper tags
+        // (`TileNBT` / `EntityData`). Versions 2+ store the payload directly.
+        let legacy_entity_wrappers = self.get_lm_version().unwrap_or(2) <= 1;
         let mut regions_list = RegionList::default();
         let mut regions_name_list = RegionNameList::default();
         let mut region_tile_entities: HashMap<String, TileEntitiesList> = HashMap::new();
@@ -135,6 +148,41 @@ impl LmSchematic {
             let size = region.get_pos("Size")?;
             let block_state_palette = region.get_list("BlockStatePalette")?;
 
+            let region_min = region_min_corner(position, size)?;
+            let width = size.x.unsigned_abs() as usize;
+            let height = size.y.unsigned_abs() as usize;
+            let length = size.z.unsigned_abs() as usize;
+            if width == 0 || height == 0 || length == 0 {
+                return Err(SchematicError::InvalidFormat(
+                    "Litematica region dimensions must be positive",
+                ));
+            }
+            let volume = width
+                .checked_mul(height)
+                .and_then(|value| value.checked_mul(length))
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica region volume overflow",
+                ))?;
+            let palette_size = block_state_palette.len();
+            if palette_size == 0 {
+                return Err(SchematicError::InvalidFormat(
+                    "Litematica region palette cannot be empty",
+                ));
+            }
+            let bits =
+                (usize::BITS - (palette_size.saturating_sub(1)).leading_zeros()).max(2) as usize;
+            let required_longs = volume
+                .checked_mul(bits)
+                .map(|value| value.div_ceil(64))
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica region block state volume overflow",
+                ))?;
+            if block_states.len() < required_longs {
+                return Err(SchematicError::InvalidFormat(
+                    "Litematica BlockStates array is shorter than the region volume",
+                ));
+            }
+
             let tile_entities_raw: Vec<Value> = region
                 .get("TileEntities")
                 .and_then(|v| match v {
@@ -143,11 +191,12 @@ impl LmSchematic {
                 })
                 .unwrap_or_else(|| vec![]);
 
-            let tile_entities = if tile_entities_raw.is_empty() {
-                TileEntitiesList::new()
-            } else {
-                TileEntitiesList::from_nbt_lm(&tile_entities_raw, 2)?
-            };
+            let tile_entities = offset_region_tile_entities(
+                &tile_entities_raw,
+                region_min,
+                size,
+                legacy_entity_wrappers,
+            )?;
 
             let entities_raw: Vec<Value> = region
                 .get("Entities")
@@ -157,21 +206,7 @@ impl LmSchematic {
                 })
                 .unwrap_or_else(|| vec![]);
 
-            let entities = if entities_raw.is_empty() {
-                EntitiesList::new()
-            } else {
-                EntitiesList::from_nbt(&entities_raw, 2)?
-            };
-
-            let palette_size = block_state_palette.len();
-            let adjusted = if palette_size == 0 {
-                u32::MAX
-            } else {
-                palette_size.saturating_sub(1) as u32
-            };
-            let leading_zeros = adjusted.leading_zeros();
-            let bits_unclamped = 32u32.saturating_sub(leading_zeros);
-            let bits = (bits_unclamped as f64).max(2.0) as i32;
+            let entities = offset_region_entities(&entities_raw, position, legacy_entity_wrappers)?;
 
             regions_list.add(RegionData {
                 region_name: name.to_string(),
@@ -179,9 +214,17 @@ impl LmSchematic {
                 position,
                 size,
                 block_state_palette: block_state_palette.to_vec(),
-                tile_entities: tile_entities_raw.to_vec(), // 保持原始
-                entities: entities_raw.to_vec(),
-                bits,
+                tile_entities: tile_entities
+                    .elements
+                    .iter()
+                    .map(|entity| entity.nbt.clone())
+                    .collect(),
+                entities: entities
+                    .elements
+                    .iter()
+                    .map(|entity| entity.nbt.clone())
+                    .collect(),
+                bits: bits as i32,
             });
 
             regions_name_list.add(name.to_string());
@@ -189,9 +232,13 @@ impl LmSchematic {
             region_entities.insert(name.to_string(), entities);
         }
 
-        Ok((regions_list, regions_name_list, region_tile_entities, region_entities))
+        Ok((
+            regions_list,
+            regions_name_list,
+            region_tile_entities,
+            region_entities,
+        ))
     }
-
 
     pub fn parse_palette(
         &self,
@@ -266,9 +313,16 @@ impl LmSchematic {
     }
 
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
-        let (regions_list, regions_name_list, region_tile_entities, region_entities) = self.process_regions()?;
         let metadata = self.read_metadata()?;
         let size = metadata.enclosing_size;
+        if size.x <= 0 || size.y <= 0 || size.z <= 0 {
+            return Err(SchematicError::InvalidFormat(
+                "Litematica enclosing dimensions must be positive",
+            ));
+        }
+        validate_enclosing_bounds(self.get_regions()?, size)?;
+        let (regions_list, regions_name_list, region_tile_entities, region_entities) =
+            self.process_regions()?;
 
         let region_blocks: Vec<BlockStatePosList> = regions_name_list
             .names
@@ -287,10 +341,11 @@ impl LmSchematic {
                 let width = size.x.unsigned_abs() as usize;
                 let height = size.y.unsigned_abs() as usize;
                 let length = size.z.unsigned_abs() as usize;
+                let region_min = region_min_corner(position, size)?;
 
-                let y_blocks: Vec<BlockStatePosList> = (0..height)
+                let y_blocks: Result<Vec<BlockStatePosList>, SchematicError> = (0..height)
                     .into_par_iter()
-                    .map(|y| {
+                    .map(|y| -> Result<BlockStatePosList, SchematicError> {
                         let mut local_blocks = BlockStatePosList::default();
 
                         for z in 0..length {
@@ -303,18 +358,32 @@ impl LmSchematic {
                                     bits,
                                     &block_states,
                                 ) as usize;
-                                let block_data = &palette[state_id];
-                                local_blocks.add_by_pos(
-                                    x as i32 + position.x,
-                                    y as i32 + position.y,
-                                    z as i32 + position.z,
-                                    block_data.clone(),
-                                );
+                                let block_data =
+                                    palette.get(state_id).ok_or(SchematicError::InvalidFormat(
+                                        "Litematica block state index exceeds the palette",
+                                    ))?;
+                                let x = region_min.x.checked_add(x as i32).ok_or(
+                                    SchematicError::InvalidFormat(
+                                        "Litematica block x coordinate overflow",
+                                    ),
+                                )?;
+                                let y = region_min.y.checked_add(y as i32).ok_or(
+                                    SchematicError::InvalidFormat(
+                                        "Litematica block y coordinate overflow",
+                                    ),
+                                )?;
+                                let z = region_min.z.checked_add(z as i32).ok_or(
+                                    SchematicError::InvalidFormat(
+                                        "Litematica block z coordinate overflow",
+                                    ),
+                                )?;
+                                local_blocks.add_by_pos(x, y, z, block_data.clone());
                             }
                         }
-                        local_blocks
+                        Ok(local_blocks)
                     })
                     .collect();
+                let y_blocks = y_blocks?;
 
                 Ok(y_blocks
                     .into_iter()
@@ -356,5 +425,579 @@ impl LmSchematic {
             },
         ))
     }
+}
 
+fn region_min_corner(position: BlockPos, size: BlockPos) -> Result<BlockPos, SchematicError> {
+    let min_axis = |position: i32, size: i32| {
+        if size < 0 {
+            position
+                .checked_add(size)
+                .and_then(|value| value.checked_add(1))
+        } else {
+            Some(position)
+        }
+    };
+
+    Ok(BlockPos {
+        x: min_axis(position.x, size.x).ok_or(SchematicError::InvalidFormat(
+            "Litematica region x coordinate overflow",
+        ))?,
+        y: min_axis(position.y, size.y).ok_or(SchematicError::InvalidFormat(
+            "Litematica region y coordinate overflow",
+        ))?,
+        z: min_axis(position.z, size.z).ok_or(SchematicError::InvalidFormat(
+            "Litematica region z coordinate overflow",
+        ))?,
+    })
+}
+
+/// Verify that region extents are compatible with Metadata.EnclosingSize.
+///
+/// EnclosingSize describes the selection dimensions, not an absolute origin,
+/// so regions may legitimately start at a non-zero or negative relative
+/// position. We therefore compare only the aggregate extents and still allow
+/// metadata to reserve empty border blocks.
+fn validate_enclosing_bounds(
+    regions: &HashMap<String, Value>,
+    enclosing_size: BlockPos,
+) -> Result<(), SchematicError> {
+    let mut enclosing_min: Option<BlockPos> = None;
+    let mut enclosing_max: Option<BlockPos> = None;
+
+    for (_name, value) in regions {
+        let Compound(region) = value else {
+            return Err(SchematicError::InvalidFormat("Region is not a Compound"));
+        };
+        let position = region.get_pos("Position")?;
+        let region_size = region.get_pos("Size")?;
+        let width = region_size.x.unsigned_abs() as i32;
+        let height = region_size.y.unsigned_abs() as i32;
+        let length = region_size.z.unsigned_abs() as i32;
+        if width <= 0 || height <= 0 || length <= 0 {
+            return Err(SchematicError::InvalidFormat(
+                "Litematica region dimensions must be positive",
+            ));
+        }
+        let min = region_min_corner(position, region_size)?;
+        let max = BlockPos {
+            x: min
+                .x
+                .checked_add(width - 1)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica region x bounds overflow",
+                ))?,
+            y: min
+                .y
+                .checked_add(height - 1)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica region y bounds overflow",
+                ))?,
+            z: min
+                .z
+                .checked_add(length - 1)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica region z bounds overflow",
+                ))?,
+        };
+
+        if let Some(current_min) = enclosing_min.as_mut() {
+            current_min.x = current_min.x.min(min.x);
+            current_min.y = current_min.y.min(min.y);
+            current_min.z = current_min.z.min(min.z);
+        } else {
+            enclosing_min = Some(min);
+        }
+        if let Some(current_max) = enclosing_max.as_mut() {
+            current_max.x = current_max.x.max(max.x);
+            current_max.y = current_max.y.max(max.y);
+            current_max.z = current_max.z.max(max.z);
+        } else {
+            enclosing_max = Some(max);
+        }
+    }
+
+    let (Some(min), Some(max)) = (enclosing_min, enclosing_max) else {
+        return Err(SchematicError::InvalidFormat(
+            "Litematica schematic must contain at least one region",
+        ));
+    };
+    let width = max
+        .x
+        .checked_sub(min.x)
+        .and_then(|value| value.checked_add(1))
+        .ok_or(SchematicError::InvalidFormat(
+            "Litematica enclosing x bounds overflow",
+        ))?;
+    let height = max
+        .y
+        .checked_sub(min.y)
+        .and_then(|value| value.checked_add(1))
+        .ok_or(SchematicError::InvalidFormat(
+            "Litematica enclosing y bounds overflow",
+        ))?;
+    let length = max
+        .z
+        .checked_sub(min.z)
+        .and_then(|value| value.checked_add(1))
+        .ok_or(SchematicError::InvalidFormat(
+            "Litematica enclosing z bounds overflow",
+        ))?;
+
+    if width > enclosing_size.x || height > enclosing_size.y || length > enclosing_size.z {
+        return Err(SchematicError::InvalidFormat(
+            "Litematica regions exceed Metadata.EnclosingSize",
+        ));
+    }
+
+    Ok(())
+}
+
+fn region_coordinate(value: &Value, axis: &'static str) -> Result<i32, SchematicError> {
+    let value = value
+        .as_i64()
+        .ok_or_else(|| SchematicError::MissingField(axis.to_string()))?;
+    i32::try_from(value)
+        .map_err(|_| SchematicError::InvalidFormat("Litematica coordinate exceeds i32"))
+}
+
+fn offset_region_tile_entities(
+    entries: &[Value],
+    region_min: BlockPos,
+    region_size: BlockPos,
+    legacy_wrapper: bool,
+) -> Result<TileEntitiesList, SchematicError> {
+    let mut result = TileEntitiesList {
+        original_type: 2,
+        elements: Vec::with_capacity(entries.len()),
+    };
+    let dimensions = [
+        i64::from(region_size.x.unsigned_abs()),
+        i64::from(region_size.y.unsigned_abs()),
+        i64::from(region_size.z.unsigned_abs()),
+    ];
+
+    for entry in entries {
+        let Compound(map) = entry else {
+            return Err(SchematicError::InvalidFormat(
+                "TileEntity is not a Compound",
+            ));
+        };
+
+        let local = BlockPos {
+            x: region_coordinate(
+                map.get("x")
+                    .ok_or(SchematicError::MissingField("x".into()))?,
+                "x",
+            )?,
+            y: region_coordinate(
+                map.get("y")
+                    .ok_or(SchematicError::MissingField("y".into()))?,
+                "y",
+            )?,
+            z: region_coordinate(
+                map.get("z")
+                    .ok_or(SchematicError::MissingField("z".into()))?,
+                "z",
+            )?,
+        };
+        if local.x < 0
+            || local.y < 0
+            || local.z < 0
+            || i64::from(local.x) >= dimensions[0]
+            || i64::from(local.y) >= dimensions[1]
+            || i64::from(local.z) >= dimensions[2]
+        {
+            return Err(SchematicError::InvalidFormat(
+                "Litematica tile entity position is outside its region",
+            ));
+        }
+        let pos = BlockPos {
+            x: region_min
+                .x
+                .checked_add(local.x)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica tile entity x overflow",
+                ))?,
+            y: region_min
+                .y
+                .checked_add(local.y)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica tile entity y overflow",
+                ))?,
+            z: region_min
+                .z
+                .checked_add(local.z)
+                .ok_or(SchematicError::InvalidFormat(
+                    "Litematica tile entity z overflow",
+                ))?,
+        };
+
+        let mut nbt = if legacy_wrapper {
+            match map.get("TileNBT") {
+                Some(Compound(tile_nbt)) => tile_nbt.clone(),
+                Some(_) => {
+                    return Err(SchematicError::InvalidFormat(
+                        "Litematica v1 TileNBT is not a Compound",
+                    ));
+                }
+                None => {
+                    return Err(SchematicError::MissingField("TileNBT".into()));
+                }
+            }
+        } else {
+            map.clone()
+        };
+        nbt.insert("x".to_string(), Value::Int(pos.x));
+        nbt.insert("y".to_string(), Value::Int(pos.y));
+        nbt.insert("z".to_string(), Value::Int(pos.z));
+        result.elements.push(TileEntities {
+            pos,
+            nbt: Compound(nbt),
+        });
+    }
+
+    Ok(result)
+}
+
+fn numeric_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::Byte(value) => Some(*value as f64),
+        Value::Short(value) => Some(*value as f64),
+        Value::Int(value) => Some(*value as f64),
+        Value::Long(value) => Some(*value as f64),
+        Value::Float(value) => Some(*value as f64),
+        Value::Double(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn offset_entity_nbt(value: &Value, region_position: BlockPos) -> Value {
+    let Compound(map) = value else {
+        return value.clone();
+    };
+
+    let mut normalized = map.clone();
+    if let Some(position) = map.get("Pos") {
+        if let Some(coordinates) = entity_position_coordinates(position) {
+            normalized.insert(
+                "Pos".to_string(),
+                Value::List(vec![
+                    Value::Double(coordinates[0] + region_position.x as f64),
+                    Value::Double(coordinates[1] + region_position.y as f64),
+                    Value::Double(coordinates[2] + region_position.z as f64),
+                ]),
+            );
+        }
+    }
+
+    Compound(normalized)
+}
+
+fn entity_position_coordinates(value: &Value) -> Option<Vec<f64>> {
+    match value {
+        Value::List(position) if position.len() == 3 => position
+            .iter()
+            .map(numeric_value)
+            .collect::<Option<Vec<_>>>(),
+        Value::IntArray(position) if position.len() == 3 => {
+            Some(position.iter().map(|value| *value as f64).collect())
+        }
+        _ => None,
+    }
+}
+
+fn offset_region_entities(
+    entries: &[Value],
+    region_position: BlockPos,
+    legacy_wrapper: bool,
+) -> Result<EntitiesList, SchematicError> {
+    let entries = entries
+        .iter()
+        .map(|entry| {
+            if legacy_wrapper {
+                offset_legacy_entity_nbt(entry, region_position)
+            } else {
+                Ok(offset_entity_nbt(entry, region_position))
+            }
+        })
+        .collect::<Result<Vec<_>, SchematicError>>()?;
+    EntitiesList::from_nbt(&entries, 2)
+}
+
+fn offset_legacy_entity_nbt(
+    value: &Value,
+    region_position: BlockPos,
+) -> Result<Value, SchematicError> {
+    let Compound(wrapper) = value else {
+        return Err(SchematicError::InvalidFormat(
+            "Litematica v1 Entity wrapper is not a Compound",
+        ));
+    };
+
+    let coordinate = |name: &str| {
+        wrapper
+            .get(name)
+            .and_then(numeric_value)
+            .ok_or_else(|| SchematicError::MissingField(name.to_string()))
+    };
+    let payload = match wrapper.get("EntityData") {
+        Some(Compound(entity)) => entity.clone(),
+        Some(_) => {
+            return Err(SchematicError::InvalidFormat(
+                "Litematica v1 EntityData is not a Compound",
+            ));
+        }
+        None => return Err(SchematicError::MissingField("EntityData".into())),
+    };
+
+    let mut normalized = payload;
+    normalized.insert(
+        "Pos".to_string(),
+        Value::List(vec![
+            Value::Double(coordinate("dx")? + region_position.x as f64),
+            Value::Double(coordinate("dy")? + region_position.y as f64),
+            Value::Double(coordinate("dz")? + region_position.z as f64),
+        ]),
+    );
+    Ok(Compound(normalized))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn compound(entries: impl IntoIterator<Item = (String, Value)>) -> Value {
+        Compound(entries.into_iter().collect())
+    }
+
+    fn metadata(width: i32, height: i32, length: i32) -> Value {
+        compound([
+            ("TimeCreated".to_string(), Value::Long(0)),
+            ("TimeModified".to_string(), Value::Long(0)),
+            ("Description".to_string(), Value::String(String::new())),
+            ("RegionCount".to_string(), Value::Int(1)),
+            ("TotalBlocks".to_string(), Value::Int(1)),
+            ("Author".to_string(), Value::String("test".to_string())),
+            (
+                "TotalVolume".to_string(),
+                Value::Int(width * height * length),
+            ),
+            ("Name".to_string(), Value::String("test".to_string())),
+            (
+                "EnclosingSize".to_string(),
+                compound([
+                    ("x".to_string(), Value::Int(width)),
+                    ("y".to_string(), Value::Int(height)),
+                    ("z".to_string(), Value::Int(length)),
+                ]),
+            ),
+        ])
+    }
+
+    fn palette() -> Value {
+        Value::List(vec![
+            compound([(
+                "Name".to_string(),
+                Value::String("minecraft:air".to_string()),
+            )]),
+            compound([(
+                "Name".to_string(),
+                Value::String("minecraft:stone".to_string()),
+            )]),
+        ])
+    }
+
+    fn region(legacy_wrappers: bool) -> Value {
+        let tile_entity = if legacy_wrappers {
+            compound([
+                ("x".to_string(), Value::Int(0)),
+                ("y".to_string(), Value::Int(0)),
+                ("z".to_string(), Value::Int(0)),
+                (
+                    "TileNBT".to_string(),
+                    compound([(
+                        "id".to_string(),
+                        Value::String("minecraft:chest".to_string()),
+                    )]),
+                ),
+            ])
+        } else {
+            compound([
+                ("x".to_string(), Value::Int(0)),
+                ("y".to_string(), Value::Int(0)),
+                ("z".to_string(), Value::Int(0)),
+                (
+                    "id".to_string(),
+                    Value::String("minecraft:chest".to_string()),
+                ),
+            ])
+        };
+
+        let entity = if legacy_wrappers {
+            compound([
+                ("dx".to_string(), Value::Double(0.5)),
+                ("dy".to_string(), Value::Double(0.25)),
+                ("dz".to_string(), Value::Double(0.75)),
+                (
+                    "EntityData".to_string(),
+                    compound([(
+                        "id".to_string(),
+                        Value::String("minecraft:item".to_string()),
+                    )]),
+                ),
+            ])
+        } else {
+            compound([
+                (
+                    "Pos".to_string(),
+                    Value::List(vec![
+                        Value::Double(0.5),
+                        Value::Double(0.25),
+                        Value::Double(0.75),
+                    ]),
+                ),
+                (
+                    "id".to_string(),
+                    Value::String("minecraft:item".to_string()),
+                ),
+            ])
+        };
+
+        compound([
+            (
+                "Position".to_string(),
+                compound([
+                    ("x".to_string(), Value::Int(5)),
+                    ("y".to_string(), Value::Int(10)),
+                    ("z".to_string(), Value::Int(20)),
+                ]),
+            ),
+            (
+                "Size".to_string(),
+                compound([
+                    ("x".to_string(), Value::Int(-2)),
+                    ("y".to_string(), Value::Int(1)),
+                    ("z".to_string(), Value::Int(1)),
+                ]),
+            ),
+            ("BlockStatePalette".to_string(), palette()),
+            (
+                "BlockStates".to_string(),
+                Value::LongArray(fastnbt::LongArray::new(vec![1])),
+            ),
+            ("TileEntities".to_string(), Value::List(vec![tile_entity])),
+            ("Entities".to_string(), Value::List(vec![entity])),
+            ("DataVersion".to_string(), Value::Int(3465)),
+        ])
+    }
+
+    fn fixture(version: i32) -> LmSchematic {
+        let legacy_wrappers = version <= 1;
+        LmSchematic {
+            nbt: compound([
+                ("Version".to_string(), Value::Int(version)),
+                ("MinecraftDataVersion".to_string(), Value::Int(3465)),
+                ("Metadata".to_string(), metadata(7, 1, 1)),
+                (
+                    "Regions".to_string(),
+                    compound([("test".to_string(), region(legacy_wrappers))]),
+                ),
+            ]),
+        }
+    }
+
+    #[test]
+    fn normalizes_negative_region_coordinates_and_direct_entities() {
+        let data = fixture(2).get_blocks_pos().expect("decode fixture");
+        assert_eq!(data.size.width, 7);
+        assert_eq!(data.blocks.elements[0].pos, BlockPos { x: 4, y: 10, z: 20 });
+        assert_eq!(
+            data.blocks.elements[0].block.id.name.as_ref(),
+            "minecraft:stone"
+        );
+
+        assert_eq!(
+            data.tile_entities_list.elements[0].pos,
+            BlockPos { x: 4, y: 10, z: 20 }
+        );
+        let Value::Compound(entity) = &data.entities_list.elements[0].nbt else {
+            panic!("expected entity compound");
+        };
+        let Value::List(position) = entity.get("Pos").expect("entity position") else {
+            panic!("expected entity position list");
+        };
+        assert_eq!(position[0], Value::Double(5.5));
+        assert_eq!(position[1], Value::Double(10.25));
+        assert_eq!(position[2], Value::Double(20.75));
+    }
+
+    #[test]
+    fn unwraps_litematica_v1_entity_and_tile_entity_payloads() {
+        let data = fixture(1).get_blocks_pos().expect("decode v1 fixture");
+        let tile = &data.tile_entities_list.elements[0];
+        assert_eq!(tile.pos, BlockPos { x: 4, y: 10, z: 20 });
+        let Value::Compound(tile_nbt) = &tile.nbt else {
+            panic!("expected tile entity compound");
+        };
+        assert_eq!(
+            tile_nbt.get("id").and_then(Value::as_str),
+            Some("minecraft:chest")
+        );
+
+        let Value::Compound(entity) = &data.entities_list.elements[0].nbt else {
+            panic!("expected entity compound");
+        };
+        let Value::List(position) = entity.get("Pos").expect("entity position") else {
+            panic!("expected entity position list");
+        };
+        assert_eq!(position[0], Value::Double(5.5));
+        assert_eq!(entity.get("EntityData"), None);
+    }
+
+    #[test]
+    fn rejects_regions_that_exceed_metadata_enclosing_size() {
+        let mut schematic = fixture(2);
+        let Compound(root) = &mut schematic.nbt else {
+            panic!("expected root compound");
+        };
+        let Compound(metadata) = root.get_mut("Metadata").expect("metadata") else {
+            panic!("expected metadata compound");
+        };
+        let Compound(enclosing) = metadata.get_mut("EnclosingSize").expect("enclosing size") else {
+            panic!("expected enclosing size compound");
+        };
+        enclosing.insert("x".to_string(), Value::Int(1));
+
+        let error = schematic
+            .get_blocks_pos()
+            .expect_err("invalid enclosing size");
+        assert!(error.to_string().contains("EnclosingSize"));
+    }
+
+    #[test]
+    fn rejects_out_of_bounds_region_tile_entities() {
+        let mut schematic = fixture(2);
+        let Compound(root) = &mut schematic.nbt else {
+            panic!("expected root compound");
+        };
+        let Compound(regions) = root.get_mut("Regions").expect("regions") else {
+            panic!("expected regions compound");
+        };
+        let Compound(region) = regions.get_mut("test").expect("test region") else {
+            panic!("expected region compound");
+        };
+        let Value::List(tile_entities) = region.get_mut("TileEntities").expect("tile entities")
+        else {
+            panic!("expected tile entity list");
+        };
+        let Compound(tile_entity) = &mut tile_entities[0] else {
+            panic!("expected tile entity compound");
+        };
+        tile_entity.insert("x".to_string(), Value::Int(2));
+
+        let error = schematic
+            .get_blocks_pos()
+            .expect_err("invalid tile entity position");
+        assert!(error.to_string().contains("outside its region"));
+    }
 }

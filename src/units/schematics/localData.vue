@@ -2,12 +2,13 @@
 
 import {batchExportSchematics, copySchematic} from "../../modules/copy_file.ts";
 import {
+  fetchDistinctGameVersions,
   fetchSchematicCount,
   fetchSchematics,
   SchematicsData,
   schematicTypeList
 } from "../../modules/schematics_data.ts";
-import {nextTick, onActivated, onMounted, ref, watch} from "vue";
+import {computed, onActivated, onBeforeUnmount, onMounted, ref, watch} from "vue";
 import dayjs from "dayjs";
 import {clear_tools, fetch_data} from "../../modules/tools_data.ts";
 import {activeTab} from "../../modules/layout.ts";
@@ -21,16 +22,23 @@ import weImg from "../../static/img/wordEdit.png";
 import beImg from "../../static/img/grass_block.png";
 import {selectClassification, selectLoading, toast} from "../../modules/others.ts";
 import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
-import {opacity} from "../../modules/theme.ts";
 import {useI18n} from "vue-i18n";
 import {localSchematicsRefreshVersion} from "../../modules/upload_schematic.ts";
+import ScrollRail from "../../layout/ScrollRail.vue";
 
-const PAGE_SIZE = 20
 const BULK_PAGE_SIZE = 100
 
 const router = useRouter()
 const loadState = ref()
 const autoPage = ref(1)
+const total = ref(0)
+const pageSize = ref(20)
+const sortBy = ref<'created_at' | 'updated_at' | 'name'>('created_at')
+const sortOrder = ref<'asc' | 'desc'>('desc')
+const filterType = ref(-1)
+const filterGameVersion = ref('')
+const jumpPageInput = ref('')
+const gameVersionOptions = ref<string[]>([])
 const showDeleteDialog = ref(false)
 const showDeleteDialog2 = ref(false)
 const showBatchDeleteDialog = ref(false)
@@ -46,10 +54,20 @@ const open = ref(false);
 const checks = ref(false);
 const tags = ref<string[]>([])
 const selectedIds = ref<number[]>([])
-let schematics = ref<SchematicsData[]>([])
+
+type DisplaySchematicsData = SchematicsData & {
+  displayDimensions: string[]
+  displayTags: string[]
+  displayVisibleTags: string[]
+  displayExtraTagCount: number
+  displayUpdatedAt: string
+  displayTypeLabel: string
+  displayImage: string
+}
+
+const schematics = ref<DisplaySchematicsData[]>([])
 const showCreateTagDialog = ref(false);
 const newTagName = ref('');
-const filterPanel = ref<InstanceType<typeof HTMLElement> | null>(null);
 const countMap = ref<Record<string, number>>({});
 const lastHandledRefreshVersion = ref(0)
 const selectingAll = ref(false)
@@ -58,7 +76,11 @@ const deletingSelected = ref(false)
 const filters = ref({
   keyword: '',
 })
-const { t: $t } = useI18n()
+const { t: $t, locale } = useI18n()
+
+let reloadToken = 0
+let lastRequestedQueryKey = ''
+let keywordReloadTimer: number | null = null
 
 const keepActionMenuOpen = () => {
   requestAnimationFrame(() => {
@@ -76,6 +98,36 @@ const getCurrentClassification = () => {
   return typeof value === 'string' ? value : ''
 }
 
+const currentClassification = computed(() => getCurrentClassification())
+const selectedIdSet = computed(() => new Set(selectedIds.value))
+
+const getQueryKey = (
+    classification = currentClassification.value,
+    keyword = filters.value.keyword,
+) => [
+  classification,
+  keyword,
+  filterType.value,
+  filterGameVersion.value,
+  sortBy.value,
+  sortOrder.value,
+  pageSize.value,
+].join('\u0000')
+
+// Shared query shape for every fetch path (reload / infinite load / jump to
+// page / bulk select) so list and counts always agree on the filter set.
+const requestParams = () => ({
+  filter: filters.value.keyword,
+  classification: currentClassification.value,
+  page_size: pageSize.value,
+  sort_by: sortBy.value,
+  sort_order: sortOrder.value,
+  schematic_type: filterType.value,
+  game_version: filterGameVersion.value,
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
 const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
   return [`${length}`, `${width}`, `${height}`]
@@ -85,15 +137,19 @@ const IMAGE_MAPPING: Record<number, string> = {
   2: lmImg,
   3: weImg,
   4: bgImg,
-  5: beImg
+  5: beImg,
+  6: weImg
 };
 const selectSchematic = async(id: number) => {
   try{
     selectLoading.value = true
     clear_tools()
-    await fetch_data(id)
-    await router.push("/tools")
+    // Navigate first — the editor opens instantly and the (deduped) data
+    // fetch streams in behind it, instead of freezing the library page while
+    // five payloads parse on the main thread.
+    void router.push("/tools")
     activeTab.value = 'tools'
+    await fetch_data(id)
   }catch (e){
     console.log(e)
   }finally {
@@ -102,35 +158,72 @@ const selectSchematic = async(id: number) => {
 
 }
 const reload = async () => {
-  autoPage.value = 1;
-  hasMore.value = true;
-  isLoading.value = false;
+  if (keywordReloadTimer !== null) {
+    window.clearTimeout(keywordReloadTimer)
+    keywordReloadTimer = null
+  }
+
+  const requestToken = ++reloadToken
+  const queryKey = getQueryKey()
+  lastRequestedQueryKey = queryKey
+
+  autoPage.value = 1
+  hasMore.value = true
   selectedIds.value = []
-  schematics.value = []
-  if (!hasMore.value || isLoading.value) return;
+  // Keep the previous page visible while the new query is loading.  Replacing
+  // it only after the response arrives avoids a blank frame and a second full
+  // layout pass when categories are switched quickly.
+  isLoading.value = true
 
   try {
-    isLoading.value = true;
-
-    const { data } = await fetchSchematics({
-      filter: filters.value.keyword,
-      classification: getCurrentClassification(),
-      page: autoPage.value,
-      page_size: PAGE_SIZE
+    const { data, total: totalCount } = await fetchSchematics({
+      ...requestParams(),
+      page: 1
     });
-    schematics.value = [...schematics.value, ...data];
-    autoPage.value += 1;
 
-    hasMore.value = data.length === PAGE_SIZE;
+    // A slower request from a previous category/filter must never overwrite
+    // the result that the user currently sees.
+    if (requestToken !== reloadToken || queryKey !== getQueryKey()) return
+
+    schematics.value = decorateSchematics(data)
+    total.value = totalCount
+    autoPage.value = 2
+    hasMore.value = schematics.value.length < totalCount;
     if (!hasMore.value) loadState.value?.('empty');
     else loadState.value?.('ok');
   } catch (error) {
-    toast.error(`加载失败:${error}`, {
-      timeout: 3000
-    });
+    if (requestToken === reloadToken) {
+      lastRequestedQueryKey = ''
+      toast.error(`加载失败:${error}`, {
+        timeout: 3000
+      });
+    }
   } finally {
-    isLoading.value = false;
+    if (requestToken === reloadToken) {
+      isLoading.value = false;
+    }
   }
+}
+
+const selectCategory = (classification: string) => {
+  const nextClassification = classification || ''
+  const nextQueryKey = getQueryKey(nextClassification)
+
+  // Vuetify updates v-model:selected as part of the click event.  Comparing
+  // against the last requested key (instead of only the current ref) keeps a
+  // repeated click from starting another expensive request while still
+  // loading a newly selected category.
+  if (nextQueryKey === lastRequestedQueryKey) return
+
+  if (keywordReloadTimer !== null) {
+    window.clearTimeout(keywordReloadTimer)
+    keywordReloadTimer = null
+  }
+  // VList's `selected` model is an array even for a single-leaf list. Keep
+  // the model in the shape Vuetify expects; the computed helper above unwraps
+  // it for request parameters and comparisons.
+  selectClassification.value = nextClassification ? [nextClassification] : []
+  void reload()
 }
 
 const loadCounts = async () => {
@@ -178,25 +271,39 @@ const schematic_load = async ({ done }: LoadParams) => {
     done('empty')
     return
   }
-  if (!hasMore.value || isLoading.value) return;
+  if (isLoading.value) {
+    done('ok')
+    return
+  }
+
+  const requestToken = reloadToken
+  const queryKey = getQueryKey()
+  const page = autoPage.value
 
   try {
     isLoading.value = true;
-    const { data } = await fetchSchematics({
-      filter: filters.value.keyword,
-      classification: getCurrentClassification(),
-      page: autoPage.value,
-      page_size: PAGE_SIZE
+    const { data, total: totalCount } = await fetchSchematics({
+      ...requestParams(),
+      page
     });
-    schematics.value = [...schematics.value, ...data];
-    autoPage.value += 1;
-    hasMore.value = data.length === PAGE_SIZE;
+
+    if (requestToken !== reloadToken || queryKey !== getQueryKey()) {
+      done('ok')
+      return
+    }
+
+    schematics.value = [...schematics.value, ...decorateSchematics(data)];
+    total.value = totalCount
+    autoPage.value = page + 1;
+    hasMore.value = schematics.value.length < totalCount;
     done('ok')
   } catch (error) {
     console.error('加载失败:', error);
     done('error')
   } finally {
-    isLoading.value = false;
+    if (requestToken === reloadToken) {
+      isLoading.value = false;
+    }
   }
 }
 
@@ -218,12 +325,26 @@ const schematicTags = (str: string) => {
   return schematic_tags
 }
 
-const handleScroll = () => {
-
-  if (!panelExpanded.value) {
-    panelExpanded.value = false; // 折叠
-  }
+const formatTime = (time: any) => {
+  return dayjs(time).format('YYYY/MM/DD HH:mm')
 }
+
+const decorateSchematic = (bp: SchematicsData): DisplaySchematicsData => {
+  const display = bp as DisplaySchematicsData
+  display.displayDimensions = parseDimensions(bp.sizes)
+  display.displayTags = schematicTags(bp.schematic_tags)
+  display.displayVisibleTags = display.displayTags.slice(0, 8)
+  display.displayExtraTagCount = Math.max(0, display.displayTags.length - 8)
+  display.displayUpdatedAt = formatTime(bp.updated_at)
+  display.displayTypeLabel = schematicTypeList[
+      bp.schematic_type as keyof typeof schematicTypeList
+  ] ?? ''
+  display.displayImage = IMAGE_MAPPING[bp.schematic_type] ?? createImg
+  return display
+}
+
+const decorateSchematics = (data: SchematicsData[]) => data.map(decorateSchematic)
+const displaySchematics = computed(() => schematics.value)
 
 const handleDragStart = (event: DragEvent, tag: string) => {
   if (!event.dataTransfer) return
@@ -254,7 +375,7 @@ const handleDragLeave = (bp: SchematicsData) => {
   }
 }
 
-const handleDrop = async (event: DragEvent, bp: SchematicsData) => {
+const handleDrop = async (event: DragEvent, bp: DisplaySchematicsData) => {
   draggingOverId.value = null
   if (!event.dataTransfer) return
   const tag = event.dataTransfer.getData('tag')
@@ -278,19 +399,23 @@ const handleDrop = async (event: DragEvent, bp: SchematicsData) => {
   );
 
   bp.schematic_tags = currentTags.join(',')
+  bp.displayTags = currentTags
+  bp.displayVisibleTags = currentTags.slice(0, 8)
+  bp.displayExtraTagCount = Math.max(0, currentTags.length - 8)
   isDraggingTag.value = false
   countMap.value[tag] = (countMap.value[tag] ?? 0) + 1
   toast.success(`已为蓝图「${bp.name}」添加标签「${tag}」`, { timeout: 3000 })
 }
 const confirmDeleteClassification = async () => {
   try {
-    tags.value = tags.value.filter(t => t != selectClassification.value)
+    const classification = getCurrentClassification()
+    tags.value = tags.value.filter(t => t !== classification)
 
     const allTagsString = tags.value.join(',')
     await update_user_classification(allTagsString)
 
     showDeleteDialog2.value = false
-    selectClassification.value = ''
+    selectClassification.value = []
     await syncClassificationState()
     await reload()
   } catch (error) {
@@ -317,21 +442,24 @@ watch(
     [
       () => filters.value.keyword,
     ],
-    async () => {
-      await nextTick()
-      await reload()
+    () => {
+      if (keywordReloadTimer !== null) {
+        window.clearTimeout(keywordReloadTimer)
+      }
+
+      keywordReloadTimer = window.setTimeout(() => {
+        keywordReloadTimer = null
+        void reload()
+      }, 180)
     },
     { flush: 'post' }
 )
-const formatTime = (time: any) => {
-  return dayjs(time).format('YYYY/MM/DD HH:mm')
-}
-
 const syncClassificationState = async () => {
   await fetchUserClassification();
-  if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
-    tags.value = userData.value.classification
-        ? userData.value.classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+  const classification = userData.value?.classification
+  if (typeof classification === 'string') {
+    tags.value = classification
+        ? classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
         : [];
   } else {
     tags.value = [];
@@ -346,8 +474,7 @@ const fetchAllMatchingSchematics = async () => {
 
   while (true) {
     const { data } = await fetchSchematics({
-      filter: filters.value.keyword,
-      classification: getCurrentClassification(),
+      ...requestParams(),
       page,
       page_size: BULK_PAGE_SIZE,
     })
@@ -364,6 +491,95 @@ const fetchAllMatchingSchematics = async () => {
   return allSchematics
 }
 
+// The page currently on screen: the last page pulled into the accumulated
+// list (after a jump this is the jumped-to page; scrolling appends the next).
+const currentPage = computed(() => Math.max(1, autoPage.value - 1))
+
+// Jump straight to a page: replaces the list with that single page, then
+// continues the usual infinite accumulation from page+1 while scrolling.
+const gotoPage = async (targetPage?: number) => {
+  const requested = targetPage ?? (parseInt(jumpPageInput.value, 10) || 1)
+  const target = Math.min(Math.max(requested, 1), totalPages.value)
+  jumpPageInput.value = String(target)
+  if (isLoading.value) return
+
+  const requestToken = ++reloadToken
+  const queryKey = getQueryKey()
+  lastRequestedQueryKey = queryKey
+  isLoading.value = true
+
+  try {
+    const { data, total: totalCount } = await fetchSchematics({
+      ...requestParams(),
+      page: target
+    })
+
+    if (requestToken !== reloadToken || queryKey !== getQueryKey()) return
+
+    schematics.value = decorateSchematics(data)
+    total.value = totalCount
+    autoPage.value = target + 1
+    hasMore.value = target * pageSize.value < totalCount
+    if (!hasMore.value) loadState.value?.('empty');
+    else loadState.value?.('ok');
+
+    const list = document.querySelector('.mc-blueprint-list') as HTMLElement | null
+    if (list) list.scrollTop = 0
+  } catch (error) {
+    toast.error(`加载失败:${error}`, { timeout: 3000 })
+  } finally {
+    if (requestToken === reloadToken) {
+      isLoading.value = false
+    }
+  }
+}
+
+const sortOptions = computed(() => [
+  { title: $t('localData.toolbar.sortNewest'), value: 'created_at:desc' },
+  { title: $t('localData.toolbar.sortOldest'), value: 'created_at:asc' },
+  { title: $t('localData.toolbar.sortUpdated'), value: 'updated_at:desc' },
+  { title: $t('localData.toolbar.sortName'), value: 'name:asc' },
+])
+
+const sortSelection = computed({
+  get: () => `${sortBy.value}:${sortOrder.value}`,
+  set: (value: string) => {
+    const [by, order] = value.split(':')
+    sortBy.value = (by as typeof sortBy.value) || 'created_at'
+    sortOrder.value = (order === 'asc' ? 'asc' : 'desc') as typeof sortOrder.value
+  },
+})
+
+const typeOptions = computed(() => [
+  { title: $t('localData.filter.allTypes'), value: -1 },
+  ...Object.entries(schematicTypeList).map(([value, title]) => ({ title, value: Number(value) })),
+])
+
+const typeTitle = (value: number) =>
+    schematicTypeList[value as keyof typeof schematicTypeList] ?? String(value)
+
+const versionOptions = computed(() => [
+  { title: $t('localData.filter.allVersions'), value: '' },
+  ...gameVersionOptions.value.map(v => ({ title: v, value: v })),
+])
+
+const loadGameVersions = async () => {
+  if (gameVersionOptions.value.length > 0) return
+  try {
+    gameVersionOptions.value = await fetchDistinctGameVersions()
+  } catch {
+    // toast already surfaced by the fetch wrapper
+  }
+}
+
+watch(panelExpanded, expanded => {
+  if (expanded) void loadGameVersions()
+})
+
+watch([pageSize, sortBy, sortOrder, filterType, filterGameVersion], () => {
+  void reload()
+})
+
 onMounted(async () => {
   await syncClassificationState();
   await reload()
@@ -378,6 +594,14 @@ onActivated(async () => {
   await syncClassificationState()
   await reload()
   lastHandledRefreshVersion.value = localSchematicsRefreshVersion.value
+})
+
+onBeforeUnmount(() => {
+  if (keywordReloadTimer !== null) {
+    window.clearTimeout(keywordReloadTimer)
+    keywordReloadTimer = null
+  }
+  reloadToken += 1
 })
 
 const selectAll = async () => {
@@ -406,8 +630,6 @@ const toggleMultiSelect = () => {
   keepActionMenuOpen()
 }
 
-const isSelected = (id: number) => selectedIds.value.includes(id)
-
 const batchExport = async () => {
   if (selectedIds.value.length === 0) {
     toast.error("请至少选择一个蓝图！", { timeout: 2000 })
@@ -417,7 +639,7 @@ const batchExport = async () => {
   try {
     exportingSelected.value = true
     const selectedIdSet = new Set(selectedIds.value)
-    let selectedBps = schematics.value.filter(b => selectedIdSet.has(b.id))
+    let selectedBps: SchematicsData[] = schematics.value.filter(b => selectedIdSet.has(b.id))
 
     if (selectedBps.length !== selectedIds.value.length) {
       const allSchematics = await fetchAllMatchingSchematics()
@@ -480,6 +702,7 @@ const confirmBatchDelete = async () => {
 </script>
 
 <template>
+  <div class="schematics-page">
   <v-expansion-panels
       rail
       v-model="panelExpanded"
@@ -496,6 +719,22 @@ const confirmBatchDelete = async () => {
               >
                 <v-icon start icon="mdi-magnify"></v-icon>
                 {{ filters.keyword }}
+              </v-chip>
+              <v-chip
+                  v-if="filterType > 0"
+                  size="small"
+                  class="mr-2"
+              >
+                <v-icon start icon="mdi-cube-outline"></v-icon>
+                {{ typeTitle(filterType) }}
+              </v-chip>
+              <v-chip
+                  v-if="filterGameVersion"
+                  size="small"
+                  class="mr-2"
+              >
+                <v-icon start icon="mdi-tag-outline"></v-icon>
+                {{ filterGameVersion }}
               </v-chip>
             </div>
           </template>
@@ -519,25 +758,60 @@ const confirmBatchDelete = async () => {
           prepend-inner-icon="mdi-magnify"
         ></v-text-field>
             </v-col>
+            <v-col cols="6" md="3">
+              <v-select
+                  v-model="filterType"
+                  :items="typeOptions"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('localData.filter.type')"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+              ></v-select>
+            </v-col>
+            <v-col cols="6" md="3">
+              <v-select
+                  v-model="filterGameVersion"
+                  :items="versionOptions"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('localData.filter.gameVersion')"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+              ></v-select>
+            </v-col>
 
           </v-row>
         </v-container>
       </v-expansion-panel-text>
     </v-expansion-panel>
   </v-expansion-panels>
-  <v-card style="height: calc(94vh - 64px); display: flex; flex-direction: column;">
+  <v-card style="flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;">
     <v-layout style="flex: 1; display: flex; overflow: hidden;">
       <v-navigation-drawer
           v-model:rail="rail_e"
-          expand-on-hover
           permanent
           floating
+          class="schematics-drawer"
           style="z-index: 10;height: 100%;"
           fixed
           :elevation="3"
           :rail-width="120"
           :width="200"
       >
+        <template #prepend>
+          <div class="drawer-toggle">
+            <v-btn
+                variant="text"
+                size="small"
+                :icon="rail_e ? 'mdi-chevron-right' : 'mdi-chevron-left'"
+                :title="rail_e ? '展开分类' : '收起分类'"
+                @click.stop="rail_e = !rail_e"
+            />
+          </div>
+        </template>
         <v-list
             density="compact"
             nav
@@ -547,12 +821,13 @@ const confirmBatchDelete = async () => {
         >
           <v-list-item
               link
+              value=""
               class="nav-item"
-              :class="{ 'active-item': selectClassification === '' }"
+              :class="{ 'active-item': currentClassification === '' }"
+              @click="selectCategory('')"
           >
               <v-list-item-title
                   class="font-medium mt-2"
-                  @click="selectClassification = '';reload();"
               >
                 <v-icon size="20">mdi-cube-outline</v-icon>
                 {{$t('localData.allBlueprints')}}
@@ -564,13 +839,13 @@ const confirmBatchDelete = async () => {
           <v-divider class="my-2"></v-divider>
 
           <v-list-item
-              v-for="(tag, idx) in tags"
-              :key="idx"
+              v-for="tag in tags"
+              :key="tag"
               :value="tag"
               link
               class="nav-item"
-              :class="{ 'active-item': selectClassification == tag }"
-              @click="selectClassification = tag;reload();"
+              :class="{ 'active-item': currentClassification === tag }"
+              @click="selectCategory(tag)"
               draggable="true"
               @dragstart="handleDragStart($event, tag)"
           >
@@ -582,7 +857,7 @@ const confirmBatchDelete = async () => {
             <template #append>
               <v-badge v-if="!rail_e" color="info" :content="countMap[tag] ?? 0" inline></v-badge>
               <v-btn
-                  v-if="selectClassification == tag"
+                  v-if="currentClassification === tag"
                   icon="mdi-close"
                   variant="text"
                   color="red"
@@ -610,20 +885,20 @@ const confirmBatchDelete = async () => {
       <v-main>
         <v-list
             class="mc-blueprint-list"
-            ref="filterPanel"
-            @scroll="handleScroll"
+            :class="{ 'mc-blueprint-list--large': schematics.length > 40 }"
         >
           <v-infinite-scroll
-              :items="schematics"
+              :items="displaySchematics"
               @load="schematic_load"
               :has-more="hasMore"
               item-height="80"
           >
             <v-list-item
-                v-for="(bp) in schematics"
+                v-for="bp in displaySchematics"
                 :key="bp.id"
+                v-memo="[bp, bp.id, bp.name, bp.description, bp.user, bp.game_version, bp.version, bp.sizes, bp.schematic_type, bp.schematic_tags, bp.displayTags, bp.displayVisibleTags, bp.displayExtraTagCount, selectedIdSet.has(bp.id), draggingOverId === bp.id, checks, isDraggingTag, selectLoading, locale]"
                 class="py-2 blueprint-item"
-                :class="{ 'drag-over': draggingOverId == bp.id, 'selected-item': isSelected(bp.id), 'drag-ready': isDraggingTag }"
+                :class="{ 'drag-over': draggingOverId == bp.id, 'selected-item': selectedIdSet.has(bp.id), 'drag-ready': isDraggingTag }"
                 :title="bp.name"
                 @drop="handleDrop($event, bp)"
                 @dragover.prevent
@@ -676,7 +951,7 @@ const confirmBatchDelete = async () => {
                       <div class="d-flex align-center">
                         <v-icon icon="mdi-axis-arrow" class="mr-1"></v-icon>
                         <div class="dimension-values">
-                        <span v-for="(dim, index) in parseDimensions(bp.sizes)" :key="index">
+                        <span v-for="(dim, index) in bp.displayDimensions" :key="index">
                           {{ dim }}
                           <v-icon v-if="index < 2" icon="mdi-close" size="x-small" class="mx-1"></v-icon>
                         </span>
@@ -702,8 +977,8 @@ const confirmBatchDelete = async () => {
 
                   <div class="d-flex align-center flex-wrap gap-3">
                     <div class="d-flex align-center">
-                      <img :src="IMAGE_MAPPING[bp.schematic_type]" style="height: 20px; width: 32px" :alt="bp.name">
-                      <span class="text-caption">{{ schematicTypeList[bp.schematic_type as 1 | 2 | 3 | 4] }}</span>
+                      <img :src="bp.displayImage" style="height: 20px; width: 32px" :alt="bp.name">
+                      <span class="text-caption">{{ bp.displayTypeLabel }}</span>
                     </div>
 
                     <div class="d-flex align-center flex-wrap gap-3">
@@ -718,14 +993,14 @@ const confirmBatchDelete = async () => {
 
                     <div class="d-flex align-center">
                       <v-icon icon="mdi-clock-outline" size="small" class="me-1"></v-icon>
-                      <span class="text-caption">{{ formatTime(bp.updated_at) }}</span>
+                      <span class="text-caption">{{ bp.displayUpdatedAt }}</span>
                     </div>
 
                     <!-- 标签展示 -->
-                    <div class="d-flex align-center flex-wrap mt-1" v-if="schematicTags(bp.schematic_tags).length > 0">
+                    <div class="d-flex align-center flex-wrap mt-1" v-if="bp.displayTags.length > 0">
                       <v-chip
-                          v-for="(tag, idx) in schematicTags(bp.schematic_tags).slice(0, 8)"
-                          :key="idx"
+                          v-for="(tag, idx) in bp.displayVisibleTags"
+                          :key="`${tag}-${idx}`"
                           color="info"
                           size="x-small"
                           class="ma-1"
@@ -737,13 +1012,13 @@ const confirmBatchDelete = async () => {
 
                       <!-- 超出提示 -->
                       <v-chip
-                          v-if="schematicTags(bp.schematic_tags).length > 8"
+                          v-if="bp.displayExtraTagCount > 0"
                           color="info"
                           size="x-small"
                           class="ma-1"
                           variant="outlined"
                       >
-                        +{{ schematicTags(bp.schematic_tags).length - 8 }}
+                        +{{ bp.displayExtraTagCount }}
                       </v-chip>
                     </div>
                   </div>
@@ -805,11 +1080,69 @@ const confirmBatchDelete = async () => {
 
     </v-layout>
 
+    <div class="list-toolbar">
+      <span class="text-caption text-medium-emphasis">
+        {{ $t('localData.toolbar.total', { count: total }) }}
+      </span>
+      <v-spacer />
+      <v-select
+          v-model="sortSelection"
+          :items="sortOptions"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="toolbar-select"
+      ></v-select>
+      <v-divider vertical inset class="mx-1 toolbar-divider" />
+      <span class="text-caption text-medium-emphasis">{{ $t('localData.toolbar.perPage') }}</span>
+      <v-select
+          v-model="pageSize"
+          :items="[20, 50, 100]"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="toolbar-select toolbar-select--narrow"
+      ></v-select>
+      <v-divider vertical inset class="mx-1 toolbar-divider" />
+      <v-btn
+          icon="mdi-chevron-left"
+          size="small"
+          variant="text"
+          :disabled="currentPage <= 1 || isLoading"
+          @click="gotoPage(currentPage - 1)"
+      />
+      <span class="page-indicator text-caption text-medium-emphasis">
+        {{ currentPage }} / {{ totalPages }}
+      </span>
+      <v-btn
+          icon="mdi-chevron-right"
+          size="small"
+          variant="text"
+          :disabled="currentPage >= totalPages || isLoading"
+          @click="gotoPage(currentPage + 1)"
+      />
+      <v-divider vertical inset class="mx-1 toolbar-divider" />
+      <v-text-field
+          v-model="jumpPageInput"
+          type="number"
+          min="1"
+          :max="totalPages"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="toolbar-jump"
+          :placeholder="$t('localData.toolbar.jumpTo')"
+          @keyup.enter="gotoPage()"
+      ></v-text-field>
+      <v-btn density="compact" variant="outlined" @click="gotoPage()">
+        {{ $t('localData.toolbar.go') }}
+      </v-btn>
+    </div>
+
   </v-card>
   <v-dialog v-model="showCreateTagDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title>创建新分类</v-card-title>
       <v-card-text>
@@ -834,7 +1167,6 @@ const confirmBatchDelete = async () => {
   <v-dialog v-model="showDeleteDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
@@ -865,7 +1197,6 @@ const confirmBatchDelete = async () => {
   <v-dialog v-model="showDeleteDialog2" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
@@ -873,7 +1204,7 @@ const confirmBatchDelete = async () => {
       </v-card-title>
 
       <v-card-text>
-        确定要删除分类 <strong>{{ selectClassification }}</strong> 吗？此操作不可恢复！
+        确定要删除分类 <strong>{{ currentClassification }}</strong> 吗？此操作不可恢复！
       </v-card-text>
 
       <v-card-actions>
@@ -896,7 +1227,6 @@ const confirmBatchDelete = async () => {
   <v-dialog v-model="showBatchDeleteDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
@@ -995,14 +1325,75 @@ const confirmBatchDelete = async () => {
     </v-btn>
   </div>
 
+  <ScrollRail target=".mc-blueprint-list" position="right" offset="0px" />
+  </div>
 </template>
 
 <style scoped>
+/* Definite-height column: the filter panel takes its natural size and the
+   blueprint card fills the rest, so expanding the filter compresses the list
+   instead of clipping it against the fixed full-screen page. */
+.schematics-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 96px 6px 12px; /* right side clears the floating batch FAB */
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgba(var(--v-theme-surface-container), calc(var(--surface-alpha-raised, 1) * 0.45));
+}
+
+.page-indicator {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-divider {
+  align-self: stretch;
+  margin: 2px 0;
+}
+
+.toolbar-select {
+  max-width: 168px;
+  flex: 0 1 auto;
+}
+
+.toolbar-select--narrow {
+  max-width: 86px;
+}
+
+.toolbar-jump {
+  max-width: 88px;
+}
+
 .mc-blueprint-list {
   --v-list-item-padding: 12px;
 
-  max-height: calc(93vh - 64px);
+  height: 100%;
   overflow-y: auto;
+  contain: layout paint;
+  overscroll-behavior: contain;
+}
+.mc-blueprint-list--large .blueprint-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 112px;
+}
+.schematics-drawer {
+  isolation: isolate;
+}
+.drawer-toggle {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px 8px 0;
 }
 .nav-list {
   padding: 0 8px;
@@ -1011,7 +1402,7 @@ const confirmBatchDelete = async () => {
 .nav-item {
   min-height: 56px;
   margin: 4px 0;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 .nav-item[draggable="true"] {
@@ -1024,7 +1415,7 @@ const confirmBatchDelete = async () => {
 
 
 .nav-item.active-item {
-  background: rgba(8, 0, 238, 0.06);
+  background: rgba(var(--v-theme-primary), 0.08);
   position: relative;
 }
 
@@ -1036,19 +1427,25 @@ const confirmBatchDelete = async () => {
   transform: translateY(-50%);
   height: 24px;
   width: 3px;
-  background: #6200ee;
+  background: rgb(var(--v-theme-primary));
   border-radius: 0 2px 2px 0;
 }
-.blueprint-item.drag-over {
-  border: 2px dashed #1976d2;   /* 蓝色高亮边框 */
+.blueprint-item {
   border-radius: 8px;
-  box-shadow: 0 0 10px rgba(25, 118, 210, 0.6); /* 蓝色发光效果 */
-  transition: 0.2s;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+.blueprint-item.drag-over {
+  /* outline instead of border: same highlight without shifting item layout */
+  outline: 2px dashed rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+  box-shadow: 0 0 10px rgba(var(--v-theme-primary), 0.35);
+  transition: outline-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 .blueprint-item.selected-item {
-  background-color: rgba(25, 118, 210, 0.08); /* 选中高亮 */
-  border-left: 4px solid #1976d2;
+  background-color: rgba(var(--v-theme-primary), 0.08); /* 选中高亮 */
+  /* inset bar: keeps the 4px accent without shifting item content */
+  box-shadow: inset 4px 0 0 rgb(var(--v-theme-primary));
 }
 .cursor-grab {
   cursor: grab;
@@ -1057,10 +1454,10 @@ const confirmBatchDelete = async () => {
   cursor: grabbing;
 }
 .blueprint-item.drag-ready {
-  transition: background 0.2s;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .blueprint-item.drag-ready:hover {
-  background: rgba(25, 118, 210, 0.05);
+  background: rgba(var(--v-theme-primary), 0.05);
 }
 
 .local-action-menu {

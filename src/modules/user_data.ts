@@ -27,7 +27,16 @@ export const fetchUserData = async () => {
 
 export const fetchUserClassification = async () => {
     try {
-        userData.value.classification = await invoke<string>('get_user_classification')
+        const classification = await invoke<string>('get_user_classification')
+        // The schematic page can mount before the app-level user request has
+        // completed (for example when opened directly from a deep link).
+        // Keep that race from turning a successful classification lookup into
+        // a null-reference error.
+        if (!userData.value) {
+            userData.value = {}
+        }
+        userData.value.classification = classification
+        return classification
     } catch (err) {
         console.error('背景加载失败:', err);
         return null;

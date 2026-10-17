@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
-import {onBeforeUnmount, onMounted, ref} from "vue";
+import {computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref} from "vue";
 import {
   change_data,
   encodeJSON,
@@ -9,11 +9,10 @@ import {
   restoreStringToBigInt, showSaveDialog
 } from "../../modules/snbt_to_json.ts";
 import {Tag} from "../../modules/nbt/tag.ts";
-import {fetchSchematicStr, schematic_id, schematicData} from "../../modules/tools_data.ts";
+import {activeTools, fetchSchematicStr, schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import JsonEditorVue from 'json-editor-vue3'
 import {data, json_data} from "../../modules/toolsData_data.ts"
-import {opacity} from "../../modules/theme.ts";
 import {invoke} from "@tauri-apps/api/core";
 const isJson = ref(false)
 const snbtdata = ref();
@@ -43,6 +42,34 @@ onMounted(async()=>{
   else await get_schematicStr(schematic_id.value);
 })
 
+// The source-data tree editor builds thousands of DOM nodes for a large
+// blueprint. Once loaded it used to stay in the cached tools-page subtree
+// forever, making every route switch re-patch that mass. Mount it only while
+// the user is actually looking at this panel: navigating away from the tools
+// page (deactivated) or to another tool tab releases the DOM, while the
+// parsed data stays in memory so returning re-mounts without re-fetching or
+// re-parsing.
+const panelActive = ref(true)
+let activateTimer: number | null = null
+onActivated(() => {
+  // Defer the (expensive) tree mount until the route fade has painted, so the
+  // page switch itself stays smooth.
+  if (activateTimer !== null) clearTimeout(activateTimer)
+  activateTimer = window.setTimeout(() => {
+    activateTimer = null
+    panelActive.value = true
+  }, 220)
+})
+onDeactivated(() => {
+  if (activateTimer !== null) {
+    clearTimeout(activateTimer)
+    activateTimer = null
+  }
+  panelActive.value = false
+})
+
+const editorMounted = computed(() => panelActive.value && activeTools.value === 'data')
+
 const updateJsonData = () => {
 
 }
@@ -71,6 +98,7 @@ const saveChange = async () => {
 };
 
 onBeforeUnmount(() => {
+  if (activateTimer !== null) clearTimeout(activateTimer)
   json_data.value = undefined;
   snbtdata.value = undefined;
   change_data.value = false;
@@ -111,32 +139,33 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="!isLoading" class="json-wrapper">
-      <json-editor-vue
-          class="editor"
-          v-model="json_data"
-          currentMode="tree"
-          :modeList="couldView"
-          @change="updateJsonData"
-          @update:modelValue="updateModelValue"
-      />
-    </div>
-    <div v-else class="json-wrapper">
-      <json-editor-vue
-          class="editor"
-          v-model="data"
-          currentMode="code"
-          :modeList="couldView"
-          @update:modelValue="updateModelValue"
-      >
-      </json-editor-vue>
-    </div>
+    <template v-if="editorMounted && !isLoading && !sureLoading">
+      <div v-if="isJson" class="json-wrapper">
+        <json-editor-vue
+            class="editor"
+            v-model="json_data"
+            currentMode="tree"
+            :modeList="couldView"
+            @change="updateJsonData"
+            @update:modelValue="updateModelValue"
+        />
+      </div>
+      <div v-else class="json-wrapper">
+        <json-editor-vue
+            class="editor"
+            v-model="data"
+            currentMode="code"
+            :modeList="couldView"
+            @update:modelValue="updateModelValue"
+        >
+        </json-editor-vue>
+      </div>
+    </template>
   </div>
 
   <v-dialog v-model="showSaveDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-content-save-all-outline</v-icon>

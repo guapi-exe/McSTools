@@ -7,7 +7,10 @@ import {ThemeInstance} from "vuetify/framework";
 import { blockIconSpriteMap } from "./3DBLOCKS";
 export const toast = useToast();
 export const selectLoading = ref();
-export const selectClassification = ref<string>('');
+// Vuetify's v-list `selected` model is an array, even when the list uses a
+// single-selection strategy. Keep the shared state compatible with both the
+// initial scalar value and the array emitted by the component.
+export const selectClassification = ref<string | string[]>('');
 
 const iconDataUrlCache = new Map<string, string>();
 const atlasImageCache = new Map<string, HTMLImageElement>();
@@ -161,19 +164,19 @@ export const openLink = async (url: string) => {
         console.error('打开链接失败:', err)
     }
 }
-let darkModeMatcher = null;
+let darkModeMatcher: MediaQueryList | null = null;
+let darkModeHandler: ((e: MediaQueryListEvent) => void) | null = null;
+
 export const detectTheme = async(theme: ThemeInstance) => {
     let autoTheme = await appStore.get('autoTheme', false)
-    console.log(autoTheme)
     if (window.matchMedia && autoTheme) {
         darkModeMatcher = window.matchMedia('(prefers-color-scheme: dark)');
-        darkModeMatcher.addEventListener('change', async (e) => {
+        darkModeHandler = async (e) => {
             let autoTheme = await appStore.get('autoTheme', false)
             if (!autoTheme) return;
             if (e.matches) {
                 await appStore.set('selectedTheme', 'grey_dark')
                 theme.global.name.value = 'grey_dark'
-                await appStore.set('opacity', 0.5)
                 await initTheme();
             }else {
                 let newTheme = await appStore.get('oldTheme', 'blue')
@@ -181,13 +184,15 @@ export const detectTheme = async(theme: ThemeInstance) => {
                 theme.global.name.value = newTheme
                 await initTheme();
             }
-        });
+        };
+        darkModeMatcher.addEventListener('change', darkModeHandler);
     }
 }
 
 export const clearThemeListeners = () => {
-    if (darkModeMatcher) {
-        darkModeMatcher.matcher.removeEventListener('change', darkModeMatcher.callback);
-        darkModeMatcher = null;
+    if (darkModeMatcher && darkModeHandler) {
+        darkModeMatcher.removeEventListener('change', darkModeHandler);
     }
+    darkModeMatcher = null;
+    darkModeHandler = null;
 }

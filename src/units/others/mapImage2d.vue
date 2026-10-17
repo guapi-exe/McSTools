@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, nextTick, onBeforeMount, onMounted, reactive, ref} from "vue";
-import {mapArtData} from "../../modules/map_art/map_art_data.ts"
+import {ensureMapArtData, mapArtData} from "../../modules/map_art/map_art_data.ts"
 import {getBlockImg, toast} from "../../modules/others.ts";
 import {encode_image, image_data, releaseProcessedImage} from "../../modules/map_art/encode_image.ts";
 import {MapArtProcessor} from "../../modules/map_art/image_rebuild.ts";
@@ -16,7 +16,7 @@ const exportSettings = reactive({
   targetRotation: 0,
   ditherMode: 'floyd' as 'floyd' | 'atkinson' | 'ordered' | 'none',
   adaptiveThreshold: 0.35,
-  matchMode: 'weighted' as 'rgb' | 'weighted' | 'redmean',
+   matchMode: 'oklab' as 'rgb' | 'weighted' | 'redmean' | 'oklab',
   brightness: 1,
   contrast: 1,
   saturation: 1,
@@ -64,7 +64,14 @@ const schematicTypes = ref([
     subtypes: [
       { value: -1, label: '默认格式' },
     ]
-  }
+  },
+    {
+      value: 6,
+      label: '创世神旧版',
+      subtypes: [
+        { value: -1, label: '默认格式' }
+      ]
+    }
 ])
 const hasImage = ref(false)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
@@ -83,6 +90,20 @@ const threeD = ref<boolean>()
 const maxZ = ref(60)
 const previewImage = ref<string>("");
 const blocksLoaded = ref(false);
+const selectedBlockSet = computed(() => new Set(selectedBlocks.value))
+const blockImageUrlCache = new Map<string, string>()
+
+const isCategoryExpanded = (categoryName: string) =>
+  expandedCategories.value.includes(categoryName)
+
+const getCachedBlockImg = (blockId: string) => {
+  let url = blockImageUrlCache.get(blockId)
+  if (!url) {
+    url = getBlockImg(blockId)
+    blockImageUrlCache.set(blockId, url)
+  }
+  return url
+}
 const fullscreenCanvas = ref<HTMLCanvasElement | null>(null)
 const fsScale = ref(1)
 const fsOffset = reactive({ x: 0, y: 0 })
@@ -141,30 +162,26 @@ const onFullscreenMouseUp = () => {
   fsDragging.value = false
 }
 const toggleBlock = (blockId: string) => {
-  const index = selectedBlocks.value.indexOf(blockId)
-  if (index === -1) {
-    selectedBlocks.value.push(blockId)
-  } else {
-    selectedBlocks.value.splice(index, 1)
-  }
+  const next = new Set(selectedBlocks.value)
+  if (next.has(blockId)) next.delete(blockId)
+  else next.add(blockId)
+  selectedBlocks.value = Array.from(next)
 }
-const toggleCategory = async (categoryName: string) => {
-  const category = mapArtData.value.find(c => c.name === categoryName)
+const toggleCategory = (categoryName: string) => {
+  const category = mapArtData.value?.find(c => c.name === categoryName)
   if (!category) return
 
   const allSelected = category.items.every(item =>
-      selectedBlocks.value.includes(item.id)
+      selectedBlockSet.value.has(item.id)
   )
 
   if (allSelected) {
-    selectedBlocks.value = selectedBlocks.value.filter(
-        id => !category.items.some(item => item.id === id)
-    )
+    const categoryIds = new Set(category.items.map(item => item.id))
+    selectedBlocks.value = selectedBlocks.value.filter(id => !categoryIds.has(id))
   } else {
-    const newItems = category.items
-        .filter(item => !selectedBlocks.value.includes(item.id))
-        .map(item => item.id)
-    selectedBlocks.value = [...selectedBlocks.value, ...newItems]
+    const next = new Set(selectedBlocks.value)
+    category.items.forEach(item => next.add(item.id))
+    selectedBlocks.value = Array.from(next)
   }
 }
 const currentSubTypes = computed(() => {
@@ -184,14 +201,14 @@ const onSubTypeChange = (data: any) => {
   exportSettings.sub_type = data.value
 }
 const isCategorySelected = (categoryName: string) => {
-  const category = mapArtData.value.find(c => c.name === categoryName)
+  const category = mapArtData.value?.find(c => c.name === categoryName)
   return category?.items.every(item =>
-      selectedBlocks.value.includes(item.id)
+      selectedBlockSet.value.has(item.id)
   ) ?? false
 }
 const refreshImage = async () => {
   try {
-    if (!image_data.value) return
+    if (!image_data.value || !imageBuild.value) return
     isProcessing.value = true
     hasImage.value = true
     imageBuild.value.updateBlocksData(selectedBlocks.value)
@@ -232,7 +249,7 @@ const refreshImage = async () => {
 }
 const uploadImage = async(file: File | undefined) => {
   try {
-    if (!file) return
+    if (!file || !imageBuild.value) return
     isProcessing.value = true
     hasImage.value = true
     if (image_data.value) {
@@ -315,7 +332,10 @@ const safeExportFileName = () => {
 const exportSchematicData = async() => {
   exportLoading.value = true
   try {
-    if (!image_data.value) return
+    if (!image_data.value || !imageBuild.value) return
+    // The selection can change after the source image is uploaded. Keep the
+    // processor in sync so export uses the current block set.
+    imageBuild.value.updateBlocksData(selectedBlocks.value)
     let result = await imageBuild.value.exportSchematic(
         image_data.value.file,
         image_data.value.name,
@@ -400,12 +420,20 @@ const exportImage = async() => {
   }
 }
 onMounted(async () => {
-  setTimeout(() => {
-    blocksLoaded.value = true;
-  }, 100);
-  await toggleCategory("wool")
-  imageBuild.value = new MapArtProcessor(mapArtData.value, selectedBlocks.value)
-
+  try {
+    const data = await ensureMapArtData()
+    // Let the toolbox shell paint before the block selector creates its
+    // controls.  This keeps the route switch responsive on slower machines.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (selectedBlocks.value.length === 0) {
+      const defaultCategory = data.find(category => category.name === 'wool') ?? data[0]
+      selectedBlocks.value = defaultCategory?.items.map(item => item.id) ?? []
+    }
+    imageBuild.value = new MapArtProcessor(data, selectedBlocks.value)
+    blocksLoaded.value = true
+  } catch (error) {
+    console.error('地图画方块数据加载失败:', error)
+  }
 })
 const cleanImage = async() => {
   if (image_data.value) {
@@ -642,7 +670,8 @@ onBeforeMount(async() => {
           :items="[
             { title: 'RGB欧式', value: 'rgb' },
             { title: '加权距离', value: 'weighted' },
-            { title: 'Redmean', value: 'redmean' }
+            { title: 'Redmean', value: 'redmean' },
+            { title: 'OKLab感知色差', value: 'oklab' }
           ]"
           label="色彩匹配算法"
           density="compact"
@@ -724,17 +753,20 @@ onBeforeMount(async() => {
         <v-icon left>mdi-download</v-icon>
   {{$t('mapImage2d.exportImage')}}
       </v-btn>
-      <v-card v-if="blocksLoaded">
+      <v-card v-if="blocksLoaded && mapArtData?.length" class="block-selector-card">
         <v-toolbar density="compact">
           <v-toolbar-title>{{$t('mapImage2d.blockSelector')}}</v-toolbar-title>
         </v-toolbar>
 
-        <v-list>
+        <v-list
+            v-model:opened="expandedCategories"
+            open-strategy="multiple"
+        >
           <v-list-group
               v-for="category in mapArtData"
               :key="category.name"
-              v-model="expandedCategories"
               :value="category.name"
+              v-memo="[category.name, isCategorySelected(category.name), selectedBlocks.length]"
           >
             <template v-slot:activator="{ props }">
               <v-list-item
@@ -748,23 +780,32 @@ onBeforeMount(async() => {
                       :model-value="isCategorySelected(category.name)"
                       color="info"
                       hide-details
-                      @click="toggleCategory(category.name)"
+                      @click.stop="toggleCategory(category.name)"
                   ></v-checkbox>
                   <v-icon icon="mdi-cube-scan"></v-icon>
                 </template>
               </v-list-item>
             </template>
 
-            <v-list-item
-                v-for="block in category.items"
-                :key="block.id"
-                class="block-item"
-                @click="toggleBlock(block.id)"
-                style="padding-inline-start: 0 !important;"
+            <v-virtual-scroll
+                v-if="isCategoryExpanded(category.name)"
+                :items="category.items"
+                item-key="id"
+                :item-height="72"
+                max-height="360"
+                class="block-items-virtual"
             >
+              <template #default="{ item: block }">
+                <v-list-item
+                    :key="block.id"
+                    class="block-item"
+                    v-memo="[block.id, selectedBlockSet.has(block.id)]"
+                    @click="toggleBlock(block.id)"
+                    style="padding-inline-start: 0 !important;"
+                >
               <template v-slot:prepend>
                 <v-checkbox
-                    :model-value="selectedBlocks.includes(block.id)"
+                    :model-value="selectedBlockSet.has(block.id)"
                     color="info"
                     hide-details
                 ></v-checkbox>
@@ -777,10 +818,13 @@ onBeforeMount(async() => {
                       class="mr-2"
                       style="border: 1px solid rgba(0,0,0,0.1)"
                   >
-                    <v-img
-                        :src="getBlockImg(block.id)"
-                        :lazy-src="getBlockImg(block.id)"
+                    <img
+                        :src="getCachedBlockImg(block.id)"
                         :alt="block.id"
+                        loading="lazy"
+                        decoding="async"
+                        width="28"
+                        height="28"
                         style="
                         width: 100%;
                         height: 100%;
@@ -810,7 +854,9 @@ onBeforeMount(async() => {
                   </v-chip>
                 </v-col>
               </v-row>
-            </v-list-item>
+                </v-list-item>
+              </template>
+            </v-virtual-scroll>
           </v-list-group>
         </v-list>
       </v-card>
@@ -1011,6 +1057,19 @@ onBeforeMount(async() => {
 .preview-scroll {
   height: 100%;
   overflow-y: auto;
+}
+
+.block-selector-card {
+  contain: layout paint;
+}
+
+.block-selector-card :deep(.v-list) {
+  contain: content;
+}
+
+.block-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 64px;
 }
 
 .preview-container {

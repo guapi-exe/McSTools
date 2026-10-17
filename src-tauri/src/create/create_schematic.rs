@@ -1,4 +1,5 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
+use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
@@ -8,7 +9,6 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::Arc;
-use crate::utils::entities::EntitiesList;
 
 #[derive(Debug)]
 pub struct CreateSchematic {
@@ -111,11 +111,21 @@ impl CreateSchematic {
         let mut palette = Vec::with_capacity(palette_list.len());
 
         for entry in palette_list {
-            let Compound(root) = entry else { todo!() };
+            let Compound(root) = entry else {
+                return Err(SchematicError::InvalidFormat(
+                    "Create schematic palette entry must be a Compound",
+                ));
+            };
             let name = root
                 .get("Name")
                 .and_then(|v| v.as_str())
-                .map(|s| Arc::<str>::from(s))
+                .map(|s| {
+                    if s.contains(':') {
+                        Arc::<str>::from(s)
+                    } else {
+                        Arc::<str>::from(format!("minecraft:{s}"))
+                    }
+                })
                 .unwrap_or_else(|| Arc::from("minecraft:air"));
 
             let mut properties = BTreeMap::new();
@@ -154,11 +164,25 @@ impl CreateSchematic {
                 })
                 .collect::<Vec<i32>>(),
         };
+        if sizes.len() != 3 || sizes.iter().any(|dimension| *dimension <= 0) {
+            return Err(SchematicError::InvalidFormat(
+                "Create schematic size must contain three positive integers",
+            ));
+        }
+        if palette.is_empty() {
+            return Err(SchematicError::InvalidFormat(
+                "Create schematic palette cannot be empty",
+            ));
+        }
 
         for block in blocks.iter() {
             let compound = match block {
                 Compound(c) => c,
-                _ => return Err(SchematicError::InvalidFormat("Block entry is not a compound")),
+                _ => {
+                    return Err(SchematicError::InvalidFormat(
+                        "Block entry is not a compound",
+                    ));
+                }
             };
 
             let pos_values = compound
@@ -193,10 +217,28 @@ impl CreateSchematic {
                 .get("state")
                 .ok_or(SchematicError::InvalidFormat("Missing state field"))?;
             let state_id = match state_id_value {
-                Value::Int(n) => *n as usize,
-                _ => return Err(SchematicError::InvalidFormat("State ID must be integer")),
+                Value::Int(n) if *n >= 0 => usize::try_from(*n)
+                    .map_err(|_| SchematicError::InvalidFormat("State ID exceeds usize"))?,
+                _ => {
+                    return Err(SchematicError::InvalidFormat(
+                        "State ID must be non-negative integer",
+                    ));
+                }
             };
-            let block_data = &palette[state_id];
+            let block_data = palette
+                .get(state_id)
+                .ok_or(SchematicError::InvalidFormat("State ID exceeds palette"))?;
+            if pos.x < 0
+                || pos.y < 0
+                || pos.z < 0
+                || pos.x >= sizes[0]
+                || pos.y >= sizes[1]
+                || pos.z >= sizes[2]
+            {
+                return Err(SchematicError::InvalidFormat(
+                    "Create schematic block position is outside size",
+                ));
+            }
             block_list.add(pos, Arc::clone(block_data));
 
             if let Some(nbt_value) = compound.get("nbt") {
@@ -224,7 +266,6 @@ impl CreateSchematic {
             },
         ))
     }
-
 }
 
 pub fn extract_namespace(input: &str) -> Result<(&str, &str), SchematicError> {

@@ -34,6 +34,23 @@ export default {
     clickToExpandFilter: '点击展开筛选条件',
     keywordFilter: '关键词筛选',
     inputBlueprintNameOrDesc: '输入蓝图名称或描述',
+    filter: {
+      type: '蓝图类型',
+      allTypes: '全部类型',
+      gameVersion: '游戏版本',
+      allVersions: '全部版本',
+    },
+    toolbar: {
+      total: '共 {count} 个蓝图',
+      perPage: '每页',
+      jumpTo: '跳至',
+      pageUnit: '页',
+      go: '跳转',
+      sortNewest: '最近创建',
+      sortOldest: '最早创建',
+      sortUpdated: '最近修改',
+      sortName: '按名称',
+    },
     allBlueprints: '全部蓝图',
     createCategory: '创建分类',
     createNewCategory: '创建新分类',
@@ -96,6 +113,8 @@ export default {
     extType: '后缀类型',
     originSize: '原始大小',
     version: '版本',
+      javaTargetVersion: 'Java目标版本',
+      legacyTargetVersion: '旧版目标版本',
     subVersion: '适配子版本',
     oneClick: '一键转换',
     desc: '适配描述',
@@ -118,6 +137,8 @@ export default {
     bgDesc: '适配与1.12 + 建筑小帮手 3个 变种格式蓝图',
     beTitle: 'MC BE',
     beDesc: '适配与1.18 + 我的世界BE原版 结构方块格式',
+      mcEditTitle: '创世神旧版',
+      mcEditDesc: '适配1.12及以下的 MCEdit .schematic 旧版格式',
     toLitematic: '转换为投影蓝图',
     toCreate: '转换为香草结构',
     toWE: '转换为创世神',
@@ -139,6 +160,7 @@ export default {
     bgSubVersion1: '1: 小帮手1.16+',
     bgSubVersion2: '2: 小帮手1.12+',
     convertToTargetVersion: '转换到目标版本',
+    targetOutputVersion: '目标输出版本',
     hasSubVersion: '存在子版本'
   },
   toolsReplace: {
@@ -194,6 +216,7 @@ export default {
     type: '类型',
     size: '尺寸',
     lmVersion: '投影格式版本',
+    gameVersion: '游戏版本',
     status: '状态',
     deleted: '已删除',
     normal: '正常',
@@ -210,6 +233,10 @@ export default {
     noSchematic: '未选取蓝图',
     editLmVersion: '修改投影版本',
     editLmVersionHint: '修改建筑投影，自身版本控制器',
+    editGameVersion: '修改游戏版本',
+    editGameVersionHint: '只显示方块状态 ID 发生变化的版本，修改后会同步写入蓝图的 DataVersion。',
+    confirmGameVersion: '修改前请确认目标游戏版本；旧版 .schematic 仅更新蓝图元数据。',
+    gameVersionUpdated: '游戏版本修改完毕',
     airBlocks: '空气方块',
     clearable: '可清除',
     clearAirBlocks: '清除空气方块',
@@ -256,6 +283,7 @@ export default {
     count: '数量',
     percentage: '占比',
     noMaterialData: '暂无材料数据',
+    moreRemaining: '滚动加载剩余 {count} 条',
     noChartData: '暂无数据可供图表展示'
   },
   toolsThreeD: {
@@ -412,6 +440,10 @@ export default {
     darkMode: '深色模式',
     lightMode: '浅色模式',
     title: '设置',
+    tabs: {
+      base: '基础设置',
+      resource: '资源管理'
+    },
     update: {
       title: '更新设置',
       autoUpdate: '启用自动更新',
@@ -686,6 +718,7 @@ export default {
         orange: '活力橙',
         yellow: '菠萝黄',
         brown: '橡木棕',
+        whiteDark: '暗夜白金',
         greyDark: '暗色模式'
       }
     },

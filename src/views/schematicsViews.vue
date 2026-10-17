@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import {computed, defineAsyncComponent, ref, watch} from "vue";
 import {onBeforeRouteLeave} from "vue-router";
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {navigationGuard} from "../modules/navigation.ts";
 import MCS from "../static/img/fav512.png"
 import CMS from "../static/img/CMS.png"
 import {selectedSite} from "../modules/web_schematic/web_data.ts";
-import {opacity} from "../modules/theme.ts";
 import { useI18n } from 'vue-i18n';
 
 const LocalData = defineAsyncComponent(() => import("../units/schematics/localData.vue"))
@@ -40,17 +39,17 @@ onBeforeRouteLeave(navigationGuard)
 
 </script>
 
-<template class="page-wrapper">
+<template>
+  <div class="page-view">
   <v-row no-gutters
          class="mb-4 animate-row full-screen-card"
-         :class="{ 'animate-row-out': isLeaving }"
   >
-    <v-col>
-      <v-card class="mx-auto v-theme--custom text-primary"  elevation="4">
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 px-3 py-3" :style="{ '--surface-alpha': opacity + 0.2 }">
+    <v-col class="d-flex flex-column" style="flex: 1 1 0; min-height: 0;">
+      <v-card class="v-theme--custom text-primary d-flex flex-column" style="flex: 1 1 0; min-height: 0;" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3">
           <div class="d-flex align-center">
             <v-icon icon="mdi-warehouse text-medium-emphasis" class="mr-2"></v-icon>
-            <span class="text-h5 ml-2 font-weight-medium text-medium-emphasis">{{ t('schematics.title') }}</span>
+            <span class="text-h6 ml-2 font-weight-medium text-medium-emphasis">{{ t('schematics.title') }}</span>
             <v-divider vertical inset class="mx-4" thickness="2"/>
           </div>
 
@@ -111,7 +110,7 @@ onBeforeRouteLeave(navigationGuard)
             />
           </div>
         </v-toolbar>
-        <v-window v-model="active">
+        <v-window v-model="active" class="schem-window" transition="fade-transition" reverse-transition="fade-transition">
           <v-window-item value="local">
             <Suspense>
               <template #default>
@@ -145,9 +144,23 @@ onBeforeRouteLeave(navigationGuard)
       </v-card>
     </v-col>
   </v-row>
+  </div>
 </template>
 
 <style scoped>
+
+/* The window fills the card below the toolbar; container and items pin to
+   100% so inner pages (localData) get a definite height. Vuetify only sets
+   an inline container height during tab transitions, so this is safe. */
+.schem-window {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.schem-window :deep(.v-window__container),
+.schem-window :deep(.v-window-item) {
+  height: 100%;
+}
 
 .toolbar-controls {
   display: flex;

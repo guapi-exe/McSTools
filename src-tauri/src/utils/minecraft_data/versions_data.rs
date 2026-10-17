@@ -1,6 +1,61 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use tauri::State;
+
+/// A user-selectable Minecraft release and the numeric DataVersion written by
+/// modern Java schematic formats.  The release name is kept as the stable UI
+/// value; callers should use `id` when writing NBT.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GameVersionOption {
+    pub name: String,
+    pub id: i32,
+}
+
+/// Representative releases where the Java block-state registry changed.
+///
+/// Patch releases which do not alter the registry are intentionally omitted.
+/// The latest stable release found in `VersionData` is appended below so the
+/// list remains useful when the bundled DataVersion table is updated.
+const BLOCK_STATE_CHANGE_RELEASES: &[(&str, i32)] = &[
+    ("1.7.10", 5),
+    ("1.8.9", 47),
+    ("1.9.4", 184),
+    ("1.10.2", 512),
+    ("1.11.2", 922),
+    ("1.12.2", 1343),
+    ("1.13.2", 1631),
+    ("1.14.4", 1976),
+    ("1.15.2", 2230),
+    ("1.16.1", 2567),
+    ("1.17.1", 2730),
+    ("1.18.2", 2975),
+    ("1.19.4", 3337),
+    ("1.20.1", 3465),
+    ("1.20.4", 3700),
+    ("1.21.1", 3955),
+];
+
+fn release_version(name: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = name.strip_prefix("1.")?.split('.');
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next().unwrap_or("0").parse().ok()?;
+    if parts.next().is_some() || name.contains('-') {
+        return None;
+    }
+    Some((1, minor, patch))
+}
+
+fn in_release_range(
+    name: &str,
+    minimum: (u32, u32, u32),
+    maximum: Option<(u32, u32, u32)>,
+) -> bool {
+    let Some(version) = release_version(name) else {
+        return false;
+    };
+    version >= minimum && maximum.is_none_or(|maximum| version <= maximum)
+}
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VersionData {
@@ -656,5 +711,165 @@ impl VersionData {
 
     pub fn get_name(&self, id: i32) -> Option<&Arc<str>> {
         self.id_to_name.get(&id)
+    }
+
+    pub fn game_version_id(&self, name: &str) -> Option<i32> {
+        self.get_id(name).or_else(|| {
+            BLOCK_STATE_CHANGE_RELEASES
+                .iter()
+                .find_map(|(release, id)| (*release == name).then_some(*id))
+        })
+    }
+
+    /// Return selectable game versions for a schematic format.
+    ///
+    /// `schematic_type` uses the application's format ids: 3 is modern
+    /// WorldEdit `.schem`, 6 is legacy MCEdit `.schematic`, and 1/2 are the
+    /// vanilla structure and Litematica formats.  A WorldEdit subtype of 1 is
+    /// the older wrapped `.schem` representation and accepts the legacy
+    /// 1.7.10 boundary; subtype 0 follows the modern `.schem` boundary.
+    pub fn game_versions_for_format(
+        &self,
+        schematic_type: i32,
+        schematic_sub_type: i32,
+    ) -> Vec<GameVersionOption> {
+        let (minimum, maximum) = match schematic_type {
+            6 => ((1, 7, 10), Some((1, 12, 2))),
+            3 if schematic_sub_type == 1 => ((1, 7, 10), None),
+            1 | 2 | 3 | 4 => ((1, 12, 2), None),
+            _ => return Vec::new(),
+        };
+
+        let mut versions = Vec::new();
+        for (name, fallback_id) in BLOCK_STATE_CHANGE_RELEASES {
+            if !in_release_range(name, minimum, maximum) {
+                continue;
+            }
+            let id = self.game_version_id(name).unwrap_or(*fallback_id);
+            versions.push(GameVersionOption {
+                name: (*name).to_string(),
+                id,
+            });
+        }
+
+        // Add the newest stable release known by the bundled table.  It may
+        // not have a local block-state snapshot yet, but its DataVersion is a
+        // valid target and this keeps the UI from lagging behind Minecraft.
+        let latest = self
+            .name_to_id
+            .keys()
+            .filter_map(|name| {
+                let version = release_version(name)?;
+                in_release_range(name, minimum, maximum).then_some((version, name))
+            })
+            .max_by_key(|(version, _)| *version);
+        if let Some((_, name)) = latest {
+            if !versions.iter().any(|version| version.name == name.as_ref()) {
+                if let Some(id) = self.get_id(name) {
+                    versions.push(GameVersionOption {
+                        name: name.to_string(),
+                        id,
+                    });
+                }
+            }
+        }
+
+        versions.sort_by_key(|version| release_version(&version.name));
+        versions
+    }
+
+    /// Resolve an arbitrary DataVersion to the closest selectable release for
+    /// a schematic format.  Minecraft emits DataVersions for snapshots and
+    /// patch releases too, while the UI intentionally exposes only registry
+    /// boundaries.  Choosing the greatest boundary not newer than the input
+    /// keeps an imported schematic on a stable, selectable option.
+    pub fn game_version_for_data_version(
+        &self,
+        schematic_type: i32,
+        schematic_sub_type: i32,
+        data_version: i32,
+    ) -> Option<GameVersionOption> {
+        let versions = self.game_versions_for_format(schematic_type, schematic_sub_type);
+        versions
+            .iter()
+            .filter(|version| version.id <= data_version)
+            .max_by_key(|version| version.id)
+            .cloned()
+            .or_else(|| versions.first().cloned())
+    }
+}
+
+#[tauri::command]
+pub fn get_schematic_game_versions(
+    versions_data: State<'_, VersionData>,
+    schematic_type: i32,
+    schematic_sub_type: i32,
+) -> Vec<GameVersionOption> {
+    versions_data.game_versions_for_format(schematic_type, schematic_sub_type)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_ranges_follow_file_extensions() {
+        let versions = VersionData::new();
+        let legacy = versions.game_versions_for_format(6, -1);
+        assert_eq!(
+            legacy.first().map(|version| version.name.as_str()),
+            Some("1.7.10")
+        );
+        assert_eq!(legacy.first().map(|version| version.id), Some(5));
+        assert_eq!(
+            legacy.last().map(|version| version.name.as_str()),
+            Some("1.12.2")
+        );
+
+        let modern = versions.game_versions_for_format(3, 0);
+        assert_eq!(
+            modern.first().map(|version| version.name.as_str()),
+            Some("1.12.2")
+        );
+        assert!(
+            modern
+                .last()
+                .is_some_and(|version| version.name.starts_with("1."))
+        );
+
+        let builder = versions.game_versions_for_format(4, 0);
+        assert_eq!(
+            builder.first().map(|version| version.name.as_str()),
+            Some("1.12.2")
+        );
+
+        let wrapped = versions.game_versions_for_format(3, 1);
+        assert_eq!(
+            wrapped.first().map(|version| version.name.as_str()),
+            Some("1.7.10")
+        );
+    }
+
+    #[test]
+    fn prereleases_are_not_user_selectable() {
+        let versions = VersionData::new();
+        let modern = versions.game_versions_for_format(1, -1);
+        assert!(modern.iter().all(|version| !version.name.contains('-')));
+        assert!(modern.windows(2).all(|pair| pair[0].id <= pair[1].id));
+    }
+
+    #[test]
+    fn resolves_patch_data_versions_to_registry_boundaries() {
+        let versions = VersionData::new();
+        let selected = versions
+            .game_version_for_data_version(1, -1, 3578)
+            .expect("a modern version should be selectable");
+        assert_eq!(selected.name, "1.20.1");
+        assert_eq!(selected.id, 3465);
+
+        let latest = versions
+            .game_version_for_data_version(1, -1, i32::MAX)
+            .expect("latest stable version should be selectable");
+        assert!(latest.name.starts_with("1."));
     }
 }

@@ -34,6 +34,23 @@ export default {
     clickToExpandFilter: 'Click to expand filter',
     keywordFilter: 'Keyword Filter',
     inputBlueprintNameOrDesc: 'Enter blueprint name or description',
+    filter: {
+      type: 'Blueprint type',
+      allTypes: 'All types',
+      gameVersion: 'Game version',
+      allVersions: 'All versions',
+    },
+    toolbar: {
+      total: '{count} blueprints',
+      perPage: 'Per page',
+      jumpTo: 'Go to',
+      pageUnit: 'pages',
+      go: 'Go',
+      sortNewest: 'Newest created',
+      sortOldest: 'Oldest created',
+      sortUpdated: 'Recently updated',
+      sortName: 'By name',
+    },
     allBlueprints: 'All Blueprints',
     createCategory: 'Create Category',
     createNewCategory: 'Create New Category',
@@ -89,6 +106,8 @@ export default {
     extType: 'Extension Type',
     originSize: 'Original Size',
     version: 'Version',
+      javaTargetVersion: 'Java target version',
+      legacyTargetVersion: 'Legacy target version',
     subVersion: 'Sub Version',
     weSubVersion0: '0: WE Latest Format',
     weSubVersion1: '1: WE 1.16-',
@@ -120,6 +139,8 @@ export default {
     bgDesc: 'Compatible with Builder Helper 1.12+ and 3 variant formats',
     beTitle: 'MC BE',
     beDesc: 'Compatible with Minecraft BE 1.18+ Structure Block format',
+    mcEditTitle: 'WorldEdit Legacy',
+    mcEditDesc: 'Compatible with MCEdit .schematic for Minecraft 1.12 and below',
     toLitematic: 'Convert to Litematic',
     toCreate: 'Convert to Vanilla',
     toWE: 'Convert to WorldEdit',
@@ -133,6 +154,7 @@ export default {
     exportConfirm: 'Export Confirm',
     diffRequirements: 'Requirements Diff',
     convertToTargetVersion: 'Convert to Target Version',
+    targetOutputVersion: 'Target Output Version',
     hasSubVersion: 'There are sub versions available'
   },
   toolsReplace: {
@@ -188,6 +210,7 @@ export default {
     type: 'Type',
     size: 'Size',
     lmVersion: 'Projection Format Version',
+    gameVersion: 'Game Version',
     status: 'Status',
     deleted: 'Deleted',
     normal: 'Normal',
@@ -204,6 +227,10 @@ export default {
     noSchematic: 'No schematic selected',
     editLmVersion: 'Edit Projection Version',
     editLmVersionHint: 'Edit building projection, version controller',
+    editGameVersion: 'Edit Game Version',
+    editGameVersionHint: 'Only releases with block-state ID changes are listed. The schematic DataVersion is updated too.',
+    confirmGameVersion: 'Confirm the target game version. Legacy .schematic files update metadata only.',
+    gameVersionUpdated: 'Game version updated',
     airBlocks: 'Air Blocks',
     clearable: 'Clearable',
     clearAirBlocks: 'Clear Air Blocks',
@@ -250,6 +277,7 @@ export default {
     count: 'Count',
     percentage: 'Percentage',
     noMaterialData: 'No material data',
+    moreRemaining: 'Scroll to load {count} more',
     noChartData: 'No data available for chart'
   },
   toolsThreeD: {
@@ -369,6 +397,10 @@ export default {
     darkMode: 'Dark Mode',
     lightMode: 'Light Mode',
     title: 'Settings',
+    tabs: {
+      base: 'General',
+      resource: 'Resources'
+    },
     update: {
       title: 'Update Settings',
       autoUpdate: 'Enable Auto Update',
@@ -643,6 +675,7 @@ export default {
         orange: 'Vibrant Orange',
         yellow: 'Pineapple Yellow',
         brown: 'Oak Brown',
+        whiteDark: 'White Night',
         greyDark: 'Dark'
       }
     },

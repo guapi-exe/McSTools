@@ -1,14 +1,34 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-const HomeViews = () => import('../src/views/homeViews.vue')
-const ToolsViews = () => import('../src/views/toolsViews.vue')
-const SchematicViews = () => import('../src/views/schematicsViews.vue')
-const IndividuationViews = () => import('../src/views/individuationViews.vue')
-const ReportViews = () => import('../src/views/reportViews.vue')
-const AboutViews = () => import('../src/views/aboutViews.vue')
-const EmptyViews = () => import('../src/views/EmptyViews.vue')
-const OthersViews = () => import('../src/views/othersViews.vue')
-const SettingViews = () => import('../src/views/settingViews.vue')
+// Keep route loaders in one place so the sidebar can prefetch a page before a
+// click.  Dynamic imports are cached by the browser/bundler, so prefetching
+// does not create a second copy of a route chunk.
+const routeLoaders = {
+    home: () => import('../src/views/homeViews.vue'),
+    tools: () => import('../src/views/toolsViews.vue'),
+    schematic: () => import('../src/views/schematicsViews.vue'),
+    individuation: () => import('../src/views/individuationViews.vue'),
+    report: () => import('../src/views/reportViews.vue'),
+    about: () => import('../src/views/aboutViews.vue'),
+    emptyRoute: () => import('../src/views/EmptyViews.vue'),
+    others: () => import('../src/views/othersViews.vue'),
+    setting: () => import('../src/views/settingViews.vue'),
+}
+
+export const preloadRoute = (name) => {
+    const loader = routeLoaders[name]
+    return loader ? loader() : Promise.resolve()
+}
+
+const HomeViews = routeLoaders.home
+const ToolsViews = routeLoaders.tools
+const SchematicViews = routeLoaders.schematic
+const IndividuationViews = routeLoaders.individuation
+const ReportViews = routeLoaders.report
+const AboutViews = routeLoaders.about
+const EmptyViews = routeLoaders.emptyRoute
+const OthersViews = routeLoaders.others
+const SettingViews = routeLoaders.setting
 const routes = [
     {
         path: '/',
@@ -97,6 +117,9 @@ const routes = [
     {
         path: '/empty',
         name: 'emptyRoute',
+        meta: {
+            keepAlive: false,
+        },
         component: EmptyViews
     }
 ]

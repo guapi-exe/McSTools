@@ -18,7 +18,6 @@ import {
   ResourceItem,
   ResourceStatus
 } from '../../modules/resource_manager';
-import { opacity } from '../../modules/theme';
 import { toast } from '../../modules/others';
 
 const { t: $t } = useI18n()
@@ -125,7 +124,6 @@ onMounted(async () => {
 <template>
   <v-card 
     class="resource-setting-card"
-    :style="{ '--surface-alpha': opacity }"
   >
     <v-card-title class="d-flex align-center justify-space-between flex-wrap ga-2 pb-2">
       <div class="d-flex align-center ga-2">
@@ -310,7 +308,7 @@ onMounted(async () => {
   
   <!-- 删除确认对话框 -->
   <v-dialog v-model="showDeleteDialog" max-width="450" persistent>
-    <v-card :style="{ '--surface-alpha': opacity }">
+    <v-card>
       <v-card-title class="d-flex align-center ga-2">
         <v-icon color="error" icon="mdi-alert-circle"></v-icon>
         {{ $t('settings.resourceSetting.deleteDialog.title') }}

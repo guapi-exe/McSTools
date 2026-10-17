@@ -29,6 +29,7 @@ pub enum SchematicType {
     Bg,
     We,
     Be,
+    McEdit,
 }
 
 impl SchematicType {
@@ -39,6 +40,7 @@ impl SchematicType {
             3 => Some(Self::We),
             4 => Some(Self::Bg),
             5 => Some(Self::Be),
+            6 => Some(Self::McEdit),
             _ => None,
         }
     }
@@ -58,6 +60,7 @@ impl SchematicType {
             SchematicType::We => "schem",
             SchematicType::Bg => "json",
             SchematicType::Be => "mcstructure",
+            SchematicType::McEdit => "schematic",
         }
     }
     pub fn type_id(&self) -> &'static i32 {
@@ -67,6 +70,7 @@ impl SchematicType {
             SchematicType::We => &3,
             SchematicType::Bg => &4,
             SchematicType::Be => &5,
+            SchematicType::McEdit => &6,
         }
     }
 }

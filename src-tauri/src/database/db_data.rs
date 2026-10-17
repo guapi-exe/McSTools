@@ -29,6 +29,8 @@ pub struct PaginatedResponse<T> {
     pub data: Vec<T>,
     pub page: i32,
     pub page_size: i32,
+    // Total rows matching the query, independent of the LIMIT/OFFSET window.
+    pub total: i64,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogEntry {

@@ -1,27 +1,28 @@
+use crate::be_schematic::be_schematic::BESchematic;
+use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
+use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
 use crate::building_gadges::bg_schematic::BgSchematic;
 use crate::create::create_schematic::CreateSchematic;
 use crate::litematica::lm_schematic::LmSchematic;
+use crate::mcedit::mcedit_schematic::McEditSchematic;
 use crate::modules::modules_data::convert_data::{ConvertData, SchematicType, Target};
 use crate::utils::schematic_data::SchematicData;
 use crate::word_edit::we_schematic::WeSchematic;
 use anyhow::Result;
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use fastnbt::Value;
+use fastnbt::Value::Compound;
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use tempfile::NamedTempFile;
-use flate2::Compression;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use fastnbt::Value::Compound;
 use tauri::{AppHandle, Manager};
-use crate::be_schematic::be_schematic::BESchematic;
-use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
-use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
+use tempfile::NamedTempFile;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -51,7 +52,8 @@ impl FileManager {
     pub fn schematic_dir(&self, id: i64) -> Result<PathBuf> {
         let schematic_dir = self.data_dir.join(format!("schematic-{}", id));
         if !schematic_dir.exists() {
-            fs::create_dir_all(&schematic_dir).context("Failed to create configuration directory")?;
+            fs::create_dir_all(&schematic_dir)
+                .context("Failed to create configuration directory")?;
         }
         Ok(schematic_dir)
     }
@@ -64,7 +66,8 @@ impl FileManager {
             return Err(anyhow::anyhow!("Illegal directory path: {:?}", path));
         }
 
-        remove_dir_all_safe(&path).with_context(|| format!("Cannot delete directory: {:?}", path))?;
+        remove_dir_all_safe(&path)
+            .with_context(|| format!("Cannot delete directory: {:?}", path))?;
 
         Ok(())
     }
@@ -85,8 +88,9 @@ impl FileManager {
         ));
 
         {
-            let mut temp_file = File::create(&temp_file)
-                .with_context(|| format!("Failed to create temporary file: {}", temp_file.display()))?;
+            let mut temp_file = File::create(&temp_file).with_context(|| {
+                format!("Failed to create temporary file: {}", temp_file.display())
+            })?;
 
             io::copy(&mut file, &mut temp_file).with_context(|| "File content copying failed")?;
         }
@@ -123,8 +127,9 @@ impl FileManager {
         ));
 
         {
-            let mut temp_file = File::create(&temp_file)
-                .with_context(|| format!("Failed to create temporary file: {}", temp_file.display()))?;
+            let mut temp_file = File::create(&temp_file).with_context(|| {
+                format!("Failed to create temporary file: {}", temp_file.display())
+            })?;
 
             temp_file
                 .write_all(&data)
@@ -168,10 +173,7 @@ impl FileManager {
         Ok(out_path)
     }
 
-    pub fn save_json_value_temp(
-        &self,
-        data: String,
-    ) -> Result<NamedTempFile> {
+    pub fn save_json_value_temp(&self, data: String) -> Result<NamedTempFile> {
         let mut temp_file = tempfile::Builder::new()
             .prefix("schematic_")
             .suffix(".json")
@@ -200,6 +202,7 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
+            6 => "schematic",
             _ => "unknown",
         };
 
@@ -211,7 +214,7 @@ impl FileManager {
         let final_path = schematic_dir.join(final_filename);
         let out_path = final_path.clone();
 
-        let bytes = fastnbt::to_bytes(&data)?;
+        let bytes = nbt_bytes(&data, v_type)?;
 
         if compress {
             let file = File::create(final_path)?;
@@ -242,6 +245,7 @@ impl FileManager {
             2 => "litematic",
             3 => "schem",
             4 => "json",
+            6 => "schematic",
             _ => "unknown",
         };
 
@@ -254,7 +258,7 @@ impl FileManager {
         let out_path = final_path.clone();
 
         let value: Value = fastsnbt::from_str(data)?;
-        let bytes = fastnbt::to_bytes(&value)?;
+        let bytes = nbt_bytes(&value, v_type)?;
 
         if compress {
             let file = File::create(final_path)?;
@@ -332,12 +336,12 @@ impl FileManager {
         v_type: i32,
         compress: bool,
     ) -> Result<NamedTempFile> {
-
         let file_ext = match v_type {
             1 => ".nbt",
             2 => ".litematic",
             3 => ".schem",
             4 => ".json",
+            6 => ".schematic",
             _ => ".unknown",
         };
 
@@ -346,7 +350,7 @@ impl FileManager {
             .suffix(file_ext)
             .tempfile()?;
 
-        let bytes = fastnbt::to_bytes(&data)?;
+        let bytes = nbt_bytes(&data, v_type)?;
 
         if compress {
             let mut encoder = GzEncoder::new(&mut temp_file, Compression::default());
@@ -366,7 +370,6 @@ impl FileManager {
         data: HashMap<String, Value>,
         v_type: i32,
     ) -> Result<NamedTempFile> {
-
         let file_ext = match v_type {
             5 => ".mcstructure",
             _ => ".unknown",
@@ -397,6 +400,7 @@ impl FileManager {
             3 => "schem",
             4 => "json",
             5 => "mcstructure",
+            6 => "schematic",
             _ => "unknown",
         };
         let filename = format!(
@@ -458,6 +462,14 @@ impl FileManager {
                 let ser = fastsnbt::to_string(&value)?;
                 Ok(ser)
             }
+            6 => {
+                if data.len() > 8 * 1024 * 1024 {
+                    return Ok(String::new());
+                }
+                let schematic = McEditSchematic::new_from_bytes(data)?;
+                let ser = fastsnbt::to_string(&schematic.nbt)?;
+                Ok(ser)
+            }
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
     }
@@ -477,6 +489,7 @@ impl FileManager {
             3 => "schem",
             4 => "json",
             5 => "mcstructure",
+            6 => "schematic",
             _ => "unknown",
         };
         let filename = format!(
@@ -495,7 +508,8 @@ impl FileManager {
             fs::create_dir_all(parent)?;
         }
 
-        fs::copy(&file_path, &dest_path).map_err(|e| anyhow::anyhow!("File copying failed: {}", e))?;
+        fs::copy(&file_path, &dest_path)
+            .map_err(|e| anyhow::anyhow!("File copying failed: {}", e))?;
 
         Ok(true)
     }
@@ -522,6 +536,7 @@ impl FileManager {
             SchematicType::Bg,
             SchematicType::We,
             SchematicType::Be,
+            SchematicType::McEdit,
         ] {
             let mut version_map = HashMap::new();
 
@@ -577,6 +592,7 @@ impl FileManager {
             3 => "schem",
             4 => "json",
             5 => "mcstructure",
+            6 => "schematic",
             _ => "unknown",
         };
         let filename = format!(
@@ -613,6 +629,11 @@ impl FileManager {
                 let blocks = schematic.get_blocks_pos();
                 Ok(blocks?)
             }
+            6 => {
+                let schematic = McEditSchematic::new_from_bytes(data)?;
+                let blocks = schematic.get_blocks_pos();
+                Ok(blocks?)
+            }
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
     }
@@ -628,6 +649,7 @@ impl FileManager {
             1 => "nbt",
             2 => "litematic",
             3 => "schem",
+            6 => "schematic",
             5 => "mcstructure",
             _ => "unknown",
         };
@@ -656,8 +678,24 @@ impl FileManager {
                 let schematic = BESchematic::new_from_bytes(data)?;
                 Ok(schematic.nbt)
             }
+            6 => {
+                let schematic = McEditSchematic::new_from_bytes(data)?;
+                Ok(schematic.nbt)
+            }
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
+    }
+}
+
+fn nbt_bytes(data: &Value, v_type: i32) -> Result<Vec<u8>> {
+    if v_type == 6 {
+        // Legacy MCEdit schematics must use the root compound name "Schematic".
+        Ok(fastnbt::to_bytes_with_opts(
+            data,
+            fastnbt::SerOpts::new().root_name("Schematic"),
+        )?)
+    } else {
+        Ok(fastnbt::to_bytes(data)?)
     }
 }
 
@@ -670,7 +708,10 @@ fn remove_dir_all_safe<P: AsRef<Path>>(path: P) -> Result<()> {
     fs::remove_dir_all(&path)?;
 
     if path.as_ref().exists() {
-        return Err(anyhow::anyhow!("The directory still exists: {:?}", path.as_ref()));
+        return Err(anyhow::anyhow!(
+            "The directory still exists: {:?}",
+            path.as_ref()
+        ));
     }
 
     Ok(())

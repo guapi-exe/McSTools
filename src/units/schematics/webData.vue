@@ -82,14 +82,16 @@ const IMAGE_MAPPING: Record<number, string> = {
   1: lmImg,
   2: bgImg,
   3: weImg,
-  4: beImg
+  4: beImg,
+  5: weImg
 };
 const fileExt: Record<number, string> = {
   0: 'nbt',
   1: 'litematic',
   2: 'json',
   3: 'schem',
-  4: 'mcstruct'
+  4: 'mcstruct',
+  5: 'schematic'
 };
 const parseDimensions = (sizeStr: string) => {
   let data = JSON.parse(sizeStr)

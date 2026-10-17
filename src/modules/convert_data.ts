@@ -1,6 +1,6 @@
 import {invoke} from "@tauri-apps/api/core";
 import {toast} from "./others.ts";
-type SchematicType = "Create" | "Litematic" | "Bg" | "We" | "Be";
+type SchematicType = "Create" | "Litematic" | "Bg" | "We" | "Be" | "McEdit";
 
 interface Target {
     has: boolean;

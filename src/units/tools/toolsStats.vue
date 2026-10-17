@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineProps, computed, ref, watch, nextTick, onBeforeUnmount } from "vue";
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from "vue";
 import type { RequirementStatistics } from "../../modules/requirements.ts";
 import * as echarts from 'echarts';
 import { useI18n } from 'vue-i18n';
@@ -19,6 +19,36 @@ let chartInstance2: echarts.ECharts | null = null;
 const sortedItems = computed(() => {
   return props.data?.items?.slice().sort((a, b) => b.count - a.count) || [];
 });
+
+// Incremental rendering: large blueprints can list hundreds of materials, and
+// mounting them all at once freezes the first stats open. Start with a small
+// chunk and extend as the user scrolls towards the sentinel.
+const LIST_CHUNK = 50;
+const LIST_CHUNK_STEP = 100;
+const visibleCount = ref(LIST_CHUNK);
+const visibleItems = computed(() => sortedItems.value.slice(0, visibleCount.value));
+const remainingCount = computed(() => Math.max(0, sortedItems.value.length - visibleItems.value.length));
+
+watch(sortedItems, () => {
+  visibleCount.value = LIST_CHUNK;
+});
+
+const listSentinel = ref<HTMLElement | null>(null);
+let sentinelObserver: IntersectionObserver | null = null;
+
+const loadMore = () => {
+  if (remainingCount.value > 0) {
+    visibleCount.value = Math.min(sortedItems.value.length, visibleCount.value + LIST_CHUNK_STEP);
+  }
+};
+
+onMounted(() => {
+  sentinelObserver = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) loadMore();
+  });
+  if (listSentinel.value) sentinelObserver.observe(listSentinel.value);
+});
+
 const initOrUpdateChart = async () => {
   await nextTick();
   const chartDom = document.getElementById('chart-container');
@@ -70,7 +100,6 @@ const initOrUpdateChart = async () => {
     };
 
     chartInstance.setOption(option);
-    window.addEventListener('resize', () => chartInstance?.resize());
   }
   if (chartDom2) {
     if (chartInstance2) {
@@ -121,9 +150,19 @@ const initOrUpdateChart = async () => {
     };
 
     chartInstance2.setOption(option);
-    window.addEventListener('resize', () => chartInstance2?.resize());
   }
 };
+
+// One named handler for both charts — attached once, removed on unmount.
+const handleWindowResize = () => {
+  chartInstance?.resize();
+  chartInstance2?.resize();
+};
+
+onMounted(() => {
+  window.addEventListener('resize', handleWindowResize);
+});
+
 const exportRequirement = async() => {
   await exportRequirementsStatsToCsv(schematicData.value.name, sortedItems.value)
 }
@@ -144,10 +183,13 @@ watch(() => props.data, (newVal) => {
 }, { deep: true });
 
 onBeforeUnmount(() => {
-  if (chartInstance) {
-    chartInstance.dispose();
-    window.removeEventListener('resize', () => chartInstance?.resize());
-  }
+  window.removeEventListener('resize', handleWindowResize);
+  chartInstance?.dispose();
+  chartInstance2?.dispose();
+  chartInstance = null;
+  chartInstance2 = null;
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
 });
 
 </script>
@@ -208,7 +250,7 @@ onBeforeUnmount(() => {
 
       <tbody>
       <tr
-          v-for="(item) in sortedItems"
+          v-for="(item) in visibleItems"
           :key="item.id"
           class="table-row"
       >
@@ -280,6 +322,13 @@ onBeforeUnmount(() => {
       </tr>
       </tbody>
     </v-table>
+
+    <div v-if="remainingCount > 0" ref="listSentinel" class="load-more-sentinel">
+      <v-progress-circular indeterminate size="18" width="2" class="mr-2" />
+      <span class="text-caption text-medium-emphasis">
+        {{ $t('toolsStats.moreRemaining', { count: remainingCount }) }}
+      </span>
+    </div>
   </div>
   <div v-else class="chart-container pa-4">
     <div
@@ -331,18 +380,26 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.load-more-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+}
+
 .view-toggle {
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 4px;
+}
 
-  .v-btn {
-    transition: all 0.3s ease;
+.view-toggle .v-btn {
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
 
-    &--active {
-      background-color: #2196F3;
-      color: white !important;
-    }
-  }
+.view-toggle .v-btn--active {
+  background-color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary)) !important;
 }
 
 .chart-container {

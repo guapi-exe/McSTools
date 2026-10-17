@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from "vue";
 import {useI18n} from "vue-i18n";
 import * as THREE from "three";
@@ -7,6 +7,7 @@ import {GLTFLoader} from "three/examples/jsm/loaders/GLTFLoader.js";
 import {MTLLoader} from "three/examples/jsm/loaders/MTLLoader.js";
 import {OBJLoader} from "three/examples/jsm/loaders/OBJLoader.js";
 import {STLLoader} from "three/examples/jsm/loaders/STLLoader.js";
+import {RoomEnvironment} from "three/examples/jsm/environments/RoomEnvironment.js";
 import {mapArtData} from "../../modules/map_art/map_art_data.ts";
 import {createMapArt} from "../../modules/map_art/image_utils.ts";
 import {BlockStatePos} from "../../modules/map_art/schematic_data.ts";
@@ -49,6 +50,20 @@ const exportFileName = ref('model_voxel');
 const voxelStats = ref<{blocks: number, size: string} | null>(null);
 const selectedBlocks = ref<string[]>([]);
 const expandedCategories = ref<string[]>([]);
+const selectedBlockSet = computed(() => new Set(selectedBlocks.value));
+const blockImageUrlCache = new Map<string, string>();
+
+const isCategoryExpanded = (categoryName: string) =>
+  expandedCategories.value.includes(categoryName);
+
+const getCachedBlockImg = (blockId: string) => {
+  let url = blockImageUrlCache.get(blockId);
+  if (!url) {
+    url = getBlockImg(blockId);
+    blockImageUrlCache.set(blockId, url);
+  }
+  return url;
+};
 const autoVoxelResolution = ref(true);
 const modelMetrics = ref<{maxDimension: number, triangles: number} | null>(null);
 
@@ -77,9 +92,10 @@ const selectableBlocks = computed(() => {
 });
 
 const toggleBlock = (blockId: string) => {
-  const index = selectedBlocks.value.indexOf(blockId);
-  if (index === -1) selectedBlocks.value.push(blockId);
-  else selectedBlocks.value.splice(index, 1);
+  const next = new Set(selectedBlocks.value);
+  if (next.has(blockId)) next.delete(blockId);
+  else next.add(blockId);
+  selectedBlocks.value = Array.from(next);
 };
 
 const toggleCategory = (categoryName: string) => {
@@ -87,19 +103,21 @@ const toggleCategory = (categoryName: string) => {
   const category = mapArtData.value.find(c => c.name === categoryName);
   if (!category) return;
 
-  const allSelected = category.items.every(item => selectedBlocks.value.includes(item.id));
+  const allSelected = category.items.every(item => selectedBlockSet.value.has(item.id));
   if (allSelected) {
-    selectedBlocks.value = selectedBlocks.value.filter(id => !category.items.some(item => item.id === id));
+    const categoryIds = new Set(category.items.map(item => item.id));
+    selectedBlocks.value = selectedBlocks.value.filter(id => !categoryIds.has(id));
   } else {
-    const toAdd = category.items.filter(item => !selectedBlocks.value.includes(item.id)).map(item => item.id);
-    selectedBlocks.value = [...selectedBlocks.value, ...toAdd];
+    const next = new Set(selectedBlocks.value);
+    category.items.forEach(item => next.add(item.id));
+    selectedBlocks.value = Array.from(next);
   }
 };
 
 const isCategorySelected = (categoryName: string) => {
   if (!mapArtData.value) return false;
   const category = mapArtData.value.find(c => c.name === categoryName);
-  return category?.items.every(item => selectedBlocks.value.includes(item.id)) ?? false;
+  return category?.items.every(item => selectedBlockSet.value.has(item.id)) ?? false;
 };
 
 const schematicTypes = [
@@ -140,7 +158,14 @@ const schematicTypes = [
     subtypes: [
       { value: -1, label: '默认格式' },
     ]
-  }
+  },
+    {
+      value: 6,
+      label: '创世神旧版',
+      subtypes: [
+        { value: -1, label: '默认格式' }
+      ]
+    }
 ];
 
 const currentSubTypes = computed(() => {
@@ -208,7 +233,7 @@ const findNearestBlockId = (r: number, g: number, b: number) => {
   return bestId;
 };
 
-const initRendererScene = (canvas: HTMLCanvasElement, background = 0xf5f5f5) => {
+const initRendererScene = (canvas: HTMLCanvasElement, background = 0xf5f5f5, withEnvironment = false) => {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(background);
 
@@ -218,6 +243,17 @@ const initRendererScene = (canvas: HTMLCanvasElement, background = 0xf5f5f5) => 
   const renderer = new THREE.WebGLRenderer({canvas, antialias: true, preserveDrawingBuffer: true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.setSize(canvas.clientWidth || 800, canvas.clientHeight || 600, false);
+
+  if (withEnvironment) {
+    // PBR materials imported from GLB/GLTF (anything with metalness > 0)
+    // render nearly black under direct lights alone — a GLTF viewer always
+    // provides an IBL environment. The voxel scene must stay env-free so its
+    // flat block colors keep matching the color table.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+  }
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = false;
@@ -792,7 +828,7 @@ watch(hasModel, async (value) => {
 
 onMounted(() => {
   if (modelCanvas.value) {
-    const s = initRendererScene(modelCanvas.value, 0xfafafa);
+    const s = initRendererScene(modelCanvas.value, 0xfafafa, true);
     modelScene = s.scene;
     modelCamera = s.camera;
     modelRenderer = s.renderer;
@@ -952,8 +988,13 @@ onBeforeUnmount(() => {
           <v-toolbar density="compact">
             <v-toolbar-title>{{ t('mapImage2d.blockSelector') }} ({{ selectedBlocks.length }})</v-toolbar-title>
           </v-toolbar>
-          <v-list>
-            <v-list-group v-for="category in mapArtData" :key="category.name" v-model="expandedCategories" :value="category.name">
+          <v-list v-model:opened="expandedCategories" open-strategy="multiple" class="block-selector-list">
+            <v-list-group
+                v-for="category in mapArtData"
+                :key="category.name"
+                :value="category.name"
+                v-memo="[category.name, isCategorySelected(category.name), selectedBlocks.length]"
+            >
               <template #activator="{ props }">
                 <v-list-item v-bind="props" :title="category.zh_cn">
                   <template #prepend>
@@ -963,14 +1004,37 @@ onBeforeUnmount(() => {
                 </v-list-item>
               </template>
 
-              <v-list-item v-for="block in category.items" :key="block.id" @click="toggleBlock(block.id)" style="padding-inline-start: 0 !important;">
+              <v-virtual-scroll
+                  v-if="isCategoryExpanded(category.name)"
+                  :items="category.items"
+                  item-key="id"
+                  :item-height="64"
+                  max-height="360"
+                  class="block-items-virtual"
+              >
+                <template #default="{ item: block }">
+              <v-list-item
+                  :key="block.id"
+                  class="block-item"
+                  v-memo="[block.id, selectedBlockSet.has(block.id)]"
+                  @click="toggleBlock(block.id)"
+                  style="padding-inline-start: 0 !important;"
+              >
                 <template #prepend>
-                  <v-checkbox :model-value="selectedBlocks.includes(block.id)" color="info" hide-details></v-checkbox>
+                  <v-checkbox :model-value="selectedBlockSet.has(block.id)" color="info" hide-details></v-checkbox>
                 </template>
                 <v-row align="start" no-gutters>
                   <v-col cols="2" class="d-flex justify-center mt-2">
                     <v-avatar size="28" rounded="0" class="mr-2" style="border: 1px solid rgba(0,0,0,0.1)">
-                      <v-img :src="getBlockImg(block.id)" :lazy-src="getBlockImg(block.id)" :alt="block.id" style="width: 100%; height: 100%; object-fit: contain; image-rendering: crisp-edges;" />
+                    <img
+                        :src="getCachedBlockImg(block.id)"
+                        :alt="block.id"
+                        loading="lazy"
+                        decoding="async"
+                        width="28"
+                        height="28"
+                        style="width: 100%; height: 100%; object-fit: contain; image-rendering: crisp-edges;"
+                    />
                     </v-avatar>
                   </v-col>
                   <v-col cols="6">
@@ -985,6 +1049,8 @@ onBeforeUnmount(() => {
                   </v-col>
                 </v-row>
               </v-list-item>
+                </template>
+              </v-virtual-scroll>
             </v-list-group>
           </v-list>
         </v-card>
@@ -1028,6 +1094,20 @@ onBeforeUnmount(() => {
 .preview-scroll {
   height: 100%;
   overflow-y: auto;
+}
+
+.block-selector-list {
+  contain: content;
+}
+
+.block-items-virtual {
+  contain: content;
+  max-width: 100%;
+}
+
+.block-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 64px;
 }
 
 .model-preview-card,

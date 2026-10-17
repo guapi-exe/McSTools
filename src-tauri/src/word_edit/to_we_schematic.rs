@@ -1,14 +1,14 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos};
 use crate::utils::schematic_data::{SchematicData, SchematicError};
+use crate::utils::tile_entities::TileEntitiesList;
+use anyhow::Result;
 use fastnbt::Value;
 use fastnbt::Value::Compound;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use anyhow::Result;
-use crate::utils::tile_entities::TileEntitiesList;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 #[derive(Debug)]
 pub struct ToWeSchematic {
@@ -31,7 +31,7 @@ impl ToWeSchematic {
         if blocks.is_empty() {
             return Err(SchematicError::InvalidFormat("Block list cannot be empty"));
         }
-        let (min, max) = blocks.iter().fold(
+        let (observed_min, observed_max) = blocks.iter().fold(
             (
                 BlockPos {
                     x: i32::MAX,
@@ -55,9 +55,74 @@ impl ToWeSchematic {
             },
         );
 
-        let width = max.x - min.x + 1;
-        let height = max.y - min.y + 1;
-        let length = max.z - min.z + 1;
+        let size = schematic.size;
+        let has_source_size = size.width > 0 && size.height > 0 && size.length > 0;
+        let use_zero_origin = has_source_size
+            && observed_min.x >= 0
+            && observed_min.y >= 0
+            && observed_min.z >= 0
+            && observed_max.x < size.width
+            && observed_max.y < size.height
+            && observed_max.z < size.length;
+        let min = if use_zero_origin {
+            BlockPos { x: 0, y: 0, z: 0 }
+        } else {
+            observed_min
+        };
+        let max = if has_source_size {
+            BlockPos {
+                x: observed_max.x.max(
+                    min.x
+                        .checked_add(size.width - 1)
+                        .ok_or(SchematicError::InvalidFormat("schematic width overflow"))?,
+                ),
+                y: observed_max.y.max(
+                    min.y
+                        .checked_add(size.height - 1)
+                        .ok_or(SchematicError::InvalidFormat("schematic height overflow"))?,
+                ),
+                z: observed_max.z.max(
+                    min.z
+                        .checked_add(size.length - 1)
+                        .ok_or(SchematicError::InvalidFormat("schematic length overflow"))?,
+                ),
+            }
+        } else {
+            observed_max
+        };
+
+        let width = max
+            .x
+            .checked_sub(min.x)
+            .and_then(|value| value.checked_add(1))
+            .ok_or(SchematicError::InvalidFormat("schematic width overflow"))?;
+        let height = max
+            .y
+            .checked_sub(min.y)
+            .and_then(|value| value.checked_add(1))
+            .ok_or(SchematicError::InvalidFormat("schematic height overflow"))?;
+        let length = max
+            .z
+            .checked_sub(min.z)
+            .and_then(|value| value.checked_add(1))
+            .ok_or(SchematicError::InvalidFormat("schematic length overflow"))?;
+
+        if [width, height, length]
+            .into_iter()
+            .any(|dimension| dimension <= 0)
+        {
+            return Err(SchematicError::InvalidFormat(
+                "schematic dimensions must be positive",
+            ));
+        }
+        if [width, height, length]
+            .into_iter()
+            .any(|dimension| dimension > i16::MAX as i32)
+        {
+            return Err(SchematicError::InvalidFormat(
+                "WorldEdit schematic dimensions exceed i16 range",
+            ));
+        }
 
         let (unique_block_states, block_state_to_index, air_index) = {
             let mut seen = HashMap::new();
@@ -110,8 +175,9 @@ impl ToWeSchematic {
     pub fn get_block_id_list(&self) -> Vec<i32> {
         let total_blocks = (self.length * self.width * self.height) as usize;
         let air_index = self.air_index as i32;
-        let atomic_block_list: Vec<AtomicI32> =
-            (0..total_blocks).map(|_| AtomicI32::new(air_index)).collect();
+        let atomic_block_list: Vec<AtomicI32> = (0..total_blocks)
+            .map(|_| AtomicI32::new(air_index))
+            .collect();
         let atomic_block_list = Arc::new(atomic_block_list);
 
         self.blocks.par_iter().for_each(|block| {
@@ -140,31 +206,31 @@ impl ToWeSchematic {
     }
 
     fn build_tile_entities_list(&self) -> Vec<Value> {
-        if self.tile_entities.original_type != 3 {
-            return vec![];
-        }
-        self.tile_entities.elements
+        self.tile_entities
+            .elements
             .iter()
             .map(|te| {
-                let nx = te.pos.x;
-                let ny = te.pos.y;
-                let nz = te.pos.z;
+                let nx = te.pos.x - self.start_pos.x;
+                let ny = te.pos.y - self.start_pos.y;
+                let nz = te.pos.z - self.start_pos.z;
 
                 match &te.nbt {
                     Compound(map) => {
                         let mut new_map = map.clone();
-                        let new_pos = vec![
-                            nx, ny, nz,
-                        ];
-                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        let new_pos = vec![nx, ny, nz];
+                        new_map.insert(
+                            "Pos".to_string(),
+                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
+                        );
                         Compound(new_map)
                     }
                     other => {
                         let mut new_map = HashMap::new();
-                        let new_pos = vec![
-                            nx, ny, nz,
-                        ];
-                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        let new_pos = vec![nx, ny, nz];
+                        new_map.insert(
+                            "Pos".to_string(),
+                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
+                        );
                         new_map.insert("nbt".to_string(), other.clone());
                         Compound(new_map)
                     }
@@ -230,6 +296,14 @@ impl ToWeSchematic {
     }
 
     pub fn we_schematic(&self, type_version: i32) -> Result<Value, SchematicError> {
+        self.we_schematic_for_data_version(type_version, 3465)
+    }
+
+    pub fn we_schematic_for_data_version(
+        &self,
+        type_version: i32,
+        data_version: i32,
+    ) -> Result<Value, SchematicError> {
         match type_version {
             0 => {
                 let mut nbt = HashMap::new();
@@ -241,14 +315,17 @@ impl ToWeSchematic {
                 nbt.insert("Length".to_string(), Value::Short(self.length as i16));
                 nbt.insert("Height".to_string(), Value::Short(self.height as i16));
                 nbt.insert("Width".to_string(), Value::Short(self.width as i16));
-                nbt.insert("DataVersion".to_string(), Value::Int(3465));
+                nbt.insert("DataVersion".to_string(), Value::Int(data_version));
                 nbt.insert("Palette".to_string(), self.we_palette());
                 let bytes_array = self.decode_to_bytes();
                 nbt.insert(
                     "BlockData".to_string(),
                     Value::ByteArray(fastnbt::ByteArray::new(bytes_array)),
                 );
-                nbt.insert("BlockEntities".to_string(), Value::List(self.build_tile_entities_list()));
+                nbt.insert(
+                    "BlockEntities".to_string(),
+                    Value::List(self.build_tile_entities_list()),
+                );
                 Ok(Compound(nbt))
             }
             1 => {
@@ -261,17 +338,62 @@ impl ToWeSchematic {
                     "BlockData".to_string(),
                     Value::ByteArray(fastnbt::ByteArray::new(bytes_array)),
                 );
-                blocks.insert("BlockEntities".to_string(), Value::List(self.build_tile_entities_list()));
+                blocks.insert(
+                    "BlockEntities".to_string(),
+                    Value::List(self.build_tile_entities_list()),
+                );
                 schematic.insert("Blocks".to_string(), Compound(blocks));
                 schematic.insert("Version".to_string(), Value::Int(3));
                 schematic.insert("Length".to_string(), Value::Short(self.length as i16));
                 schematic.insert("Height".to_string(), Value::Short(self.height as i16));
                 schematic.insert("Width".to_string(), Value::Short(self.width as i16));
-                schematic.insert("DataVersion".to_string(), Value::Int(3465));
+                schematic.insert("DataVersion".to_string(), Value::Int(data_version));
                 nbt.insert("Schematic".to_string(), Compound(schematic));
                 Ok(Compound(nbt))
             }
             _ => Err(SchematicError::InvalidFormat("?")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockStatePosList};
+    use crate::utils::entities::EntitiesList;
+    use crate::utils::schematic_data::{SchematicData, Size};
+    use crate::utils::tile_entities::TileEntitiesList;
+
+    #[test]
+    fn preserves_declared_selection_size_for_sparse_worldedit_output() {
+        let stone = Arc::new(BlockData {
+            id: BlockId {
+                name: Arc::<str>::from("minecraft:stone"),
+            },
+            properties: BTreeMap::new(),
+        });
+        let mut blocks = BlockStatePosList::default();
+        blocks.add(BlockPos { x: 2, y: 1, z: 0 }, stone);
+        let source = SchematicData::new(
+            blocks,
+            TileEntitiesList::default(),
+            EntitiesList::default(),
+            Size {
+                width: 3,
+                height: 2,
+                length: 1,
+            },
+        );
+
+        let writer = ToWeSchematic::new(&source).expect("build writer");
+        assert_eq!((writer.width, writer.height, writer.length), (3, 2, 1));
+        assert_eq!(writer.start_pos, BlockPos { x: 0, y: 0, z: 0 });
+
+        let Value::Compound(root) = writer.we_schematic(0).expect("encode schematic") else {
+            panic!("expected root compound");
+        };
+        assert_eq!(root.get("Width"), Some(&Value::Short(3)));
+        assert_eq!(root.get("Height"), Some(&Value::Short(2)));
+        assert_eq!(root.get("Length"), Some(&Value::Short(1)));
     }
 }

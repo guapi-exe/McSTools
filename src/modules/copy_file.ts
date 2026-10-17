@@ -10,6 +10,7 @@ const getExtensions = (type: number): string[] => {
         case 3: return ['schem'];
         case 4: return ['json'];
         case 5: return ['mcstructure'];
+        case 6: return ['schematic'];
         default: return ['unknown'];
     }
 };

@@ -14,7 +14,10 @@ export let schematicRequirements = ref<RequirementStatistics | undefined>();
 export let schematicStr = ref<string | undefined>();
 export let uniqueBlocks = ref<BlockData[] | undefined>();
 export let historyRecordData = ref<HistoryRecordData | undefined>();
-export const activeTools = ref()
+// Keep the tools window on a concrete panel from its first render. An
+// undefined tab value makes Vuetify briefly mount an empty window while the
+// route is entering, which is visible on slower machines.
+export const activeTools = ref('schematic')
 export const clear_tools = () =>{
     schematic_id.value = undefined
     schematicData.value = undefined
@@ -25,14 +28,47 @@ export const clear_tools = () =>{
     historyRecordData.value = undefined
 }
 
+// Dedup guard: selecting a schematic from the library and the tools-page
+// fallback both call fetch_data for the same id — reuse the in-flight request
+// instead of issuing it twice.
+let fetchInFlight: { id: number; promise: Promise<void> } | null = null
+
 export const fetch_data = async (id: number) => {
+    if (fetchInFlight && fetchInFlight.id === id) {
+        return fetchInFlight.promise
+    }
     schematic_id.value = id
-    schematicData.value = await fetchSchematic(id)
-    convertData.value = await fetchConvertData(id)
-    schematicRequirements.value = await fetchRequirementsWithStats(id)
-    uniqueBlocks.value = await fetchUniqueBlocks(id)
-    historyRecordData.value = await fetchHistoryRecord(id)
-    console.log(historyRecordData.value)
+    const promise = (async () => {
+        // History is deliberately NOT fetched here: it parses every past
+        // requirements/blocks snapshot and is rarely viewed — the history
+        // panel loads it on demand via fetch_history.
+        const [data, conversions, requirements, blocks] = await Promise.all([
+            fetchSchematic(id),
+            fetchConvertData(id),
+            fetchRequirementsWithStats(id),
+            fetchUniqueBlocks(id),
+        ])
+        // A newer selection supersedes this result.
+        if (schematic_id.value !== id) return
+        schematicData.value = data
+        convertData.value = conversions
+        schematicRequirements.value = requirements
+        uniqueBlocks.value = blocks
+    })()
+    fetchInFlight = {id, promise}
+    try {
+        await promise
+    } finally {
+        if (fetchInFlight?.id === id) fetchInFlight = null
+    }
+}
+
+export const fetch_history = async (id: number) => {
+    const history = await fetchHistoryRecord(id)
+    if (schematic_id.value === id) {
+        historyRecordData.value = history
+    }
+    return history
 }
 
 export const get_data = async (id: number) => {
