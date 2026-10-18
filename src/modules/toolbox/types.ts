@@ -81,6 +81,8 @@ export interface VoxelSettings extends ColorSettings {
   solid: boolean
   useColors: boolean
   blockId: string
+  /** Representative color of an unselected fill block; not a matching candidate. */
+  fillColor?: RGB
   rotateX: number
   rotateY: number
   rotateZ: number
