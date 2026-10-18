@@ -666,7 +666,8 @@ export default {
     tabs: {
       mapArt: '地图画',
       ModelToSchem: '模型转蓝图',
-      redstoneMusic: '红石音乐'
+      redstoneMusic: '红石音乐',
+      batchConvert: '批量转换'
     },
     modelToSCHEM: {
       tip: '基于地图画方块与颜色对照表，将当前已选蓝图模型投影并导出为地图画蓝图。',

@@ -178,6 +178,28 @@ pub fn plan(
         .transpose()
 }
 
+/// Keep the same fidelity warnings in single-file and batch exports.
+pub fn warnings(data: &SchematicData, options: &ExportOptions, source_version: Option<i32>) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if options.target_data_version.is_some() && options.target_data_version != source_version
+        && (!data.tile_entities_list.elements.is_empty() || !data.entities_list.elements.is_empty()) {
+        warnings.push("已转换方块 ID 和状态，但不是完整的 Minecraft DataFixer；跨版本容器物品、实体行为与模组 NBT 请在游戏中复核。".into());
+    }
+    if data.blocks.elements.iter().any(|b| !b.block.id.name.starts_with("minecraft:")) {
+        warnings.push("命名调色板会保留模组 ID 和属性；目标游戏需要安装对应模组。旧版数字 .schematic 无法保留未知模组 ID。".into());
+    }
+    if options.format == 4 && (!data.entities_list.elements.is_empty() || !data.tile_entities_list.elements.is_empty()) {
+        warnings.push("Building Gadgets 模板仅输出建筑方块，不包含普通实体和容器载荷。".into());
+    }
+    if options.format == 4 {
+        warnings.push("Building Gadgets 模板按实际方块范围保存，选区周围的空白边界不会保留。".into());
+    }
+    if options.format == 5 {
+        warnings.push("BE 使用独立含水层及状态映射，不应用 Java 游戏版本转换；跨版本实体 NBT 请在游戏中复核。".into());
+    }
+    warnings
+}
+
 /// Remove tile payloads whose block kind changed, unless an explicitly safe
 /// inventory-schema migration is known. A stone replacement cannot keep chest NBT.
 fn normalize(

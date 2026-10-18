@@ -623,7 +623,8 @@ export default {
     tabs: {
       mapArt: 'Map Art',
       ModelToSchem: 'Model to Blueprint',
-      redstoneMusic: 'Redstone Music'
+      redstoneMusic: 'Redstone Music',
+      batchConvert: 'Batch Convert'
     },
     modelToSCHEM: {
       tip: 'Use map art block-color mapping to project the currently selected schematic model and export it as a map art blueprint.',

@@ -2303,6 +2303,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "crc32fast",
  "dashmap",
  "dunce",
  "fastnbt",

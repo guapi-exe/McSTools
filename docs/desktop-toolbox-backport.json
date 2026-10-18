@@ -1,5 +1,5 @@
 {
-  "status": "map_and_model_checkpoint_batch_pending_not_full_goal_completion",
+  "status": "map_model_batch_checkpoint_native_e2e_and_i18n_pending_not_full_goal_completion",
   "source": {
     "repository": "new_mcs",
     "revision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
@@ -13,7 +13,10 @@
       "apps/web/app/utils/tools/voxelize.ts",
       "apps/web/app/utils/tools/model-loader.ts",
       "apps/web/app/pages/tools/sculpture.vue",
-      "apps/web/app/components/tools/ToolModelPreview.client.vue"
+      "apps/web/app/components/tools/ToolModelPreview.client.vue",
+      "apps/web/app/utils/batch-convert.ts",
+      "apps/web/app/components/tools/BlueprintBatchConverter.client.vue",
+      "apps/web/app/pages/tools/batch-convert.vue"
     ],
     "localReferenceWasCleanForCopiedFiles": true,
     "websiteChanged": false
@@ -29,7 +32,12 @@
     "统一源模型/方块预览区，仅1个按需绘制的WebGL渲染器；缓存停用释放上下文、渲染目标与控制器，保留CPU源模型和已完成结果",
     "源模型旋转采用ZYX Euler以匹配采样器的X→Y→Z操作；只对PBR源材质创建环境贴图，方块预览不创建PMREM",
     "OBJ多MTL/材质组，GLTF外部BIN和纹理、UV通道、实例、默认骨骼及形变坐标；只读取本地附件，纹理缺失/损坏不静默降级",
-    "模型文件/GLTF声明分配/节点层级/实例三角面预检；纹理采样限制32MiB，预览24万外露面上限不截断生成或导出结果"
+    "模型文件/GLTF声明分配/节点层级/实例三角面预检；纹理采样限制32MiB，预览24万外露面上限不截断生成或导出结果",
+    "网站批量 WASM 会话改为原生有界解析/共享编码器；文件和结果留在 native，Vue 只持有元数据，导入不写蓝图库、不修改源文件",
+    "共用 BlueprintFormatFields 与权威格式目录；批量默认按源文件分别保留真实 DataVersion，完成结果锁定配置；BE 不套 Java 转换",
+    "ZIP32 stored/deflate 输入，校验 CRC 与声明/实际大小；只保留蓝图，路径永不解包到磁盘，UTF-8/UTF-16 有界文件名及大小写去重；输出 ZIP 直接流写 tempfile 后 no-clobber 提交",
+    "串行队列、逐项状态/失败重试/停止/搜索筛选/结果勾选/单份或 ZIP 保存；切页和切工具页签保留队列，清理结果明确确认",
+    "固定行高窗口避开 Vuetify 3.8.1 隐藏尺寸 0 污染：1000 条返回页只渲染 9 行；停止 IPC 未确认前不能开始新任务，避免迟到取消误伤"
   ],
   "limits": {
     "imageFileBytes": 67108864,
@@ -58,7 +66,19 @@
       "sampledTextureBytesTotal": 33554432,
       "previewExposedFaces": 240000
     },
-    "note": "不是进程RSS保证。图片像素数在浏览器读取尺寸后检查，模型源纹理先由Three/浏览器解码，再缩小取色；不能保证恶意编码图片零分配。模型格式解析仍在主线程，采样和外露面构建在Worker。原生快照释放后被已开始导出持有的Arc会存活至该操作结束。"
+    "batch": {
+      "files": 1000,
+      "inputBytes": 268435456,
+      "zipCompressedBytes": 134217728,
+      "outputBytes": 536870912,
+      "zipDirectoryRecords": 16384,
+      "rawMetadataBytes": 4096,
+      "archiveDisplayNameBytes": 1024,
+      "virtualRowHeight": 106,
+      "virtualViewportHeight": 530,
+      "maximumRenderedRows": 9
+    },
+    "note": "不是进程RSS保证。图片像素数在浏览器读取尺寸后检查，模型源纹理先由Three/浏览器解码，再缩小取色；不能保证恶意编码图片零分配。模型格式解析仍在主线程，采样和外露面构建在Worker。原生快照释放后被已开始导出持有的Arc会存活至该操作结束。批量解析沿用 parser-safety 预算；取消在解析/编码边界检查，不承诺正在解析的大文件立即退出。"
   },
   "sourceVersion": {
     "dataVersion": 3955,
@@ -73,8 +93,8 @@
     "writes": "仅shared save_blueprint_export执行另存/入库；准备快照不写盘"
   },
   "validation": {
-    "native": "145 passed, 2 ignored; generated snapshots 4 tests including six format/seven subtype-target round trips",
-    "frontend": "39 Node tests (18 toolbox), vue-tsc + Vite build",
+    "native": "157 passed, 2 ignored; generated snapshots 4 + batch/archive 12 tests",
+    "frontend": "44 Node tests (18 toolbox + 5 batch queue), vue-tsc + Vite build",
     "browser": "Playwright CLI: real Vue/worker/canvas/palette/PNG, scripts/testing/toolbox-ipc-fixture.js mocks native bridge",
     "performance": {
       "scenario": "1024x1024,320 blocks,relief,foreground navigation",
@@ -90,8 +110,29 @@
       "output/playwright/api-v1/toolbox-palette-colors-1000.png",
       "output/playwright/api-v1/model-export-legacy-1000.png",
       "output/playwright/api-v1/model-cube-preview-1000.png",
-      "output/playwright/api-v1/model-gltf-source-1000.png"
+      "output/playwright/api-v1/model-gltf-source-1000.png",
+      "output/playwright/api-v1/batch-results-1000.png",
+      "output/playwright/api-v1/batch-virtual-1000.png",
+      "output/playwright/api-v1/batch-legacy-detail-1000.png",
+      "output/playwright/api-v1/batch-shared-fields-regression-1000.png"
     ],
+    "batch": {
+      "native": "九种来源格式/子格式组合到同一版本 Litematica；精确3578保留、旧版5元数据；错误隔离、配置锁定、取消/迟到会话、原始IPC、原子输入/输出预算、无覆盖原子文件/ZIP往返；ZIP stored/deflate/CRC/流式descriptor/截断/伪造大小/路径/长Unicode重名",
+      "browser": "scripts/testing/toolbox-ipc-fixture.js + batch-ipc-fixture.js；真实Vue界面但原生桥模拟，不宣称端到端系统保存验证。失败隔离/仅失败重试/结果选择/单份及ZIP另存/拒绝覆盖/初始化重试/清空确认/页签恢复/搜索/拖入/取消都已检查",
+      "version": "默认不猜来源；现代源MCEdit需显式旧版，选1.7.10发targetDataVersion5；BE参数null且overrides空；共享控件在真实地图画生成后做同样回归，关闭释放快照",
+      "virtualization": "发现旧实现返回1000行，固定行高后返回9行、滚底7行；1000px无横向溢出",
+      "navigation": {
+        "scenario": "1000 queued metadata records, one 800ms simulated native conversion, warmed foreground browser",
+        "framesEach": 60,
+        "maxFrameMs": [24.2, 24.2],
+        "blankFrames": [0, 0],
+        "startedPerRound": [1, 1],
+        "successAfterCancel": [0, 0],
+        "caveat": "单机浏览器诊断，不是原生计算、WebView或60fps保证；修复前观察到121.1ms长帧"
+      },
+      "stopAcknowledgement": "1200ms延迟停止回包时下一轮保持禁用；确认后恢复执行成功，未误取消新任务",
+      "musicInspection": "redStoneMusic.vue仍是提示占位，没有需要治理的音频/定时器/Worker；网站工具目录也未提供音乐工具"
+    },
     "model": {
       "pureTests": "封闭8³空壳296/实心512、开放模型不填内腔、旋转次序和比例、纹理repeat/mirror/clamp/flipY、固定色不污染匹配候选、采样提前拒绝、表面法线/隐藏面、读入取消和格式预算",
       "loader": "scripts/testing/model-loader-checks.js: 13 browser cases covering OBJ, ASCII/binary STL, grouped MTL/PNG, GLTF BIN/PNG/UV1, instances, skin+morph, GLB and rejected attachments",
@@ -111,9 +152,8 @@
     }
   },
   "remaining": [
-    "本地批量转换",
     "真实Tauri二进制IPC/系统保存/取消/no-clobber端到端",
-    "生成器新增文案多语言",
+    "生成器、批量工具及共享导出新增文案多语言",
     "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查",
     "模型使用默认静态姿态，不运行动画；不承诺Draco/KTX2等未配置解码器的扩展支持；透明材质使用代表色体素化，非离线渲染器"
   ],

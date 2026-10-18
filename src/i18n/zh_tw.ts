@@ -666,7 +666,8 @@
         tabs: {
             mapArt: '地圖畫',
             ModelToSchem: '模型轉藍圖',
-            redstoneMusic: '紅石音樂'
+            redstoneMusic: '紅石音樂',
+            batchConvert: '批量轉換'
         },
         modelToSCHEM: {
             tip: '基於地圖畫方塊與顏色對照表，將目前已選藍圖模型投影並導出為地圖畫藍圖。',

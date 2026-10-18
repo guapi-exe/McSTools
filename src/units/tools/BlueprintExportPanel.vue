@@ -5,6 +5,7 @@ import {exportError, getExportFormats, planExport, saveExport,
 import {fetchJeBlocks, jeBlocks} from '../../modules/je_blocks'
 import {fetchUserData} from '../../modules/user_data'
 import {copySchematic} from '../../modules/copy_file'
+import BlueprintFormatFields from './BlueprintFormatFields.vue'
 
 const props = defineProps<{source: ExportSource; initialFormat?: number; initialSubtype?: number; fixedFormat?: boolean; inactive?: boolean; showCache?: boolean}>()
 const emit = defineEmits<{saved: [result: ExportResult]; busy: [busy: boolean]}>()
@@ -24,7 +25,6 @@ let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const format = computed(() => formats.value.find(item => item.id === formatId.value))
 const subtype = computed(() => format.value?.subtypes.find(item => item.id === subtypeId.value))
-const versionOptions = computed(() => [{id: 0, name: '只转换格式 · 保持源版本'}, ...(subtype.value?.versions ?? [])])
 const labels = computed(() => new Map((jeBlocks.value ?? []).map(block => [block.block_id, block.zh_cn || block.block_id])))
 const title = (id: string) => labels.value.get(id) ?? id
 const targets = computed(() => (plan.value?.compatibility?.targetBlocks ?? [])
@@ -39,6 +39,9 @@ const options = computed<ExportOptions>(() => ({
     .map(([sourceId, replacementId]) => ({sourceId, replacementId})),
 }))
 const ready = computed(() => !!plan.value && !loading.value && !saving.value && !unresolved.value && !props.inactive)
+function updateFields(value:ExportOptions) {
+  formatId.value=value.format;subtypeId.value=value.subtype;versionId.value=value.targetDataVersion??0;includeAir.value=value.includeAir
+}
 watch(saving, value => emit('busy', value), {flush: 'sync'})
 watch(formatId, () => {
   subtypeId.value = format.value?.subtypes[0]?.id ?? -1
@@ -116,13 +119,7 @@ onBeforeUnmount(() => {
   <section class="blueprint-export-panel">
     <p v-if="source.kind === 'generated'" class="export-note">使用已准备的生成结果，基准版本为 Java 1.21.1。可独立选择格式与目标游戏版本；另存不会覆盖已有文件。关闭弹窗后释放临时导出副本。</p>
     <p v-else class="export-note">导出的是独立副本，不覆盖原蓝图，也不会消耗撤销记录。只转换格式时不自动降级方块。</p>
-    <fieldset :disabled="saving || inactive" class="export-settings">
-      <v-select v-model="formatId" :items="formats" item-title="name" item-value="id" label="输出格式" :disabled="fixedFormat || saving || inactive" density="compact" hide-details/>
-      <v-select v-model="subtypeId" :items="format?.subtypes ?? []" item-title="name" item-value="id" label="格式版本" :disabled="saving || inactive" density="compact" hide-details/>
-      <v-select v-if="formatId !== 5" v-model="versionId" :items="versionOptions" item-title="name" item-value="id" label="目标游戏版本" :disabled="saving || inactive" density="compact" hide-details/>
-      <v-alert v-else type="info" density="compact" variant="tonal">BE 输出使用基岩版方块和含水层映射，不应用 Java 游戏版本转换。</v-alert>
-      <v-checkbox v-if="formatId === 1" v-model="includeAir" :disabled="saving || inactive" label="写入空气方块" density="compact" hide-details/>
-    </fieldset>
+    <BlueprintFormatFields :model-value="options" :formats="formats" :disabled="saving || inactive" :fixed-format="fixedFormat" @update:model-value="updateFields"/>
     <v-progress-linear v-if="loading" indeterminate color="primary" class="my-3"/>
     <div v-if="plan" class="export-summary">
       <v-chip size="small">尺寸 {{ plan.size.width }} × {{ plan.size.height }} × {{ plan.size.length }}</v-chip>
@@ -170,7 +167,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .export-note { font-size: 12px; line-height: 1.6; opacity: .75; margin: 8px 0 12px; display: block; }
-.export-settings { border: 0; min-width: 0; padding: 0; display: grid; gap: 14px; }
 .export-summary, .export-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .export-change { min-height: 132px; padding: 8px 2px 12px; }
 .export-change-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

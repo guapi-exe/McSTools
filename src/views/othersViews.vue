@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n';
 const mapImage2d = defineAsyncComponent(() => import("../units/others/mapImage2d.vue"))
 const redStoneMusic = defineAsyncComponent(() => import("../units/others/redStoneMusic.vue"))
 const ModelToSchem = defineAsyncComponent(() => import("../units/others/modelToSchem.vue"))
+const BlueprintBatchConverter = defineAsyncComponent(() => import("../units/others/BlueprintBatchConverter.vue"))
 
 const { t } = useI18n()
 const active = ref('img')
@@ -67,6 +68,7 @@ onBeforeRouteLeave(navigationGuard)
             <v-tab value="img" class="text-medium-emphasis">{{ t('others.tabs.mapArt') }}</v-tab>
             <v-tab value="model" class="text-medium-emphasis">{{ t('others.tabs.ModelToSchem') }}</v-tab>
             <v-tab value="music" class="text-medium-emphasis">{{ t('others.tabs.redstoneMusic') }}</v-tab>
+            <v-tab value="batch" class="text-medium-emphasis">{{ t('others.tabs.batchConvert') }}</v-tab>
           </v-tabs>
         </v-toolbar>
         <v-window v-model="active" transition="fade-transition" reverse-transition="fade-transition">
@@ -96,6 +98,9 @@ onBeforeRouteLeave(navigationGuard)
           </v-window-item>
         <v-window-item value="music">
             <redStoneMusic v-if="active === 'music'" />
+          </v-window-item>
+        <v-window-item value="batch">
+            <KeepAlive><BlueprintBatchConverter v-if="active === 'batch'"/></KeepAlive>
           </v-window-item>
         </v-window>
       </v-card>

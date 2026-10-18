@@ -40,6 +40,7 @@ use modules::mcs_api::{McsApiState, import_mcs_blueprint, mcs_api_get, mcs_api_p
 use modules::blueprint_editor::{BlueprintEditorState, open_blueprint_editor, stage_blueprint_edit, commit_blueprint_edit, cancel_blueprint_edit, close_blueprint_editor};
 use modules::blueprint_export::{get_blueprint_export_formats, plan_blueprint_export, save_blueprint_export};
 use modules::generated_blueprint::{GeneratedBlueprintState, stage_generated_blueprint, release_generated_blueprint};
+use modules::blueprint_batch::{BlueprintBatchState, create_blueprint_batch, get_blueprint_batch, cancel_blueprint_batch, release_blueprint_batch, remove_blueprint_batch_items, pick_blueprint_batch_files, add_blueprint_batch_file, convert_blueprint_batch_item, save_blueprint_batch_results};
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_data,
@@ -80,6 +81,7 @@ pub fn run() {
             app.manage(McsApiState::new()?);
             app.manage(BlueprintEditorState::default());
             app.manage(GeneratedBlueprintState::default());
+            app.manage(BlueprintBatchState::default());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -124,6 +126,15 @@ pub fn run() {
             get_blueprint_export_formats,
             stage_generated_blueprint,
             release_generated_blueprint,
+            create_blueprint_batch,
+            get_blueprint_batch,
+            cancel_blueprint_batch,
+            release_blueprint_batch,
+            remove_blueprint_batch_items,
+            pick_blueprint_batch_files,
+            add_blueprint_batch_file,
+            convert_blueprint_batch_item,
+            save_blueprint_batch_results,
             plan_blueprint_export,
             save_blueprint_export,
             clear_app_data,

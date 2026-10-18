@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
-static EXPORT_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+pub(crate) static EXPORT_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -163,6 +163,7 @@ pub async fn plan_blueprint_export(
         .await
         .map_err(|_| "export worker is unavailable")?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ExportPlan> {
+        let _permit = _permit;
         let parsed = source_data(&app, source)?;
         let data = &parsed.data;
         let source_version = parsed.data_version;
@@ -174,20 +175,7 @@ pub async fn plan_blueprint_export(
         } else { None };
         let output_data_version = blueprint_export::validate(&options, source_version)?;
         let compatibility = blueprint_export::plan(&data, &options, source_version)?;
-        let mut warnings = Vec::new();
-        if options.target_data_version.is_some() && options.target_data_version != source_version
-            && (!data.tile_entities_list.elements.is_empty() || !data.entities_list.elements.is_empty()) {
-            warnings.push("已转换方块 ID 和状态，但不是完整的 Minecraft DataFixer；跨版本容器物品、实体行为与模组 NBT 请在游戏中复核。".into());
-        }
-        if data.blocks.elements.iter().any(|b| !b.block.id.name.starts_with("minecraft:")) {
-            warnings.push("命名调色板会保留模组 ID 和属性；目标游戏需要安装对应模组。旧版数字 .schematic 无法保留未知模组 ID。".into());
-        }
-        if options.format == 4 && (!data.entities_list.elements.is_empty() || !data.tile_entities_list.elements.is_empty()) {
-            warnings.push("Building Gadgets 模板仅输出建筑方块，不包含普通实体和容器载荷。".into());
-        }
-        if options.format == 5 {
-            warnings.push("BE 使用独立含水层及状态映射，不应用 Java 游戏版本转换；跨版本实体 NBT 请在游戏中复核。".into());
-        }
+        let warnings = blueprint_export::warnings(&data, &options, source_version);
         Ok(ExportPlan { source_data_version: source_version, output_data_version,
             size: data.size, compatibility, warnings, can_save_cache, cached })
     }).await.map_err(|_| "export preview worker failed".to_string())?.map_err(|e| e.to_string())
@@ -220,6 +208,7 @@ pub async fn save_blueprint_export(
         .await
         .map_err(|_| "export worker is unavailable")?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ExportResult> {
+        let _permit = _permit;
         // Immutable capture prevents a later edit from changing the chosen export.
         let parsed = source_data(&app, source)?;
         let data = &parsed.data;
