@@ -1,0 +1,76 @@
+{
+  "status": "map_art_checkpoint_not_full_goal_completion",
+  "source": {
+    "repository": "new_mcs",
+    "revision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "files": [
+      "apps/web/app/utils/tools/map-art.ts",
+      "apps/web/app/utils/tools/color.ts",
+      "apps/web/app/utils/tools/types.ts",
+      "apps/web/app/data/tool-block-families.generated.ts",
+      "apps/web/app/components/tools/ToolPalettePicker.vue",
+      "apps/web/app/components/tools/ToolBlueprintExport.vue"
+    ],
+    "localReferenceWasCleanForCopiedFiles": true,
+    "websiteChanged": false
+  },
+  "desktopAdaptations": [
+    "保持原有Vue/Vuetify侧栏/主题",
+    "使用桌面实测blocks_art.json调色板，所有320个ID均在1.21.1注册表验证",
+    "PNG纹理使用同一像素索引并可取消；界面主预览为地图色阶",
+    "舍入后再次限制像素预算；支撑不增加空白高度，支撑柱填到y=0，垂直轴不生成横向脚手架柱",
+    "按需虚拟选择器和可终止Worker，失败/取消不提交迟到结果"
+  ],
+  "limits": {
+    "imageFileBytes": 67108864,
+    "decodedSourcePixels": 67108864,
+    "maximumEdge": 2048,
+    "mapPixels": 1048576,
+    "structureVolume": 8000000,
+    "retainedNativeBlocksAcrossStoredSnapshots": 4000000,
+    "nativeSnapshotSlots": 2,
+    "nativeMetadataBytes": 1048576,
+    "nativePaletteEntries": 4096,
+    "textureCanvasPixels": 16777216,
+    "textureCanvasEdge": 8192,
+    "note": "不是进程RSS保证。图片像素数在浏览器读取尺寸后检查，不能保证恶意编码图片零分配；原生快照释放后被已开始导出持有的Arc会存活至该操作结束。"
+  },
+  "sourceVersion": {
+    "dataVersion": 3955,
+    "registry": "1.21.1",
+    "reason": "与网站生成器canonical source一致；不从用户上传图片猜测版本。MCEdit仍必须明确选旧版目标。"
+  },
+  "protocol": {
+    "command": "stage_generated_blueprint",
+    "body": "raw binary: u32 LE metadata length, UTF-8 JSON(protocol/name/size/palette), dense YZX u16 LE",
+    "release": "release_generated_blueprint(generationId)",
+    "exportSource": "{kind: generated, generation_id}",
+    "writes": "仅shared save_blueprint_export执行另存/入库；准备快照不写盘"
+  },
+  "validation": {
+    "native": "145 passed, 2 ignored; generated snapshots 4 tests including six format/seven subtype-target round trips",
+    "frontend": "30 Node tests, vue-tsc + Vite build",
+    "browser": "Playwright CLI: real Vue/worker/canvas/palette/PNG, scripts/testing/toolbox-ipc-fixture.js mocks native bridge",
+    "performance": {
+      "scenario": "1024x1024,320 blocks,relief,foreground navigation",
+      "samples": 60,
+      "maxFrameMs": 30.2,
+      "blankFrames": 0,
+      "targetVisibleMs": 66.2,
+      "workerTerminateMs": 23.3,
+      "caveat": "Local diagnostic sample, not benchmark or native WebView guarantee"
+    },
+    "screenshots": [
+      "output/playwright/api-v1/toolbox-export-legacy-1000.png",
+      "output/playwright/api-v1/toolbox-palette-colors-1000.png"
+    ]
+  },
+  "remaining": [
+    "模型转蓝图完整功能和Worker回迁",
+    "本地批量转换",
+    "真实Tauri二进制IPC/系统保存/取消/no-clobber端到端",
+    "生成器新增文案多语言",
+    "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查"
+  ],
+  "excluded": "3D printing"
+}

@@ -114,7 +114,8 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="blueprint-export-panel">
-    <p class="export-note">导出的是独立副本，不覆盖原蓝图，也不会消耗撤销记录。只转换格式时不自动降级方块。</p>
+    <p v-if="source.kind === 'generated'" class="export-note">使用已准备的生成结果，基准版本为 Java 1.21.1。可独立选择格式与目标游戏版本；另存不会覆盖已有文件。关闭弹窗后释放临时导出副本。</p>
+    <p v-else class="export-note">导出的是独立副本，不覆盖原蓝图，也不会消耗撤销记录。只转换格式时不自动降级方块。</p>
     <fieldset :disabled="saving || inactive" class="export-settings">
       <v-select v-model="formatId" :items="formats" item-title="name" item-value="id" label="输出格式" :disabled="fixedFormat || saving || inactive" density="compact" hide-details/>
       <v-select v-model="subtypeId" :items="format?.subtypes ?? []" item-title="name" item-value="id" label="格式版本" :disabled="saving || inactive" density="compact" hide-details/>

@@ -39,6 +39,7 @@ use modules::map_art::{create_map_art, create_map_art_from_pixels};
 use modules::mcs_api::{McsApiState, import_mcs_blueprint, mcs_api_get, mcs_api_preview, set_mcs_api_key};
 use modules::blueprint_editor::{BlueprintEditorState, open_blueprint_editor, stage_blueprint_edit, commit_blueprint_edit, cancel_blueprint_edit, close_blueprint_editor};
 use modules::blueprint_export::{get_blueprint_export_formats, plan_blueprint_export, save_blueprint_export};
+use modules::generated_blueprint::{GeneratedBlueprintState, stage_generated_blueprint, release_generated_blueprint};
 use modules::replace::schematic_replacement;
 use modules::schematic::{
     copy_schematic, delete_schematic, encode_uploaded_schematic, get_schematic_data,
@@ -78,6 +79,7 @@ pub fn run() {
             app.manage(map_arts);
             app.manage(McsApiState::new()?);
             app.manage(BlueprintEditorState::default());
+            app.manage(GeneratedBlueprintState::default());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -120,6 +122,8 @@ pub fn run() {
             cancel_blueprint_edit,
             close_blueprint_editor,
             get_blueprint_export_formats,
+            stage_generated_blueprint,
+            release_generated_blueprint,
             plan_blueprint_export,
             save_blueprint_export,
             clear_app_data,

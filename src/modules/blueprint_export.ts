@@ -3,6 +3,7 @@ import type {EditRegion} from './blueprint_editor'
 import type {Size} from './schematic_data'
 
 export type ExportSource = {kind: 'library'; id: number; version: number}
+  | {kind: 'generated'; generation_id: number}
   | {kind: 'editor'; session_id: number; revision: number; scope: 'all' | 'inside' | 'outside'; region: EditRegion | null}
 export interface ExportOptions {
   format: number; subtype: number; targetDataVersion: number | null
@@ -47,6 +48,7 @@ export function exportError(reason: unknown): string {
     ['source version is outside', '源版本超出此格式范围，请明确选择目标游戏版本。'],
     ['destination already exists', '该文件已经存在，请选择新文件名；原文件未被覆盖。'],
     ['stale editor', '编辑副本已变化，请重新打开导出设置。'],
+    ['stale generated source', '临时生成结果已释放，请重新打开导出设置。'],
     ['stale source version', '原蓝图版本已变化，请关闭弹窗、刷新蓝图后再导出。'],
     ['conversion would overwrite', '此格式的文件位置就是原蓝图，请使用另存副本或新增到蓝图库。'],
     ['another export operation', '另一项导出正在运行，请稍后重试。'],

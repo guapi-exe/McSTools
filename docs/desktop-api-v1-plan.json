@@ -7,7 +7,9 @@
     "openapi": "https://www.mcschematic.top/api/v1/openapi.json?audience=developer",
     "websiteSource": "D:/git/new_mcs",
     "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea",
-    "parserSafety": "docs/desktop-parser-safety.json"
+    "parserSafety": "docs/desktop-parser-safety.json",
+    "websiteToolboxRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "toolboxBackport": "docs/desktop-toolbox-backport.json"
   },
   "baseline": {
     "status": "pushed_before_edits",
@@ -77,7 +79,7 @@
     },
     {
       "id": "conversion_and_materials",
-      "status": "shared_conversion_materials_and_bounded_parsing_verified_toolbox_pending",
+      "status": "shared_conversion_materials_parsing_and_map_art_verified_model_batch_pending",
       "inspectionFindings": [
         "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
         "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
@@ -115,7 +117,7 @@
         "API GET 并发许可覆盖整个正文读取，并验证完成/超限/取消/真实 HTTP 正文截断时释放"
       ],
       "pending": [
-        "地图画、模型转换和批量工具的共享格式/游戏版本导出",
+        "模型转换和批量工具的共享格式/游戏版本导出；地图画已接入并做原生编码往返及浏览器协议验证",
         "断电/进程强杀不等同普通异常：文件已落盘、SQLite 尚未提交的极短窗口可能留下孤立文件；当前保守拒绝覆盖，不宣称跨文件系统 ACID",
         "原生界面与 IPC、系统保存对话框以及游戏内复杂实体核验",
         "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录"
@@ -123,12 +125,25 @@
     },
     {
       "id": "toolbox_backport",
-      "status": "pending",
+      "status": "map_art_backported_model_and_batch_pending",
       "requirements": [
         "对齐网站地图画的调色板、色彩设置和目标格式/版本导出",
         "对齐非打印模型转体素蓝图工具的必要功能",
         "新增本地批量转换，逐项状态、失败隔离和安全文件名",
         "共享导出配置与兼容性逻辑，不重复维护互相矛盾的格式表"
+      ],
+      "implemented": [
+        "回迁网站同源地图画匹配：OKLab/Redmean/加权/RGB、四种抖动、蛇形扩散、透明阈值、阶梯候选限高、轴向、背板与脚手架支撑",
+        "预览、纹理PNG与蓝图使用同一组方块索引，杜绝预览/原生导出各自重新匹配；默认展示地图色阶预览，纹理PNG仍可导出",
+        "按需方块组合弹窗：13材质/14颜色分组、名称和ID搜索、整组半选、搜索批量选择、应用/取消草稿、虚拟行与懒加载图标",
+        "Worker可终止任务及过期结果隔离；KeepAlive停用取消生成、关闭导出弹窗，保留已完成结果；工具箱使用无整页变换的重页面切换",
+        "有界原生临时快照及二进制u16调色板IPC，接入共享格式/子格式/游戏版本/自定义替换/另存/事务入库，旧地图画直接入库不再由该页面调用",
+        "修正网站支撑的重复空白高度及背板下底面空洞；只有水平地图画生成竖直脚手架柱，其他方块仍需游戏内核查支撑条件"
+      ],
+      "pending": [
+        "模型工具仍待回迁Worker、实心填充、固定方块/材质色和三轴旋转，并接入同一快照与导出面板；此批没有声称已完成模型功能",
+        "本地批量转换的队列、逐项状态、失败隔离及共享版本配置",
+        "真实Tauri二进制IPC及系统文件对话框的隔离端到端测试；新增面板/生成器多语言；游戏内地图颜色/脚手架物理核验"
       ]
     },
     {
@@ -142,10 +157,11 @@
         "图标不内联入入口 JS，通用图标查询不拉入 3D 资源加载器",
         "材料表默认不加载 ECharts；图表按需加载，标签切换或 KeepAlive 停用释放画布，回来恢复；修复渐进列表 sentinel 重挂载观察",
         "原生字符串/数据/预览三个读取命令移入 spawn_blocking，读并发限制为一；提前释放 DB 连接，解析不占异步运行时线程",
-        "本地上传预检大小、捕获队列、防重复提交和清除旧计时器；逐个成功后更新列表，修复更新被计为新增的问题"
+        "本地上传预检大小、捕获队列、防重复提交和清除旧计时器；逐个成功后更新列表，修复更新被计为新增的问题",
+        "地图画匹配移到可终止Worker；预览和导出同源；自选方块控件仅在弹窗打开时创建，切页取消未完成任务并复用方块数据"
       ],
       "pending": [
-        "非 3D 蓝图预览工具（地图画、模型工具等）的缓存激活/停用与后台任务治理",
+        "模型/音乐工具的缓存激活/停用与后台任务治理；地图画Worker已治理，真实WebView峰值内存及启动指标仍需复核",
         "首次进入重工具页面的前台帧时间检查",
         "编辑和生成任务下的导航延迟、资源释放及峰值内存回归",
         "新增文案与现有多语言设置对齐",
@@ -197,7 +213,13 @@
         "文本预览的17MiB展开数组被拒绝转大文本，源文件字节未改变且原生读取可用；恶意深SNBT不覆盖旧文件；导入事务/BE水层/JE版本既有测试均通过",
         "本地上传4项逻辑测试覆盖读文件前拒绝超限、部分成功计数、更新不加数量、旧定时器清除、捕获队列及防重复提交",
         "未改动页面布局或声称本批验证了3D大文件交互；完整原生UI/IPC、重负载帧时间仍在待验收清单",
-        "本批仍有未使用项/可见性等 Rust 警告与 Vite 大 chunk 提示，未宣称零警告；C盘约8.67GiB、D盘约41.58GiB，无需清缓存"
+        "本批仍有未使用项/可见性等 Rust 警告与 Vite 大 chunk 提示，未宣称零警告；C盘约8.67GiB、D盘约41.58GiB，无需清缓存",
+        "地图画批次：Rust库145通过、2默认忽略；新增4项临时快照/六格式往返测试；Node组合30项通过，pnpm build及cargo check库/程序入口通过",
+        "真实Worker/画布与模拟原生IPC：64×48渐变含8×8透明区域生成3008方块；原生临时输入6619字节，未调用旧create_map_art命令",
+        "旧版导出要求选择目标5，BE清空Java参数；900ms延迟准备后关闭弹窗释放迟到快照；模拟失败未保留快照，重试可用；纹理PNG实际下载",
+        "1000×760弹窗left120/right880、无横向溢出，色组14且按需渲染；截图toolbox-export-legacy-1000.png和toolbox-palette-colors-1000.png已查看",
+        "重负载1024²/320块/阶梯：初样本有109.2ms长帧，重页面切换复测60前台帧最大30.2ms/0空白，目标页约66.2ms出现、terminate约23.3ms调用；随后Worker数0。单机诊断非普遍帧率保证",
+        "此批未触及真实用户蓝图库或网站部署，未移植3D打印；C8.63GiB/D41.39GiB，无需清编译缓存"
       ],
       "remaining": [
         "后续转换及导出能力的坐标/属性/实体往返测试",
@@ -212,7 +234,7 @@
   "checkpoint": {
     "status": "validated_source_checkpoint",
     "branch": "desktop-api-v1-20261018",
-    "scope": "本批：六格式有界解析、网站大稀疏读取、BE双层流式合并、文本预览预算、后台读取和上传边界；整体Goal仍未完成",
+    "scope": "本批：网站地图画算法/设置与调色板回迁、可取消Worker、统一生成快照与版本导出、重页面切换；模型与批量转换及原生端到端仍待完成",
     "excluded": [
       "src-tauri/schematic/out2.litematic",
       ".playwright-cli/",
@@ -220,6 +242,6 @@
       "output/",
       "pelican-bicycle.html"
     ],
-    "baseCommit": "b5e13637e1ebddd7e01c282ed6f2c7b22bdcefc5"
+    "baseCommit": "1acdf1a4541b1833e461a2c0181d0afbeee7a0ff"
   }
 }

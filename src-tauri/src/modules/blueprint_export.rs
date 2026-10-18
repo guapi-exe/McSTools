@@ -26,6 +26,7 @@ static EXPORT_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExportSource {
+    Generated { generation_id: u64 },
     Editor {
         session_id: u64,
         revision: u64,
@@ -87,6 +88,11 @@ impl ParsedSource {
 
 fn source_data(app: &AppHandle, source: ExportSource) -> Result<ParsedSource> {
     match source {
+        ExportSource::Generated { generation_id } => {
+            use crate::modules::generated_blueprint::{GeneratedBlueprintState, SOURCE_DATA_VERSION};
+            let source = app.state::<GeneratedBlueprintState>().snapshot(generation_id)?;
+            Ok(ParsedSource { data: source.data, data_version: Some(SOURCE_DATA_VERSION), name: source.name, library: None })
+        }
         ExportSource::Editor {
             session_id,
             revision,

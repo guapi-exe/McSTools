@@ -17,7 +17,7 @@ const FIXED_LAYOUT_ROUTES = new Set(['schematic']);
 // subtree into a transformed, will-change layer is the main source of
 // route-switch jank, so navigation involving these pages swaps instead of
 // sliding. Slides stay for the light pages.
-const HEAVY_ROUTES = new Set(['tools', ...FIXED_LAYOUT_ROUTES]);
+const HEAVY_ROUTES = new Set(['tools', 'others', ...FIXED_LAYOUT_ROUTES]);
 
 export type PageTransitionName = 'page-forward' | 'page-backward' | 'page-fade' | 'page-none';
 
