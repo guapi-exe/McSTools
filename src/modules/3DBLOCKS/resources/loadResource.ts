@@ -8,7 +8,7 @@ import {
     upperPowerOfTwo
 } from "deepslate";
 import {blockResources} from "./ResourceStore";
-export const blockIconSpriteMap: Record<string, { atlasUrl: string, uv: [number, number, number, number] }> = {};
+import {blockIconSpriteMap} from './IconSprites';
 
 const yieldToMainThread = async () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));

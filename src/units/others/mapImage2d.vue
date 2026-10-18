@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, nextTick, onBeforeMount, onMounted, reactive, ref} from "vue";
+import {computed, nextTick, onBeforeMount, onMounted, reactive, ref, shallowRef} from "vue";
 import {ensureMapArtData, mapArtData} from "../../modules/map_art/map_art_data.ts"
 import {getBlockImg, toast} from "../../modules/others.ts";
 import {encode_image, image_data, releaseProcessedImage} from "../../modules/map_art/encode_image.ts";
@@ -83,7 +83,8 @@ const dialog = ref(false)
 const fullscreenDialog = ref(false)
 const selectedBlocks = ref<string[]>([]);
 const expandedCategories = ref<string[]>([])
-const imageBuild = ref<MapArtProcessor>();
+// The processor's maps and read-only palette must not become deep proxies.
+const imageBuild = shallowRef<MapArtProcessor>();
 const mapImg = ref<File>();
 const finallyImage = ref<HTMLCanvasElement>()
 const threeD = ref<boolean>()
@@ -766,7 +767,7 @@ onBeforeMount(async() => {
               v-for="category in mapArtData"
               :key="category.name"
               :value="category.name"
-              v-memo="[category.name, isCategorySelected(category.name), selectedBlocks.length]"
+              v-memo="[category.name, isCategoryExpanded(category.name), selectedBlockSet]"
           >
             <template v-slot:activator="{ props }">
               <v-list-item

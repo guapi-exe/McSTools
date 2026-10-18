@@ -62,6 +62,34 @@ const VERSIONS: &[(&str, &str)] = &[
         "1.21.1",
         include_str!("../../../data/java_blocks_1.21.1.json"),
     ),
+    (
+        "1.21.3",
+        include_str!("../../../data/java_blocks_1.21.3.json"),
+    ),
+    (
+        "1.21.4",
+        include_str!("../../../data/java_blocks_1.21.4.json"),
+    ),
+    (
+        "1.21.5",
+        include_str!("../../../data/java_blocks_1.21.5.json"),
+    ),
+    (
+        "1.21.6",
+        include_str!("../../../data/java_blocks_1.21.6.json"),
+    ),
+    (
+        "1.21.8",
+        include_str!("../../../data/java_blocks_1.21.8.json"),
+    ),
+    (
+        "1.21.9",
+        include_str!("../../../data/java_blocks_1.21.9.json"),
+    ),
+    (
+        "1.21.11",
+        include_str!("../../../data/java_blocks_1.21.11.json"),
+    ),
 ];
 
 /// Pre-flattening Java releases use the same namespaced block-state model in
@@ -140,6 +168,10 @@ impl VersionBlockStates {
             .map(|index| &self.blocks[*index])
     }
 
+    pub fn block_names(&self) -> impl Iterator<Item = &str> {
+        self.blocks.iter().map(|block| block.name.as_str())
+    }
+
     pub fn block_count(&self) -> usize {
         self.blocks.len()
     }
@@ -186,6 +218,13 @@ pub fn data_version(version: &str) -> Option<i32> {
         "1.20.1" => Some(3465),
         "1.20.4" => Some(3700),
         "1.21.1" => Some(3955),
+        "1.21.3" => Some(4082),
+        "1.21.4" => Some(4189),
+        "1.21.5" => Some(4325),
+        "1.21.6" => Some(4435),
+        "1.21.8" => Some(4440),
+        "1.21.9" => Some(4554),
+        "1.21.11" => Some(4671),
         _ => None,
     }
 }
@@ -644,11 +683,257 @@ fn force_compatibility_fallback(version: &str, name: &str) -> bool {
         version,
         "1.13.2" | "1.14.4" | "1.15.2" | "1.16.1" | "1.17.1" | "1.18.2" | "1.19.4"
     );
-    let before_1_20_4 = !matches!(version, "1.20.4" | "1.21.1");
+    let before_1_20_4 = data_version(version).is_some_and(|id| id < 3700);
 
     (before_1_20 && (name.starts_with("cherry_") || name.starts_with("sniffer_")))
         || (before_1_20_4 && name == "short_grass")
         || (!before_1_20_4 && name == "grass")
+}
+
+/// Explicit aliases for the 1.21.x additions. Test every candidate against the
+/// target registry: updating resources must never write a future block into an
+/// old DataVersion. These are lossy building substitutes, not gameplay emulation.
+fn recent_compatibility_fallback(target: &VersionBlockStates, name: &str) -> Option<String> {
+    let mut candidates = Vec::<String>::new();
+    if name == "chain" {
+        candidates.push("iron_chain".into());
+    } else if name == "iron_chain" {
+        candidates.extend(["chain".into(), "iron_bars".into()]);
+    }
+
+    if name.contains("pale_oak") {
+        candidates.push(name.replace("pale_oak", "birch"));
+        if name.ends_with("wall_hanging_sign") || name.ends_with("wall_sign") {
+            candidates.extend([
+                "birch_wall_sign".into(),
+                sign_fallback_name(&target.version, true),
+            ]);
+        } else if name.ends_with("sign") {
+            candidates.extend([
+                "birch_sign".into(),
+                sign_fallback_name(&target.version, false),
+            ]);
+        }
+    }
+    if name.ends_with("_shelf") {
+        candidates.push("bookshelf".into());
+    }
+    if let Some(suffix) = name.strip_prefix("resin_brick") {
+        candidates.push(format!("brick{suffix}"));
+    }
+    if name.ends_with("lightning_rod") {
+        candidates.extend(["lightning_rod".into(), "iron_bars".into()]);
+    }
+    if name.contains("copper") {
+        if let Some(material) = name.strip_suffix("_golem_statue") {
+            candidates.push(match material {
+                "copper" => "copper_block".into(),
+                "waxed_copper" => "waxed_copper_block".into(),
+                other => other.into(),
+            });
+            candidates.push("iron_block".into());
+        }
+        for (suffix, replacements) in [
+            ("_chest", &["chest"][..]),
+            ("_lantern", &["lantern", "torch"][..]),
+            ("_wall_torch", &["wall_torch"][..]),
+            ("_torch", &["torch"][..]),
+            ("_bars", &["iron_bars"][..]),
+            ("_chain", &["iron_chain", "chain", "iron_bars"][..]),
+            ("_door", &["iron_door"][..]),
+            ("_trapdoor", &["iron_trapdoor"][..]),
+            ("_bulb", &["redstone_lamp"][..]),
+            ("_grate", &["iron_bars"][..]),
+        ] {
+            if name.ends_with(suffix) {
+                candidates.extend(replacements.iter().map(|name| (*name).to_owned()));
+            }
+        }
+    }
+    let replacements: &[&str] = match name {
+        "creaking_heart" => &["stripped_oak_log", "oak_log"],
+        "resin_clump" => &["vine"],
+        "resin_block" | "chiseled_resin_bricks" => &["orange_terracotta"],
+        "pale_moss_block" => &["moss_block", "light_gray_wool"],
+        "pale_moss_carpet" => &["moss_carpet", "light_gray_carpet"],
+        "pale_hanging_moss" => &["vine"],
+        "bush" | "firefly_bush" => &["fern"],
+        "short_dry_grass" | "tall_dry_grass" => &["dead_bush"],
+        "wildflowers" => &["dandelion"],
+        "cactus_flower" => &["pink_tulip"],
+        "leaf_litter" => &["brown_carpet"],
+        "open_eyeblossom" => &["orange_tulip"],
+        "closed_eyeblossom" => &["white_tulip"],
+        "potted_open_eyeblossom" => &["potted_orange_tulip"],
+        "potted_closed_eyeblossom" => &["potted_white_tulip"],
+        "dried_ghast" => &["soul_sand"],
+        "test_block" | "test_instance_block" => &["stone"],
+        _ => &[],
+    };
+    candidates.extend(replacements.iter().map(|name| (*name).to_owned()));
+    candidates
+        .into_iter()
+        .find(|candidate| target.block_by_name(candidate).is_some())
+}
+
+/// Shapes that name a kind of block rather than a material.
+///
+/// A block the target release never had often has a sibling that it did: a
+/// `cinnabar_slab` is a slab, a `birch_shelf` is a shelf. Stripping the shape
+/// first, and the material only if that fails, keeps the substitute as close to
+/// the original as the target allows.
+const SHAPE_SUFFIXES: &[&str] = &[
+    "_pressure_plate",
+    "_hanging_sign",
+    "_fence_gate",
+    "_trapdoor",
+    "_stairs",
+    "_button",
+    "_lantern",
+    "_statue",
+    "_shelf",
+    "_chest",
+    "_golem",
+    "_fence",
+    "_slab",
+    "_wall",
+    "_door",
+    "_bars",
+    "_chain",
+    "_grate",
+    "_bulb",
+    "_sign",
+    "_carpet",
+    "_pane",
+    "_bed",
+    "_candle",
+    "_torch",
+    "_block",
+    "_bricks",
+    "_brick",
+    "_tiles",
+    "_tile",
+    "_planks",
+    "_log",
+    "_wood",
+];
+
+/// Plain materials a missing block falls back to. The shape is kept, so a slab
+/// stays a slab and only the material becomes generic.
+const PLAIN_MATERIALS: &[&str] = &[
+    "stone",
+    "oak",
+    "iron",
+    "white_wool",
+    "oak_planks",
+    "cobblestone",
+    "deepslate",
+    "brick",
+];
+
+/// Material or style words that qualify a shape. Removing one from the front
+/// turns `oxidized_copper_golem_statue` into progressively plainer names.
+const QUALIFIERS: &[&str] = &[
+    "waxed",
+    "oxidized",
+    "weathered",
+    "exposed",
+    "infested",
+    "cracked",
+    "mossy",
+    "chiseled",
+    "polished",
+    "smooth",
+    "cut",
+    "stripped",
+    "warped",
+    "crimson",
+    "dead",
+    "potted",
+    "wall",
+    "open",
+    "closed",
+    "small",
+    "large",
+    "tall",
+];
+
+/// A substitute for a block the target release does not have.
+///
+/// Returns `None` when nothing suitable exists, which leaves the caller to
+/// report the block by name rather than write a wrong one silently.
+pub fn degrade_block_for_java(target_version: &str, name: &str) -> Option<String> {
+    let target = version(target_version)?;
+    if name.contains(':') && !name.starts_with("minecraft:") {
+        return None;
+    }
+    let bare = bare_block_name(name);
+
+    // Tried in order, and the order is the point: anything that keeps the shape
+    // comes first, because a stair that turns into a full block changes the
+    // build, while a plainer material of the same shape does not.
+    let mut shape_keeping: Vec<String> = Vec::new();
+    let mut shape_dropping: Vec<String> = Vec::new();
+
+    // A shape suffix in the name means the shape is known; offer it with plainer
+    // materials before giving the shape up.
+    for shape in SHAPE_SUFFIXES {
+        if !bare.ends_with(shape) {
+            continue;
+        }
+        for material in PLAIN_MATERIALS {
+            shape_keeping.push(format!("{material}{shape}"));
+        }
+        for qualifier in QUALIFIERS {
+            shape_keeping.push(format!("{qualifier}{shape}"));
+        }
+    }
+    // Removing a leading qualifier keeps the shape too.
+    let mut trimmed = bare;
+    while let Some((head, tail)) = trimmed.split_once('_') {
+        if !QUALIFIERS.contains(&head) {
+            break;
+        }
+        trimmed = tail;
+        shape_keeping.push(trimmed.to_string());
+        for shape in SHAPE_SUFFIXES {
+            if trimmed.ends_with(shape) {
+                for material in PLAIN_MATERIALS {
+                    shape_keeping.push(format!("{material}{shape}"));
+                }
+            }
+        }
+    }
+    // Dropping the shape: the material itself, then progressively plainer ancestors.
+    for shape in SHAPE_SUFFIXES {
+        if let Some(base) = bare.strip_suffix(shape) {
+            shape_dropping.push(base.to_string());
+            for qualifier in QUALIFIERS {
+                if let Some(rest) = base.strip_prefix(qualifier) {
+                    let rest = rest.strip_prefix('_').unwrap_or(rest);
+                    shape_dropping.push(rest.to_string());
+                }
+            }
+        }
+    }
+    for suffix in ["_wood", "_log", "_planks"] {
+        if bare.ends_with(suffix) {
+            for material in PLAIN_MATERIALS {
+                shape_dropping.push(format!("{material}{suffix}"));
+            }
+        }
+    }
+    shape_dropping.push(bare.to_string());
+    let mut ancestor = bare;
+    while let Some((head, _)) = ancestor.rsplit_once('_') {
+        shape_dropping.push(head.to_string());
+        ancestor = head;
+    }
+
+    shape_keeping
+        .into_iter()
+        .chain(shape_dropping)
+        .find(|candidate| candidate != bare && target.block_by_name(candidate).is_some())
 }
 
 /// Normalize one Java-style block state for a concrete Java version.
@@ -663,6 +948,9 @@ pub fn normalize_block_for_java(
     target_version: &str,
     block: &BlockData,
 ) -> Result<Arc<BlockData>, SchematicError> {
+    if block.id.name.contains(':') && !block.id.name.starts_with("minecraft:") {
+        return Ok(Arc::new(block.clone()));
+    }
     if is_legacy_java_version(target_version) {
         return normalize_block_for_legacy(target_version, block);
     }
@@ -671,13 +959,40 @@ pub fn normalize_block_for_java(
         SchematicError::MissingField(format!("unknown Java target version: {target_version}"))
     })?;
 
+    // Vanilla tables cannot describe mod states. Preserve their namespace and
+    // properties so installed mods remain loadable in the target game.
+    if block.id.name.contains(':') && !block.id.name.starts_with("minecraft:") {
+        return Ok(Arc::new(block.clone()));
+    }
+
     let source_name = bare_block_name(block.id.name.as_ref());
     let target_name = if !force_compatibility_fallback(target_version, source_name)
         && target.block_by_name(source_name).is_some()
     {
         source_name.to_string()
-    } else if let Some(fallback) = compatibility_fallback(target_version, source_name) {
+    } else if let Some(fallback) =
+        recent_compatibility_fallback(target, source_name).or_else(|| {
+            compatibility_fallback(target_version, source_name)
+                .filter(|candidate| target.block_by_name(candidate).is_some())
+        })
+    {
         fallback
+    } else if let Some(degraded) = registry().iter()
+        .any(|data| data.block_by_name(source_name).is_some())
+        .then(|| degrade_block_for_java(target_version, source_name)).flatten() {
+        // The vanilla block is from a release the target predates. Naming the
+        // nearest block the target does have keeps a
+        // blueprint convertible; refusing it would leave the user with no
+        // conversion at all for one unknown block.
+        degraded
+    } else if registry()
+        .iter()
+        .any(|data| data.block_by_name(source_name).is_some())
+    {
+        // A known vanilla block with no compatible shape still occupies its
+        // position. Never silently erase it to air. Unknown IDs remain errors,
+        // and non-vanilla namespaces have already been preserved above.
+        "stone".to_string()
     } else {
         return Err(SchematicError::MissingField(format!(
             "block minecraft:{source_name} is unavailable in Java {target_version}"

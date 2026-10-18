@@ -9,10 +9,31 @@ use fastnbt::Value::Compound;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
-use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+pub(crate) fn normalized_entity_payload(root: &HashMap<String, Value>) -> HashMap<String, Value> {
+    let mut result = match root.get("Data") {
+        Some(Compound(data))
+            if root
+                .keys()
+                .all(|key| matches!(key.as_str(), "Id" | "Pos" | "Data")) =>
+        {
+            data.clone()
+        }
+        _ => root.clone(),
+    };
+    if let Some(Value::String(id)) = root
+        .get("id")
+        .or_else(|| root.get("Id"))
+        .or_else(|| root.get("identifier"))
+    {
+        result.insert("id".into(), Value::String(id.clone()));
+    }
+    result.remove("Id");
+    result
+}
 
 #[derive(Debug)]
 pub struct ToLmSchematic {
@@ -32,101 +53,24 @@ pub struct ToLmSchematic {
 impl ToLmSchematic {
     pub fn new(schematic: &SchematicData) -> Result<Self, SchematicError> {
         let mut block_list = schematic.blocks.clone();
-
-        let min = {
-            let elements = &block_list.elements;
-            if elements.is_empty() {
-                return Err(SchematicError::InvalidFormat("Block list cannot be empty"));
-            }
-
-            let global_min = elements
-                .par_iter()
-                .with_min_len(1_000_000)
-                .fold(
-                    || BlockPos {
-                        x: i32::MAX,
-                        y: i32::MAX,
-                        z: i32::MAX,
-                    },
-                    |mut acc, bp| {
-                        acc.x = std::cmp::min(acc.x, bp.pos.x);
-                        acc.y = std::cmp::min(acc.y, bp.pos.y);
-                        acc.z = std::cmp::min(acc.z, bp.pos.z);
-                        acc
-                    },
-                )
-                .reduce(
-                    || BlockPos {
-                        x: i32::MAX,
-                        y: i32::MAX,
-                        z: i32::MAX,
-                    },
-                    |mut rel, tem| {
-                        rel.x = std::cmp::min(rel.x, tem.x);
-                        rel.y = std::cmp::min(rel.y, tem.y);
-                        rel.z = std::cmp::min(rel.z, tem.z);
-                        rel
-                    },
-                );
-
-            BlockPos {
-                x: global_min.x.saturating_sub(1),
-                y: global_min.y,
-                z: global_min.z.saturating_sub(1),
-            }
-        };
-        let size = schematic.size;
-        let max = BlockPos {
-            x: min.x + size.width + 1,
-            y: min.y + size.height,
-            z: min.z + size.length + 1,
-        };
-
-        let air = Arc::new(BlockData {
-            id: BlockId {
-                name: Arc::from("minecraft:air"),
-            },
-            properties: BTreeMap::new(),
-        });
-        let capacity = ((max.y - min.y) as usize)
-            * (((max.z - min.z) * 2) + ((max.x - min.x) * 2) + 4) as usize;
-
-        block_list.reserve_front(capacity);
-
-        let positions: Vec<_> = (min.y..max.y)
-            .into_par_iter()
-            .flat_map(|y| {
-                let mut positions = Vec::with_capacity(
-                    (max.z - min.z) as usize * 2 + (max.x - min.x) as usize * 2 + 4,
-                );
-
-                for z in min.z..max.z {
-                    positions.push((min.x - 1, y, z));
-                    positions.push((max.x + 1, y, z));
-                }
-
-                for x in min.x..max.x {
-                    positions.push((x, y, min.z - 1));
-                    positions.push((x, y, max.z + 1));
-                }
-
-                positions.push((min.x - 1, y, min.z - 1));
-                positions.push((min.x - 1, y, max.z + 1));
-                positions.push((max.x + 1, y, min.z - 1));
-                positions.push((max.x + 1, y, max.z + 1));
-
-                positions
-            })
-            .collect();
-        let air_blocks: VecDeque<_> = positions
-            .into_par_iter()
-            .map(|(x, y, z)| BlockStatePos::new(BlockPos { x, y, z }, Arc::clone(&air)))
-            .collect();
-
-        block_list.bulk_prepend(air_blocks);
-        let width = max.x - min.x + 1;
-        let height = max.y - min.y;
-        let length = max.z - min.z + 1;
+        let (min, max, size) =
+            crate::utils::conversion_bounds::conversion_bounds(&block_list, schematic.size)?;
+        let width = size.width;
+        let height = size.height;
+        let length = size.length;
+        // Missing sparse cells are air, not the first solid palette entry.
+        // An air sentinel also permits an explicitly empty declared frame.
+        block_list.add_to_first(
+            min.x,
+            min.y,
+            min.z,
+            &Arc::new(BlockData {
+                id: BlockId {
+                    name: Arc::from("minecraft:air"),
+                },
+                properties: BTreeMap::new(),
+            }),
+        );
         let (unique_block_states, block_state_to_index) = {
             let mut index_map = HashMap::new();
             let mut unique = Vec::new();
@@ -154,8 +98,34 @@ impl ToLmSchematic {
         let bits_unclamped = 32u32.saturating_sub(leading_zeros);
         let bits = (bits_unclamped as f64).max(2.0) as i32;
         let blocks = block_list.elements;
-        let tile_entities = schematic.tile_entities_list.clone();
-        let entities = schematic.entities_list.clone();
+        let mut tile_entities = schematic.tile_entities_list.clone();
+        for tile in &mut tile_entities.elements {
+            for (coordinate, origin, bound) in [
+                (tile.pos.x, min.x, width),
+                (tile.pos.y, min.y, height),
+                (tile.pos.z, min.z, length),
+            ] {
+                if coordinate
+                    .checked_sub(origin)
+                    .filter(|n| *n >= 0 && *n < bound)
+                    .is_none()
+                {
+                    return Err(SchematicError::InvalidFormat(
+                        "Litematica block entity is outside export bounds",
+                    ));
+                }
+            }
+            let (id, mut data) = crate::utils::java_entities::java_entity_data(
+                &tile.nbt,
+                tile_entities.original_type,
+            )?;
+            data.insert("id".into(), Value::String(id));
+            tile.nbt = Compound(data);
+        }
+        let entities = crate::utils::java_entities::local_java_entities(
+            &schematic.entities_list,
+            [min.x, min.y, min.z],
+        )?;
         //println!("{:?}", blocks);
         Ok(Self {
             blocks,
@@ -253,13 +223,14 @@ impl ToLmSchematic {
             .elements
             .iter()
             .map(|te| {
-                let nx = te.pos.x + 1;
-                let ny = te.pos.y;
-                let nz = te.pos.z + 1;
+                let nx = te.pos.x - self.start_pos.x;
+                let ny = te.pos.y - self.start_pos.y;
+                let nz = te.pos.z - self.start_pos.z;
 
                 match &te.nbt {
                     Compound(map) => {
-                        let mut new_map = map.clone();
+                        let mut new_map = normalized_entity_payload(map);
+                        new_map.remove("Pos");
                         new_map.insert("x".to_string(), Value::Int(nx));
                         new_map.insert("y".to_string(), Value::Int(ny));
                         new_map.insert("z".to_string(), Value::Int(nz));
@@ -281,7 +252,7 @@ impl ToLmSchematic {
         self.entities
             .elements
             .iter()
-            .map(|e| e.nbt.clone())
+            .map(|entity| entity.nbt.clone())
             .collect()
     }
     pub fn lm_palette(&self) -> Value {

@@ -200,6 +200,24 @@ pub fn is_supported_version(version: &str) -> bool {
     LEGACY_VERSIONS.contains(&version)
 }
 
+pub fn legacy_version_for_data_version(data_version: i32) -> Option<&'static str> {
+    [("1.7.10", 5), ("1.8.9", 47), ("1.9.4", 184), ("1.10.2", 512),
+        ("1.11.2", 922), ("1.12.2", 1343)]
+        .into_iter().find_map(|(name, id)| (id == data_version).then_some(name))
+}
+
+pub fn declared_game_version(nbt: &fastnbt::Value) -> Option<&str> {
+    let fastnbt::Value::Compound(root) = nbt else { return None; };
+    let fastnbt::Value::String(name) = root.get("MinecraftVersion")? else { return None; };
+    is_supported_version(name).then_some(name.as_str())
+}
+
+pub fn block_names_for_version(version: &str) -> Vec<String> {
+    codec().defaults.iter().filter_map(|(name, &(id, _))| {
+        target_state_allowed(version, id, bare_name(name)).then(|| name.to_string())
+    }).collect()
+}
+
 /// Normalize a modern Java block state to a state representable by the
 /// requested legacy numeric palette.
 ///
@@ -332,7 +350,7 @@ fn normalize_tile_entities(source: &TileEntitiesList) -> TileEntitiesList {
 /// omitted because writing their names into a 1.7.10 schematic produces an
 /// entity that the target client cannot load. This is intentionally a lossy
 /// fallback, matching the block-level downgrade policy.
-fn normalize_tile_entity_nbt(nbt: &fastnbt::Value) -> Option<fastnbt::Value> {
+pub(crate) fn normalize_tile_entity_nbt(nbt: &fastnbt::Value) -> Option<fastnbt::Value> {
     let fastnbt::Value::Compound(map) = nbt else {
         return Some(nbt.clone());
     };

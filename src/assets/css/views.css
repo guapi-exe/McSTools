@@ -8,6 +8,13 @@
     animation: rowEntrance var(--motion-fast) var(--ease-standard) both;
 }
 
+/* The router already animates entry. Do not stack a second transform or
+   animate fixed cards, whose edges must stay aligned with the sidebar. */
+.page-view .animate-row,
+.animate-row.full-screen-card {
+    animation: none;
+}
+
 @keyframes rowEntrance {
     from {
         opacity: 1;

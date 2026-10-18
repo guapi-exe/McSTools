@@ -45,6 +45,9 @@ export default defineConfig(async () => ({
         },
         build: {
             target: 'es2020',
+            // Thousands of small block icons otherwise become base64 strings
+            // in the entry JS. External files decode lazily and cache normally.
+            assetsInlineLimit: 0,
             rollupOptions: {
                 output: {
                     manualChunks: {

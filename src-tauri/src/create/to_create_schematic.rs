@@ -138,8 +138,22 @@ impl ToCreateSchematic {
 
             (unique, index_map)
         };
-        let tile_entities = schematic.tile_entities_list.clone();
-        let entities = schematic.entities_list.clone();
+        let mut tile_entities = schematic.tile_entities_list.clone();
+        for tile in &mut tile_entities.elements {
+            let (id, mut data) = crate::utils::java_entities::java_entity_data(
+                &tile.nbt,
+                tile_entities.original_type,
+            )?;
+            for key in ["x", "y", "z", "Pos"] {
+                data.remove(key);
+            }
+            data.insert("id".into(), Value::String(id));
+            tile.nbt = Compound(data);
+        }
+        let entities = crate::utils::java_entities::local_java_entities(
+            &schematic.entities_list,
+            [min.x, min.y, min.z],
+        )?;
 
         Ok(Self {
             blocks,
@@ -179,7 +193,32 @@ impl ToCreateSchematic {
         self.entities
             .elements
             .iter()
-            .map(|e| e.nbt.clone())
+            .map(|entity| {
+                let Compound(data) = &entity.nbt else {
+                    unreachable!("constructor validates entity compounds")
+                };
+                let position = data
+                    .get("Pos")
+                    .expect("constructor validates entity positions")
+                    .clone();
+                let coordinates = crate::utils::schematic_editing::entity_position(&entity.nbt)
+                    .expect("validated position");
+                let mut nbt = data.clone();
+                nbt.remove("Pos");
+                Compound(HashMap::from([
+                    ("pos".into(), position),
+                    (
+                        "blockPos".into(),
+                        Value::List(
+                            coordinates
+                                .into_iter()
+                                .map(|n| Value::Int(n.floor() as i32))
+                                .collect(),
+                        ),
+                    ),
+                    ("nbt".into(), Compound(nbt)),
+                ]))
+            })
             .collect()
     }
     pub fn create_blocks(&self, air: bool) -> Value {

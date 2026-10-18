@@ -4,7 +4,7 @@ import {ref} from "vue";
 import {appStore} from "./store.ts";
 import {initTheme} from "./theme.ts";
 import {ThemeInstance} from "vuetify/framework";
-import { blockIconSpriteMap } from "./3DBLOCKS";
+import { blockIconSpriteMap } from "./3DBLOCKS/resources/IconSprites";
 export const toast = useToast();
 export const selectLoading = ref();
 // Vuetify's v-list `selected` model is an array, even when the list uses a

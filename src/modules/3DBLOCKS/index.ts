@@ -3,7 +3,7 @@ export type { PlacedBlock } from './core/BlockWorld';
 export { ThreeDBlocksRenderer } from './renderer/ThreeDBlocksRenderer';
 export { InteractiveCanvas } from './runtime/InteractiveCanvas';
 export { ensureThreeDBlocksResources } from './resources/ResourceAdapter';
-export { blockIconSpriteMap } from './resources/loadResource';
+export { blockIconSpriteMap } from './resources/IconSprites';
 export { blockResources, loadThreeDBlocksResources } from './resources/ResourceStore';
 export { exportObjStructurePackageToDirectory, safeObjPackageName } from './export/ObjStructureExporter';
 export type { CameraState, RayData } from './runtime/InteractiveCanvas';

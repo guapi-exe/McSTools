@@ -166,7 +166,9 @@ onBeforeRouteLeave(navigationGuard)
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 600px;
+  flex: 1 1 280px;
+  min-width: 180px;
+  max-width: 480px;
   margin-left: 16px;
 }
 

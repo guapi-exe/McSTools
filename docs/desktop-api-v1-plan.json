@@ -1,0 +1,182 @@
+{
+  "objective": "接入新 MCS API，回迁网站蓝图编辑及非 3D 打印工具箱功能，并在现有风格下改善流畅度",
+  "status": "in_progress",
+  "updatedOn": "2026-10-18",
+  "references": {
+    "conversation": "new_mcs · 继承上下文（已修复）",
+    "openapi": "https://www.mcschematic.top/api/v1/openapi.json?audience=developer",
+    "websiteSource": "D:/git/new_mcs",
+    "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea"
+  },
+  "baseline": {
+    "status": "pushed_before_edits",
+    "remote": "https://github.com/guapi-exe/McSTools.git",
+    "branch": "desktop-api-v1-20261018",
+    "commit": "50b52f1",
+    "excluded": [
+      "src-tauri/schematic/out2.litematic",
+      ".playwright-cli",
+      ".zcode",
+      "pelican-bicycle.html"
+    ]
+  },
+  "constraints": [
+    "保留原有 Vue/Vuetify、主题和侧栏整体风格",
+    "不改动或部署网站，不搬运无关 SEO 修改",
+    "不移植 3D 打印、切片器、Bambu Studio 或耗材功能",
+    "API Key 只读且仅驻留内存，不放入 URL、日志或配置文件",
+    "生产接口仅进行公开只读核对，测试不写真实用户蓝图库",
+    "空间不足时才清理明确可重建的编译缓存，不删除用户数据"
+  ],
+  "phases": [
+    {
+      "id": "api",
+      "status": "implemented_initial_verification",
+      "requirements": [
+        "公开蓝图库：新版字段、服务端游标、分类/格式/来源版本/搜索/优选/排序",
+        "个人蓝图及收藏只读范围，过期、权限不足和不可用收藏的清晰状态",
+        "选择网站不可变版本，下载该版本原文件而非预览传输格式",
+        "原生有界下载与后台解析，避免 WebView 数字数组传输整个文件",
+        "固定 API 路径及 HTTPS 域名边界，跨来源重定向不携带凭据",
+        "限流等待、并发限额、去重和过期异步响应隔离"
+      ],
+      "pendingVerification": [
+        "在隔离的 Tauri 应用数据目录里验证完整 IPC 到本地数据库导入",
+        "补充网络中断、下载重定向和账户权限的传输层故障用例"
+      ]
+    },
+    {
+      "id": "blueprint_editor_backport",
+      "status": "editing_and_export_implemented_native_integration_pending",
+      "implemented": [
+        "Rust 后台非破坏编辑会话，stage/render/commit 两阶段确认；失败候选不进入撤销历史",
+        "全局/区域方块替换、状态保留选项、移除被替换方块的容器载荷",
+        "内/外裁剪；负坐标、浮点实体、乘客和悬挂实体锚点重定位及溢出保护",
+        "最多 3 步且 400 万非原始记录的撤销历史，原始快照可重置",
+        "3D 两点点选、工作平面、正/侧/俯视、可拖动区域表面及常量规模线框",
+        "3D 页面停用释放 WebGL，保留临时副本；隐藏时取消未确认候选",
+        "整体/内部/外部导出在后台捕获已确认快照，不改变当前副本或撤销记录",
+        "共享格式/子格式/游戏版本导出面板；原生另存副本（拒绝覆盖、临时文件原子落盘）及新增到蓝图库",
+        "保持源文件的精确 DataVersion；无可靠 Java 版本时显式选目标；MCEdit 导入读取导出的 MinecraftVersion 元数据"
+      ],
+      "pending": [
+        "原生 IPC 集成测试；浏览器目前只模拟原生编辑协议，渲染器和资源是真实代码",
+        "将新增编辑 UI 中文文案纳入现有多语言系统",
+        "原生系统保存对话框、取消、拒绝覆盖、完整导入事务与隔离 SQLite 数据库验证"
+      ],
+      "requirements": [
+        "3D 方块拾取与高亮，来源/目标方块选择器",
+        "全局与区域替换，保留兼容方块属性",
+        "两点选择、工作平面和视角预设、拖动区域边界",
+        "裁剪选区内部/外部，正确处理方块实体、实体与坐标",
+        "有界撤销历史和恢复原始会话，失败不覆盖已生效状态",
+        "全体/选区内/选区外导出，选择格式、子格式与版本",
+        "原始文件不被编辑预览静默覆盖，保存副本操作明确"
+      ]
+    },
+    {
+      "id": "conversion_and_materials",
+      "status": "shared_encoder_and_editor_ui_implemented_other_consumers_pending",
+      "inspectionFindings": [
+        "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
+        "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
+        "已实现共享原生编码器、兼容变更预览、同时应用的自定义替换和合法目标验证；编辑器导出已接入",
+        "已补入网站的 1.21.3/4/5/6/8/9/11 方块表与 DataVersion，UI 不再显示没有兼容表的转换目标",
+        "尚未接入原有 toolsConvert 弹窗、地图画、模型转换和批量工具；旧 convert 命令仍有默认版本逻辑，必须继续统一",
+        "现有通用 encode_uploaded_schematic 各分支先写数据库后写文件，缺少跨文件/数据库的失败清理；新导出副本复用该路径，需在原生集成验证前修复事务边界"
+      ],
+      "requirements": [
+        "格式转换默认保留来源 DataVersion，Java 游戏版本转换独立可选",
+        "最终输出同时应用格式、子格式、游戏版本与替换规则",
+        "兼容性变更预览、自定义替换目标验证和过期规则清理",
+        "未知原版方块不静默变空气，模组 ID 保留并说明限制",
+        "BE 输出不套用 Java 版本升级/降级",
+        "对齐网站大稀疏蓝图读取和有界 NBT 解码，不能只限制压缩文件传输大小",
+        "统一中文材料名称与 CSV，保留原始 ID、BOM、转义和公式注入防护"
+      ],
+      "implemented": [
+        "共享编码器区分格式转换与显式游戏版本转换，保留 patch/snapshot 的精确源 DataVersion",
+        "旧版数字目标要求选择 1.7.10–1.12.2；Java 命名调色板保留模组 ID，数字 MCEdit 对未知模组要求替换",
+        "BE 不接受 Java 版本和 Java 自定义替换参数；BG 明确提示不包含实体/容器",
+        "新增旧版实体根封装、常见旧版 ID 与坐标安全检查；未知旧版实体及不兼容乘客树报错，不声称完整 DataFixer",
+        "对替换掉类型的容器载荷做清理；自定义替换源不存在、重复源或无效目标会拒绝导出"
+      ]
+    },
+    {
+      "id": "toolbox_backport",
+      "status": "pending",
+      "requirements": [
+        "对齐网站地图画的调色板、色彩设置和目标格式/版本导出",
+        "对齐非打印模型转体素蓝图工具的必要功能",
+        "新增本地批量转换，逐项状态、失败隔离和安全文件名",
+        "共享导出配置与兼容性逻辑，不重复维护互相矛盾的格式表"
+      ]
+    },
+    {
+      "id": "smoothness",
+      "status": "in_progress",
+      "implemented": [
+        "页面不再退场到完全透明后才挂载目标页，避免叠加入口动画",
+        "固定蓝图库不使用父级位移动画，保留侧栏边界",
+        "在线蓝图库虚拟列表、浅响应数据和搜索防抖",
+        "地图画展开状态纳入渲染缓存依赖，处理器改为浅响应式",
+        "图标不内联入入口 JS，通用图标查询不拉入 3D 资源加载器"
+      ],
+      "pending": [
+        "非 3D 蓝图预览工具（地图画、模型工具等）的缓存激活/停用与后台任务治理",
+        "首次进入重工具页面的前台帧时间检查",
+        "编辑和生成任务下的导航延迟、资源释放及峰值内存回归",
+        "新增文案与现有多语言设置对齐"
+      ]
+    },
+    {
+      "id": "verification",
+      "status": "in_progress",
+      "observed": [
+        "pnpm build 通过，仍有大 chunk 提示",
+        "cargo check --offline 同时通过库和 mcstools 程序入口；bin 仍有 39 个 warning，未宣称零警告",
+        "API TypeScript 适配单元测试 9 项通过",
+        "编辑几何单元测试 4 项通过，覆盖整数范围、工作平面、表面拾取与拖动限制",
+        "真实浏览器+模拟原生协议：120 石头替换为金块，预览后才提交；6×5×10 裁剪副本切页恢复，停用后 renderer/canvas 均释放",
+        "真实浏览器：提交失败保持 revision/历史，取消候选并恢复旧预览；撤销、两点拾取、鼠标拖动选区通过",
+        "模拟 900ms 编辑计算期间切页：revision 不变、候选释放、GPU 释放；1000px 窗口无横向溢出、编辑面板左边 108px 大于导航右边 72px",
+        "缩放窗口黑背景问题修复：先调整缓冲尺寸后清屏，ResizeObserver 驱动一次重绘；像素为 [245,245,245,255] 且 WebGL error=0",
+        "额外显式执行的真实公开 API 下载及桌面解析器测试 1 项通过",
+        "现有 WebGL2 eager/lazy 3D 渲染回归通过",
+        "浏览器模拟：版本 2 导入参数、快慢搜索竞态、分页、429 恢复、收藏占位与断开连接通过",
+        "1000px 视口：蓝图库左侧与导航右侧同为 72px；48 条数据仅渲染 5 行",
+        "真实方块表 UI：13 分类初始 0 子行，展开一个分类渲染 10 行且 10 张图标加载成功，单选/全选/收起通过",
+        "前台缓存切换采样 117 帧：0 空白帧、0 方块表重复请求，最大帧间隔约 54.6ms，仍需优化长帧；未使用后台标签节流样本作为性能结论",
+        "入口 JS 从 3585.43kB/gzip1700.51kB 降为 905.83kB/gzip161.80kB；此项不是启动耗时基准",
+        "本轮 Rust 库全量 98 项通过、1 项联网测试忽略；含精确 3578 DataVersion、同时替换、版本约束、模组/未知方块、Sponge->旧版实体封装、负坐标和 FileManager 读回测试",
+        "cargo check --offline 库和程序入口通过；库仍有 34 个既有警告，bin 39 个警告",
+        "本轮 pnpm build（vue-tsc + Vite）通过；Node API/编辑几何 13 项测试通过",
+        "真实浏览器/模拟原生命令：保持源版本提交 targetDataVersion=null；MCEdit 未选择旧版目标时阻止保存；目标5与自定义 oak_planks->gold_block 同时提交",
+        "浏览器 1000×760 导出弹窗：left140/right860、宽720、高约612，document无横向溢出；截图 output/playwright/api-v1/export-legacy-1000.png 已视觉检查",
+        "本轮新增导出面板仍仅为浏览器协议测试，不能证明系统保存对话框与真实数据库导入；后续必须补原生集成",
+        "本轮 WebGL2 冒烟测试通过：31,514 非空像素，eager32/lazy8块，距离裁剪与延迟上传有效；不是实际超大蓝图压力测试",
+        "浏览器模拟保存失败后 revision=0、history=0、方块280不变；切换BE后 Java选择器隐藏、targetDataVersion=null、overrides=[]，模拟新增入库参数正确"
+      ],
+      "remaining": [
+        "后续转换及导出能力的坐标/属性/实体往返测试",
+        "实际导出再解析核验格式、子格式和 DataVersion",
+        "BE 含水层、JE 方块状态、多版本输出的联合回归",
+        "原生桌面端完整交互复核，不能用浏览器 mock 代替原生验证",
+        "完成所有显式功能后再进行最终 Goal 完成审计",
+        "版本转换保留/清理的复杂实体及物品 NBT 仍需游戏内核验；现有提示明确不等同完整 Minecraft DataFixer"
+      ]
+    }
+  ],
+  "checkpoint": {
+    "status": "validated_source_checkpoint",
+    "branch": "desktop-api-v1-20261018",
+    "scope": "API v1初步接入、编辑副本和共享导出基础及前端性能修正；整体Goal未完成",
+    "excluded": [
+      "src-tauri/schematic/out2.litematic",
+      ".playwright-cli/",
+      ".zcode/",
+      "output/",
+      "pelican-bicycle.html"
+    ]
+  }
+}

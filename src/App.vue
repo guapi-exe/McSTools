@@ -6,7 +6,7 @@
         <v-main>
           <div class="scroll-container">
             <router-view v-slot="{ Component, route }">
-              <Transition :name="transitionName" mode="out-in" @after-leave="applyPendingScroll">
+              <Transition :name="transitionName" @enter="applyPendingScroll">
                 <KeepAlive :max="8" :include="keepAliveNames">
                   <component
                       :is="Component"

@@ -13,6 +13,7 @@ import { ChunkMeshBuilder, type ChunkBuildResult } from './ChunkMeshBuilder';
 import { GpuMesh, type MeshAttributeLocations } from './GpuMesh';
 import { GridRenderer } from './GridRenderer';
 import { OutlineRenderer } from './OutlineRenderer';
+import { RegionOverlayRenderer } from './RegionOverlayRenderer';
 import { SelectionHighlightRenderer } from './SelectionHighlightRenderer';
 import { ShaderProgram } from './ShaderProgram';
 
@@ -82,6 +83,7 @@ export class ThreeDBlocksRenderer {
   private readonly shader: ShaderProgram;
   private readonly grid: GridRenderer;
   private readonly outline: OutlineRenderer;
+  private readonly regionOverlay: RegionOverlayRenderer;
   private readonly selectionHighlight: SelectionHighlightRenderer;
   private readonly builder: ChunkMeshBuilder;
   private readonly perf = new PerfMonitor();
@@ -129,6 +131,7 @@ export class ThreeDBlocksRenderer {
     this.shader = new ShaderProgram(gl, vertexSource, fragmentSource);
     this.grid = new GridRenderer(gl);
     this.outline = new OutlineRenderer(gl);
+    this.regionOverlay = new RegionOverlayRenderer(gl);
     this.selectionHighlight = new SelectionHighlightRenderer(gl);
     this.builder = new ChunkMeshBuilder(gl, world, resources, this.chunkSize, this.supportsUint32Indices);
     this.attributes = {
@@ -295,6 +298,15 @@ export class ThreeDBlocksRenderer {
     this.grid.draw(view, this.projMatrix);
   }
 
+  // Resizing a drawing buffer clears it. Size the canvas before clearing, so
+  // a responsive sidebar/window resize cannot leave a black background until
+  // the next mouse-driven frame.
+  prepareFrame(color: Vec3 = [0.9608, 0.9608, 0.9608]) {
+    this.updateProjection();
+    this.gl.clearColor(color[0], color[1], color[2], 1);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+  }
+
   drawOutline(view: mat4, pos: Vec3, color: Vec3 = [1, 1, 1]) {
     this.updateProjection();
     this.outline.draw(view, this.projMatrix, pos, color);
@@ -302,6 +314,11 @@ export class ThreeDBlocksRenderer {
 
   setSelectionHighlightPositions(positions: Vec3[]) {
     this.selectionHighlight.setPositions(positions);
+  }
+
+  drawRegionBounds(view: mat4, min: Vec3, max: Vec3, color: Vec3 = [0.1, 0.55, 1]) {
+    this.updateProjection();
+    this.regionOverlay.draw(view, this.projMatrix, min, max, color);
   }
 
   clearSelectionHighlights() {
@@ -323,6 +340,7 @@ export class ThreeDBlocksRenderer {
     this.gl.deleteTexture(this.atlasTexture);
     this.grid.dispose();
     this.outline.dispose();
+    this.regionOverlay.dispose();
     this.selectionHighlight.dispose();
     this.shader.dispose();
   }

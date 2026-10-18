@@ -34,6 +34,13 @@ const BLOCK_STATE_CHANGE_RELEASES: &[(&str, i32)] = &[
     ("1.20.1", 3465),
     ("1.20.4", 3700),
     ("1.21.1", 3955),
+    ("1.21.3", 4082),
+    ("1.21.4", 4189),
+    ("1.21.5", 4325),
+    ("1.21.6", 4435),
+    ("1.21.8", 4440),
+    ("1.21.9", 4554),
+    ("1.21.11", 4671),
 ];
 
 fn release_version(name: &str) -> Option<(u32, u32, u32)> {
@@ -66,6 +73,8 @@ pub struct VersionData {
 impl VersionData {
     pub fn new() -> Self {
         let raw_data = "
+            1.21.11 4671
+            1.21.9 4554
             25w32a	4536
             25w31a	4534
             1.21.8	4440
@@ -752,15 +761,16 @@ impl VersionData {
             });
         }
 
-        // Add the newest stable release known by the bundled table.  It may
-        // not have a local block-state snapshot yet, but its DataVersion is a
-        // valid target and this keeps the UI from lagging behind Minecraft.
+        // Only advertise releases with a bundled compatibility table. A
+        // known DataVersion alone is not evidence that conversion is supported.
         let latest = self
             .name_to_id
             .keys()
             .filter_map(|name| {
                 let version = release_version(name)?;
-                in_release_range(name, minimum, maximum).then_some((version, name))
+                (in_release_range(name, minimum, maximum)
+                    && super::java_block_states::data_version(name).is_some())
+                    .then_some((version, name))
             })
             .max_by_key(|(version, _)| *version);
         if let Some((_, name)) = latest {

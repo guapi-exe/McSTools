@@ -1,6 +1,9 @@
 pub mod convert;
 pub mod history;
 pub mod map_art;
+pub mod mcs_api;
+pub mod blueprint_editor;
+pub mod blueprint_export;
 pub mod modules_data;
 pub mod replace;
 pub mod schematic;

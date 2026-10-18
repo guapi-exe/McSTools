@@ -585,6 +585,18 @@ impl FileManager {
         sub_version: i32,
         v_type: i32,
     ) -> Result<SchematicData> {
+        Ok(self.get_schematic_with_version(id, version, sub_version, v_type)?.0)
+    }
+
+    /// Parse once and retain the exact source DataVersion. The library's
+    /// display label is a registry boundary, not the original numeric value.
+    pub fn get_schematic_with_version(
+        &self,
+        id: i64,
+        version: i32,
+        sub_version: i32,
+        v_type: i32,
+    ) -> Result<(SchematicData, Option<i32>)> {
         let schematic_dir = self.schematic_dir(id)?;
         let file_ext = match v_type {
             1 => "nbt",
@@ -606,33 +618,30 @@ impl FileManager {
         match v_type {
             1 => {
                 let schematic = CreateSchematic::new_from_bytes(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                Ok((schematic.get_blocks_pos()?, schematic.get_data_version().ok()))
             }
             2 => {
                 let schematic = LmSchematic::new_from_bytes(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                Ok((schematic.get_blocks_pos()?, schematic.get_data_version().ok()))
             }
             3 => {
                 let schematic = WeSchematic::new_from_bytes(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                let subtype = schematic.get_type()?;
+                Ok((schematic.get_blocks_pos()?, schematic.get_data_version(subtype).ok()))
             }
             4 => {
                 let schematic = BgSchematic::new_from_data(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                Ok((schematic.get_blocks_pos()?, None))
             }
             5 => {
                 let schematic = BESchematic::new_from_bytes(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                Ok((schematic.get_blocks_pos()?, None))
             }
             6 => {
                 let schematic = McEditSchematic::new_from_bytes(data)?;
-                let blocks = schematic.get_blocks_pos();
-                Ok(blocks?)
+                let data_version = crate::mcedit::legacy_map::declared_game_version(&schematic.nbt)
+                    .and_then(|name| crate::utils::minecraft_data::versions_data::VersionData::new().game_version_id(name));
+                Ok((schematic.get_blocks_pos()?, data_version))
             }
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
@@ -696,6 +705,36 @@ fn nbt_bytes(data: &Value, v_type: i32) -> Result<Vec<u8>> {
         )?)
     } else {
         Ok(fastnbt::to_bytes(data)?)
+    }
+}
+
+#[cfg(test)]
+mod exact_version_tests {
+    use super::*;
+    use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockStatePosList};
+    use crate::utils::blueprint_export::{encode, ExportOptions};
+    use crate::utils::schematic_data::Size;
+    use std::sync::Arc;
+    #[test]
+    fn file_manager_returns_exact_versions_without_using_ui_labels() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager { data_dir: temporary.path().to_owned() };
+        let mut blocks = BlockStatePosList::default();
+        blocks.add_by_pos(0, 0, 0, Arc::new(BlockData { id: BlockId { name: "minecraft:stone".into() }, properties: Default::default() }));
+        let data = SchematicData::new(blocks, Default::default(), Default::default(), Size { width: 2, height: 2, length: 2 });
+        for (format, subtype, target, expected, ext) in [
+            (1, -1, None, 3578, "nbt"), (2, 6, None, 3578, "litematic"),
+            (3, 0, None, 3578, "schem"), (3, 1, None, 3578, "schem"),
+            (6, -1, Some(5), 5, "schematic"),
+        ] {
+            let options = ExportOptions { format, subtype, target_data_version: target, overrides: Vec::new(), include_air: false };
+            let bytes = encode(&data, &options, Some(3578)).unwrap();
+            let stored_subtype = if format == 2 { -1 } else { subtype };
+            manager.save_schematic_data(1, bytes, 0, stored_subtype, format, ext.into()).unwrap();
+            let (parsed, version) = manager.get_schematic_with_version(1, 0, stored_subtype, format).unwrap();
+            assert_eq!(version, Some(expected));
+            assert_eq!(parsed.size, data.size);
+        }
     }
 }
 

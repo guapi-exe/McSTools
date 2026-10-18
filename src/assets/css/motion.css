@@ -2,26 +2,21 @@
    so durations and easings stay consistent and easy to tune. */
 :root {
     --motion-fast: 160ms;
-    --motion-page: 200ms;
-    --motion-page-exit: 90ms;
+    --motion-page: 140ms;
+    --motion-page-exit: 0ms;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized: cubic-bezier(0.3, 0, 0.13, 1);
     --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-    --page-shift: 32px;
+    --page-shift: 6px;
     --radius-card: 12px;
 }
 
-/* PCL2-style directional page transitions (out-in): the old page fades out
-   fast while the new page slides in from the side it was approached from.
-   Leaving is opacity-only on purpose — transforming a fully rendered heavy
-   page (tools with data, long lists) forces a composite of an oversized layer
-   and is the main source of route-switch jank. The entering page carries the
-   directional motion instead. */
+/* Replace the outgoing page in the same frame. Never fade a whole route to
+   transparent or wait for its exit: that produces a visible blank flash.
+   Only lightweight incoming pages use a short settle movement. */
 .page-forward-enter-active,
 .page-backward-enter-active {
-    transition:
-        opacity var(--motion-page) var(--ease-standard),
-        transform var(--motion-page) var(--ease-emphasized);
+    transition: transform var(--motion-page) var(--ease-emphasized);
     /* Deliberately no will-change here: promoting the whole (often huge)
        incoming page into its own layer costs more raster time than the slide
        saves. */
@@ -29,45 +24,42 @@
 
 .page-forward-leave-active,
 .page-backward-leave-active {
-    transition: opacity var(--motion-page-exit) var(--ease-exit);
+    transition: none;
     pointer-events: none;
-    will-change: opacity;
 }
 
 .page-forward-enter-from {
-    opacity: 0;
+    opacity: 1;
     transform: translateX(var(--page-shift));
 }
 
 .page-forward-leave-to {
-    opacity: 0;
+    opacity: 1;
 }
 
 .page-backward-enter-from {
-    opacity: 0;
+    opacity: 1;
     transform: translateX(calc(var(--page-shift) * -1));
 }
 
 .page-backward-leave-to {
-    opacity: 0;
+    opacity: 1;
 }
 
-/* Opacity-only variant for pages whose layout relies on position:fixed
-   children (the full-screen schematic library) — a transform on the page
-   element would become their containing block. */
+/* Fixed-layout and heavy routes swap without promoting a giant GPU layer.
+   Transforms here would also move the library under the navigation drawer. */
 .page-fade-enter-active {
-    transition: opacity var(--motion-page) var(--ease-standard);
-    will-change: opacity;
+    transition: none;
 }
 
 .page-fade-leave-active {
-    transition: opacity var(--motion-page-exit) var(--ease-exit);
+    transition: none;
     pointer-events: none;
 }
 
 .page-fade-enter-from,
 .page-fade-leave-to {
-    opacity: 0;
+    opacity: 1;
 }
 
 /* First load and same-route navigations: no animation at all. */

@@ -104,7 +104,7 @@ onBeforeRouteLeave(navigationGuard)
                           density="default"
                           variant="outlined"
                           prepend-icon="mdi-web"
-                          @click="openLink('https://www.mcschematic.top/home/')"
+                          @click="openLink('https://www.mcschematic.top/')"
                       >
                         {{ t('about.actions.website') }}
                       </v-btn>
@@ -157,7 +157,7 @@ onBeforeRouteLeave(navigationGuard)
                             variant="outlined"
                             prepend-icon="mdi-web"
                             class="px-6"
-                        @click="openLink('https://www.mcschematic.top/home/')"
+                        @click="openLink('https://www.mcschematic.top/')"
                         >
                         {{ t('about.schematicSite.visit') }}
                         </v-btn>

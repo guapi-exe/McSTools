@@ -1,4 +1,6 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos};
+use crate::utils::entities::EntitiesList;
+use crate::utils::java_entities::java_entity_data;
 use crate::utils::schematic_data::{SchematicData, SchematicError};
 use crate::utils::tile_entities::TileEntitiesList;
 use anyhow::Result;
@@ -22,90 +24,18 @@ pub struct ToWeSchematic {
     pub unique_block_states: Vec<Arc<BlockData>>,
     pub block_state_to_index: HashMap<Arc<BlockData>, usize>,
     pub tile_entities: TileEntitiesList,
+    entities: EntitiesList,
 }
 
 impl ToWeSchematic {
     pub fn new(schematic: &SchematicData) -> Result<Self, SchematicError> {
         let block_list = schematic.blocks.clone();
-        let blocks = schematic.blocks.clone().elements;
-        if blocks.is_empty() {
-            return Err(SchematicError::InvalidFormat("Block list cannot be empty"));
-        }
-        let (observed_min, observed_max) = blocks.iter().fold(
-            (
-                BlockPos {
-                    x: i32::MAX,
-                    y: i32::MAX,
-                    z: i32::MAX,
-                },
-                BlockPos {
-                    x: i32::MIN,
-                    y: i32::MIN,
-                    z: i32::MIN,
-                },
-            ),
-            |(mut min, mut max), bp| {
-                min.x = min.x.min(bp.pos.x);
-                min.y = min.y.min(bp.pos.y);
-                min.z = min.z.min(bp.pos.z);
-                max.x = max.x.max(bp.pos.x);
-                max.y = max.y.max(bp.pos.y);
-                max.z = max.z.max(bp.pos.z);
-                (min, max)
-            },
-        );
-
-        let size = schematic.size;
-        let has_source_size = size.width > 0 && size.height > 0 && size.length > 0;
-        let use_zero_origin = has_source_size
-            && observed_min.x >= 0
-            && observed_min.y >= 0
-            && observed_min.z >= 0
-            && observed_max.x < size.width
-            && observed_max.y < size.height
-            && observed_max.z < size.length;
-        let min = if use_zero_origin {
-            BlockPos { x: 0, y: 0, z: 0 }
-        } else {
-            observed_min
-        };
-        let max = if has_source_size {
-            BlockPos {
-                x: observed_max.x.max(
-                    min.x
-                        .checked_add(size.width - 1)
-                        .ok_or(SchematicError::InvalidFormat("schematic width overflow"))?,
-                ),
-                y: observed_max.y.max(
-                    min.y
-                        .checked_add(size.height - 1)
-                        .ok_or(SchematicError::InvalidFormat("schematic height overflow"))?,
-                ),
-                z: observed_max.z.max(
-                    min.z
-                        .checked_add(size.length - 1)
-                        .ok_or(SchematicError::InvalidFormat("schematic length overflow"))?,
-                ),
-            }
-        } else {
-            observed_max
-        };
-
-        let width = max
-            .x
-            .checked_sub(min.x)
-            .and_then(|value| value.checked_add(1))
-            .ok_or(SchematicError::InvalidFormat("schematic width overflow"))?;
-        let height = max
-            .y
-            .checked_sub(min.y)
-            .and_then(|value| value.checked_add(1))
-            .ok_or(SchematicError::InvalidFormat("schematic height overflow"))?;
-        let length = max
-            .z
-            .checked_sub(min.z)
-            .and_then(|value| value.checked_add(1))
-            .ok_or(SchematicError::InvalidFormat("schematic length overflow"))?;
+        let (min, max, size) =
+            crate::utils::conversion_bounds::conversion_bounds(&block_list, schematic.size)?;
+        let blocks = block_list.elements;
+        let width = size.width;
+        let height = size.height;
+        let length = size.length;
 
         if [width, height, length]
             .into_iter()
@@ -135,7 +65,7 @@ impl ToWeSchematic {
                 properties: BTreeMap::new(),
             });
 
-            for block_pos in &block_list.elements {
+            for block_pos in &blocks {
                 let block_data = block_pos.block.clone();
 
                 if !seen.contains_key(&block_data) {
@@ -169,6 +99,10 @@ impl ToWeSchematic {
             unique_block_states,
             block_state_to_index,
             tile_entities,
+            entities: crate::utils::java_entities::local_java_entities(
+                &schematic.entities_list,
+                [min.x, min.y, min.z],
+            )?,
         })
     }
 
@@ -205,36 +139,56 @@ impl ToWeSchematic {
             .collect()
     }
 
-    fn build_tile_entities_list(&self) -> Vec<Value> {
+    fn build_tile_entities_list(&self, type_version: i32) -> Result<Vec<Value>, SchematicError> {
         self.tile_entities
             .elements
             .iter()
             .map(|te| {
-                let nx = te.pos.x - self.start_pos.x;
-                let ny = te.pos.y - self.start_pos.y;
-                let nz = te.pos.z - self.start_pos.z;
-
-                match &te.nbt {
-                    Compound(map) => {
-                        let mut new_map = map.clone();
-                        let new_pos = vec![nx, ny, nz];
-                        new_map.insert(
-                            "Pos".to_string(),
-                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
-                        );
-                        Compound(new_map)
-                    }
-                    other => {
-                        let mut new_map = HashMap::new();
-                        let new_pos = vec![nx, ny, nz];
-                        new_map.insert(
-                            "Pos".to_string(),
-                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
-                        );
-                        new_map.insert("nbt".to_string(), other.clone());
-                        Compound(new_map)
-                    }
+                let (id, mut data) = java_entity_data(&te.nbt, self.tile_entities.original_type)?;
+                let mut position = Vec::with_capacity(3);
+                for (coordinate, origin, bound) in [
+                    (te.pos.x, self.start_pos.x, self.width),
+                    (te.pos.y, self.start_pos.y, self.height),
+                    (te.pos.z, self.start_pos.z, self.length),
+                ] {
+                    let value = coordinate
+                        .checked_sub(origin)
+                        .filter(|value| *value >= 0 && *value < bound)
+                        .ok_or(SchematicError::InvalidFormat(
+                            "WorldEdit BlockEntity is outside export bounds",
+                        ))?;
+                    position.push(value);
                 }
+                for field in ["x", "y", "z", "Pos"] {
+                    data.remove(field);
+                }
+                Ok(sponge_entity(
+                    id,
+                    Value::IntArray(fastnbt::IntArray::new(position)),
+                    data,
+                    type_version,
+                ))
+            })
+            .collect()
+    }
+
+    fn build_entities_list(&self, type_version: i32) -> Result<Vec<Value>, SchematicError> {
+        self.entities
+            .elements
+            .iter()
+            .map(|entity| {
+                let Compound(mut data) = entity.nbt.clone() else {
+                    return Err(SchematicError::InvalidFormat(
+                        "entity payload is not a compound",
+                    ));
+                };
+                let Some(Value::String(id)) = data.remove("id") else {
+                    return Err(SchematicError::InvalidFormat("entity id is missing"));
+                };
+                let position = data
+                    .remove("Pos")
+                    .ok_or(SchematicError::InvalidFormat("entity position is missing"))?;
+                Ok(sponge_entity(id, position, data, type_version))
             })
             .collect()
     }
@@ -324,7 +278,11 @@ impl ToWeSchematic {
                 );
                 nbt.insert(
                     "BlockEntities".to_string(),
-                    Value::List(self.build_tile_entities_list()),
+                    Value::List(self.build_tile_entities_list(type_version)?),
+                );
+                nbt.insert(
+                    "Entities".to_string(),
+                    Value::List(self.build_entities_list(type_version)?),
                 );
                 Ok(Compound(nbt))
             }
@@ -335,12 +293,12 @@ impl ToWeSchematic {
                 blocks.insert("Palette".to_string(), self.we_palette());
                 let bytes_array = self.decode_to_bytes();
                 blocks.insert(
-                    "BlockData".to_string(),
+                    "Data".to_string(),
                     Value::ByteArray(fastnbt::ByteArray::new(bytes_array)),
                 );
                 blocks.insert(
                     "BlockEntities".to_string(),
-                    Value::List(self.build_tile_entities_list()),
+                    Value::List(self.build_tile_entities_list(type_version)?),
                 );
                 schematic.insert("Blocks".to_string(), Compound(blocks));
                 schematic.insert("Version".to_string(), Value::Int(3));
@@ -348,12 +306,34 @@ impl ToWeSchematic {
                 schematic.insert("Height".to_string(), Value::Short(self.height as i16));
                 schematic.insert("Width".to_string(), Value::Short(self.width as i16));
                 schematic.insert("DataVersion".to_string(), Value::Int(data_version));
+                schematic.insert(
+                    "Entities".to_string(),
+                    Value::List(self.build_entities_list(type_version)?),
+                );
                 nbt.insert("Schematic".to_string(), Compound(schematic));
                 Ok(Compound(nbt))
             }
-            _ => Err(SchematicError::InvalidFormat("?")),
+            _ => Err(SchematicError::InvalidFormat(
+                "Unsupported Sponge format version",
+            )),
         }
     }
+}
+
+fn sponge_entity(
+    id: String,
+    position: Value,
+    data: HashMap<String, Value>,
+    type_version: i32,
+) -> Value {
+    let mut root = if type_version == 1 {
+        HashMap::from([("Data".to_string(), Compound(data))])
+    } else {
+        data
+    };
+    root.insert("Id".to_string(), Value::String(id));
+    root.insert("Pos".to_string(), position);
+    Compound(root)
 }
 
 #[cfg(test)]

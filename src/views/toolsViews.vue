@@ -34,8 +34,8 @@ const router = useRouter()
 // VWindow uses v-show for inactive panels, so mounting every tool at once
 // makes entering the tools page needlessly expensive.  Create a panel on its
 // first visit and retain it afterwards so switching tabs does not lose form
-// state.  The 3D panel is handled separately below and is torn down when it
-// is not active to stop WebGL work in the background.
+// state. The 3D panel releases GPU resources on deactivation, but retains its
+// bounded native edit session so navigation does not discard unsaved edits.
 const loadedToolTabs = ref<Record<string, boolean>>({schematic: true})
 watch(activeTools, (value) => {
     if (value && value !== 'threeD') {
@@ -129,7 +129,9 @@ onMounted(async() => {
             <toolsStats v-if="loadedToolTabs.stats" :data="schematicRequirements"/>
           </v-window-item>
           <v-window-item value="threeD">
-            <tools-three-d v-if="activeTools === 'threeD'" />
+            <KeepAlive>
+              <tools-three-d v-if="activeTools === 'threeD'" />
+            </KeepAlive>
           </v-window-item>
         </v-window>
       </v-card>

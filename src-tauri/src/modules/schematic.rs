@@ -50,7 +50,7 @@ pub struct SchematicPreviewData {
 }
 
 fn is_air_block_id(id: &str) -> bool {
-    id.eq_ignore_ascii_case("minecraft:air") || id.eq_ignore_ascii_case("air")
+    crate::utils::schematic_editing::is_air(id)
 }
 
 fn preview_state_from_block(block: &BlockData) -> SchematicPreviewBlockState {
@@ -87,6 +87,17 @@ fn build_schematic_preview_data(data: SchematicData) -> SchematicPreviewData {
         non_air_count += 1;
     }
 
+    build_preview_in_frame(&data, min, data.size, non_air_count)
+}
+
+// Editing keeps its coordinate frame when a boundary block becomes air.
+// Recomputing the minimum for every preview would shift subsequent selections.
+pub(crate) fn build_preview_in_frame(
+    data: &SchematicData,
+    min: BlockPos,
+    size: crate::utils::schematic_data::Size,
+    non_air_count: usize,
+) -> SchematicPreviewData {
     let mut palette_lookup: HashMap<Arc<BlockData>, i32> = HashMap::new();
     let mut palette = Vec::new();
     let mut blocks = Vec::with_capacity(non_air_count.saturating_mul(4));
@@ -123,7 +134,7 @@ fn build_schematic_preview_data(data: SchematicData) -> SchematicPreviewData {
         .collect::<Vec<_>>();
     materials.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.id.cmp(&b.id)));
 
-    let mut tile_entities_list = data.tile_entities_list;
+    let mut tile_entities_list = data.tile_entities_list.clone();
     for tile_entity in tile_entities_list.elements.iter_mut() {
         tile_entity.pos.x -= min.x;
         tile_entity.pos.y -= min.y;
@@ -131,7 +142,7 @@ fn build_schematic_preview_data(data: SchematicData) -> SchematicPreviewData {
     }
 
     SchematicPreviewData {
-        size: data.size,
+        size,
         palette,
         blocks,
         materials,
@@ -652,7 +663,9 @@ pub async fn encode_uploaded_schematic(
                 let size = schematic.get_size()?;
 
                 let mut conn = db.0.get()?;
-                let game_version = if update {
+                let game_version = if let Some(version) = crate::mcedit::legacy_map::declared_game_version(&schematic.nbt) {
+                    version.to_string()
+                } else if update {
                     let existing = find_schematic(&mut conn, update_id)?;
                     if versions_data
                         .game_versions_for_format(6, -1)
@@ -682,8 +695,8 @@ pub async fn encode_uploaded_schematic(
                     schematic_tags: "".to_string(),
                     classification: "".to_string(),
                     updated_at: now.clone(),
-                    // Legacy `.schematic` has no DataVersion tag. Keep the
-                    // selected metadata version when replacing its contents.
+                    // Our exporter records MinecraftVersion explicitly. For
+                    // older files lacking it, retain the existing UI metadata.
                     game_version,
                     lm_version: 0,
                 };

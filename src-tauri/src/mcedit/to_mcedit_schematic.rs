@@ -133,6 +133,25 @@ impl ToMcEditSchematic {
             ));
         }
 
+        let mut tile_entities = schematic.tile_entities_list.clone();
+        for tile in &mut tile_entities.elements {
+            if tile.pos.x < min.x || tile.pos.x > max.x || tile.pos.y < min.y || tile.pos.y > max.y || tile.pos.z < min.z || tile.pos.z > max.z {
+                return Err(SchematicError::InvalidFormat("tile entity lies outside export bounds"));
+            }
+            let (mut id, mut payload) = crate::utils::java_entities::java_entity_data(&tile.nbt, tile_entities.original_type)?;
+            // Existing callers may already have selected a pre-1.11 entity
+            // palette (Sign/Chest/etc). Preserve that explicit spelling;
+            // the shared versioned exporter handles its own target spelling.
+            if let Compound(root) = &tile.nbt {
+                if let Some(Value::String(original)) = root.get("id") {
+                    if !original.contains(':') { id = original.clone(); }
+                }
+            }
+            payload.remove("Pos");
+            payload.insert("id".into(), Value::String(id));
+            tile.nbt = Compound(payload);
+        }
+        tile_entities.original_type = 2;
         Ok(Self {
             blocks,
             start_pos: min,
@@ -140,8 +159,8 @@ impl ToMcEditSchematic {
             width,
             height,
             length,
-            tile_entities: schematic.tile_entities_list.clone(),
-            entities: schematic.entities_list.clone(),
+            tile_entities,
+            entities: crate::utils::java_entities::local_java_entities(&schematic.entities_list, [min.x, min.y, min.z])?,
         })
     }
 
@@ -285,115 +304,9 @@ impl ToMcEditSchematic {
         self.entities
             .elements
             .iter()
-            .map(|e| normalize_entity_position(&e.nbt, self.start_pos))
+            .map(|e| e.nbt.clone())
             .collect()
     }
-}
-
-fn normalize_entity_position(nbt: &Value, start_pos: BlockPos) -> Value {
-    shift_entity_coordinates(
-        nbt,
-        [
-            -(start_pos.x as f64),
-            -(start_pos.y as f64),
-            -(start_pos.z as f64),
-        ],
-        [-start_pos.x, -start_pos.y, -start_pos.z],
-    )
-}
-
-/// Convert an entity tree from world coordinates to schematic-local
-/// coordinates. `Passengers` are nested compounds and commonly carry their
-/// own `Pos`; handling the tree recursively avoids leaving passenger entities
-/// at the source world's coordinates. `Leash` uses integer block coordinates,
-/// so it is shifted separately while preserving its integer tag types.
-fn shift_entity_coordinates(nbt: &Value, delta: [f64; 3], integer_delta: [i32; 3]) -> Value {
-    match nbt {
-        Compound(map) => {
-            let mut normalized = HashMap::with_capacity(map.len());
-            for (key, value) in map {
-                let value = if key == "Pos" {
-                    shift_position(value, delta)
-                } else if key == "Leash" {
-                    shift_leash(value, integer_delta)
-                } else {
-                    shift_entity_coordinates(value, delta, integer_delta)
-                };
-                normalized.insert(key.clone(), value);
-            }
-            Compound(normalized)
-        }
-        Value::List(values) => Value::List(
-            values
-                .iter()
-                .map(|value| shift_entity_coordinates(value, delta, integer_delta))
-                .collect(),
-        ),
-        _ => nbt.clone(),
-    }
-}
-
-fn shift_position(value: &Value, delta: [f64; 3]) -> Value {
-    match value {
-        Value::List(position) if position.len() == 3 => {
-            let coordinates = position
-                .iter()
-                .map(|value| match value {
-                    Value::Byte(value) => Some(*value as f64),
-                    Value::Short(value) => Some(*value as f64),
-                    Value::Int(value) => Some(*value as f64),
-                    Value::Long(value) => Some(*value as f64),
-                    Value::Float(value) => Some(*value as f64),
-                    Value::Double(value) => Some(*value),
-                    _ => None,
-                })
-                .collect::<Option<Vec<_>>>();
-
-            coordinates.map_or_else(
-                || value.clone(),
-                |coordinates| {
-                    Value::List(vec![
-                        Value::Double(coordinates[0] + delta[0]),
-                        Value::Double(coordinates[1] + delta[1]),
-                        Value::Double(coordinates[2] + delta[2]),
-                    ])
-                },
-            )
-        }
-        Value::IntArray(position) if position.len() == 3 => {
-            let values = position.to_vec();
-            let shifted = values
-                .iter()
-                .zip(delta)
-                .map(|(value, delta)| (*value as f64 + delta).round() as i32)
-                .collect::<Vec<_>>();
-            Value::IntArray(fastnbt::IntArray::new(shifted))
-        }
-        _ => value.clone(),
-    }
-}
-
-fn shift_leash(value: &Value, delta: [i32; 3]) -> Value {
-    let Value::Compound(map) = value else {
-        return value.clone();
-    };
-
-    let mut shifted = map.clone();
-    for (key, offset) in [("X", delta[0]), ("Y", delta[1]), ("Z", delta[2])] {
-        let Some(value) = map.get(key) else {
-            continue;
-        };
-        let value = match value {
-            Value::Byte(value) => Value::Byte(value.saturating_add(offset as i8)),
-            Value::Short(value) => Value::Short(value.saturating_add(offset as i16)),
-            Value::Int(value) => Value::Int(value.saturating_add(offset)),
-            Value::Long(value) => Value::Long(value.saturating_add(offset as i64)),
-            _ => value.clone(),
-        };
-        shifted.insert(key.to_string(), value);
-    }
-
-    Value::Compound(shifted)
 }
 
 #[cfg(test)]

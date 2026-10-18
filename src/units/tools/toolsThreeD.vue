@@ -1,7 +1,22 @@
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {computed, defineAsyncComponent, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, shallowRef, watch} from "vue";
 import {open as openDialog} from "@tauri-apps/plugin-dialog";
-import {fetchSchematicPreviewData, type SchematicPreviewBlockState} from "../../modules/schematic_data.ts";
+import {fetchSchematicPreviewData, type SchematicPreviewBlockState, type SchematicPreviewData} from "../../modules/schematic_data.ts";
+import type {EditRegion, EditorPoint, PickMode, WorkPlane} from '../../modules/blueprint_editor';
+import {hitRegionFace, moveRegionFace, pickWorkPlane, rayAxisParameter, type RegionFace} from '../../modules/editor_geometry';
+const BlueprintEditor = defineAsyncComponent(() => import('./BlueprintEditor.vue'));
+const editor = ref<{getPreview: () => SchematicPreviewData | null; pick: (pos: EditorPoint, id?: string) => void; adjustRegion: (region: EditRegion) => void; selectMaterial: (id: string) => void} | null>(null);
+const editorOpened = ref(false);
+const editorVisible = ref(false);
+const editorModified = ref(false);
+const componentActive = ref(true);
+const editorRegion = shallowRef<EditRegion | null>(null);
+const editorPickMode = ref<PickMode>(null);
+const editorWorkPlane = shallowRef<WorkPlane | null>(null);
+const editorDragMode = ref(false);
+let editorHighlightId: string | null = null;
+let regionDrag: {face: RegionFace; start: number; region: EditRegion} | null = null;
+const toggleEditor = () => { editorOpened.value = true; editorVisible.value = !editorVisible.value; };
 import {schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {toast, getIconUrl} from "../../modules/others.ts";
 import {
@@ -139,7 +154,7 @@ const hoveredBlock = ref<{
 } | null>(null);
 const showBlockInfo = ref(false);
 
-const tileEntitiesMap = ref<Map<string, any>>(new Map());
+const tileEntitiesMap = shallowRef<Map<string, any>>(new Map());
 
 const rayIntersectBounds = (
   rayOrigin: [number, number, number],
@@ -490,10 +505,10 @@ const scheduleLayerUpdate = (targetLayer: number) => {
   });
 };
 
-const loadStructure = async (runId: number, signal: AbortSignal) => {
+const loadStructure = async (runId: number, signal: AbortSignal, override?: SchematicPreviewData) => {
   throwIfStale(runId, signal);
   resetStructureCaches();
-  const schematic_data = await fetchSchematicPreviewData(schematic_id.value)
+  const schematic_data = override ?? editor.value?.getPreview() ?? await fetchSchematicPreviewData(schematic_id.value)
   throwIfStale(runId, signal);
   const schematic_size = schematic_data.size
   const totalVolume = schematic_size.width * schematic_size.height * schematic_size.length
@@ -742,15 +757,20 @@ const reloadRenderer = async (runId: number, signal: AbortSignal) => {
       structureCanvas,
       camera_l.value,
       view => {
-        const gl = gl_ctx.value;
-        if (gl) {
-          gl.clearColor(0.9608, 0.9608, 0.9608, 1);
-          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        }
+        structureRenderer.value?.prepareFrame();
 
         structureRenderer.value?.drawStructure(view)
         structureRenderer.value?.drawSelectionHighlights(view)
         structureRenderer.value?.drawGrid(view)
+        if (editorVisible.value && editorRegion.value) {
+          structureRenderer.value?.drawRegionBounds(view, editorRegion.value.min, editorRegion.value.max.map(n => n + 1) as Vec3);
+        }
+        if (editorVisible.value && editorWorkPlane.value && size_l.value) {
+          const plane = editorWorkPlane.value;
+          const min: Vec3 = [0, 0, 0]; const max: Vec3 = [...size_l.value];
+          min[plane.axis] = max[plane.axis] = plane.coordinate + .5;
+          structureRenderer.value?.drawRegionBounds(view, min, max, [0.95, 0.55, 0.12]);
+        }
         
         if (hoveredBlock.value) {
           const pos = hoveredBlock.value.pos;
@@ -831,6 +851,34 @@ const reloadRenderer = async (runId: number, signal: AbortSignal) => {
       hoverThrottleTimer = requestAnimationFrame(processHover);
     }
   });
+  interactiveCanvas.value.setBlockClickHandler(ray => {
+    if (!editorVisible.value || !editorPickMode.value || loading_threeD.value || !size_l.value) return;
+    const hit = raycastBlocks(ray.rayOrigin, ray.rayDir);
+    if (editorPickMode.value === 'block') { if (hit) editor.value?.pick(hit.pos, hit.id); return; }
+    const point = editorWorkPlane.value ? pickWorkPlane(ray, editorWorkPlane.value, size_l.value) : hit?.pos;
+    if (point) editor.value?.pick(point);
+  });
+  interactiveCanvas.value.setEditPointerHandler((phase, ray) => {
+    if (phase === 'end') { regionDrag = null; return false; }
+    if (!editorVisible.value || !editorDragMode.value || !editorRegion.value || !ray || !size_l.value || loading_threeD.value) return false;
+    if (phase === 'start') {
+      const face = hitRegionFace(ray, editorRegion.value);
+      const start = face ? rayAxisParameter(ray, face.center, face.axis) : null;
+      regionDrag = face && start !== null ? {face, start, region: editorRegion.value} : null;
+      return !!regionDrag;
+    }
+    if (!regionDrag) return false;
+    const distance = rayAxisParameter(ray, regionDrag.face.center, regionDrag.face.axis);
+    if (distance !== null) editor.value?.adjustRegion(moveRegionFace(regionDrag.region, regionDrag.face, distance - regionDrag.start, size_l.value));
+    return true;
+  });
+};
+
+watch([editorRegion, editorWorkPlane, editorVisible], () => interactiveCanvas.value?.redraw(), {flush: 'post'});
+const highlightEditorMaterial = (id: string | null) => {
+  editorHighlightId = id;
+  selectedMaterialId.value = id;
+  void refreshSelectedMaterialHighlight();
 };
 
 const switchView = (viewType: ViewType) => {
@@ -903,6 +951,8 @@ const togglePreviewFullscreen = async () => {
 
 const prepareCurrentSchematic = async () => {
   destroyData();
+  if (!componentActive.value || !schematicData.value || schematic_id.value === undefined) return;
+  if (editor.value?.getPreview()) { await loadInit(); return; }
   let size = schematicData.value.sizes
   const [length, width, height] = size.split(',').map(Number);
   if (length * width * height >= LARGE_VOLUME_THRESHOLD) sureLoading.value = true
@@ -914,12 +964,23 @@ onMounted(async () => {
   await prepareCurrentSchematic();
 })
 
-const loadInit = async () => {
+let wasDeactivated = false;
+onDeactivated(() => {
+  componentActive.value = false;
+  wasDeactivated = true;
+  destroyData();
+});
+onActivated(() => {
+  componentActive.value = true;
+  if (wasDeactivated) { wasDeactivated = false; void prepareCurrentSchematic(); }
+});
+
+const loadInit = async (override?: SchematicPreviewData, propagateError = false) => {
   const {runId, signal} = startPreviewTask();
   try {
     resetViewData();
     loading_threeD.value = true;
-    await loadStructure(runId, signal);
+    await loadStructure(runId, signal, override);
     throwIfStale(runId, signal);
     lastAppliedLayer = -1;
     lastAppliedSingleLayerMode = false;
@@ -944,7 +1005,14 @@ const loadInit = async () => {
       }
     }
 
+    throwIfStale(runId, signal);
+    if (editorVisible.value && editorHighlightId) {
+      selectedMaterialId.value = editorHighlightId;
+      await refreshSelectedMaterialHighlight();
+      throwIfStale(runId, signal);
+    }
   }catch (e) {
+    if (propagateError) throw e;
     if (!isAbortError(e)) {
       toast.error($t('toolsThreeD.error', {error: String(e)}), {timeout: 3000});
     }
@@ -954,6 +1022,7 @@ const loadInit = async () => {
     }
   }
 }
+const applyEditorPreview = (preview: SchematicPreviewData) => loadInit(preview, true);
 watch(currentLayer, (newVal) => {
   scheduleLayerUpdate(newVal);
 });
@@ -968,6 +1037,9 @@ watch(schematic_id, () => {
 });
 
 const resetViewData = () => {
+  hoveredBlock.value = null;
+  showBlockInfo.value = false;
+  regionDrag = null;
   clearSelectedMaterialHighlight(true, false);
   structureRenderer.value?.dispose();
   interactiveCanvas.value?.dispose?.();
@@ -1145,15 +1217,19 @@ onBeforeUnmount(async () => {
 
 <template>
   <v-row no-gutters class="container">
-    <v-col v-if="showMaterialList" cols="3">
-      <v-container style="max-height: 100vh; overflow-y: auto;">
+    <v-col v-if="showMaterialList || editorOpened" v-show="showMaterialList || editorVisible" :cols="editorVisible ? 4 : 3">
+      <BlueprintEditor v-if="editorOpened && schematic_id !== undefined" v-show="editorVisible" ref="editor"
+        :source-id="schematic_id" :apply-preview="applyEditorPreview" :inactive="!componentActive"
+        @region="editorRegion = $event" @highlight="highlightEditorMaterial" @pick-mode="editorPickMode = $event"
+        @work-plane="editorWorkPlane = $event" @drag-mode="editorDragMode = $event" @view="switchView" @modified="editorModified = $event"/>
+      <v-container v-show="showMaterialList && !editorVisible" style="max-height: 100vh; overflow-y: auto;">
         <v-list lines="two" class="scrollable-list">
           <v-list-item
             v-for="material in materialOverview"
             :key="material.id"
             class="material-item d-flex justify-space-between"
             :class="{ 'material-item-selected': selectedMaterialId === material.id }"
-            @click="toggleMaterialHighlight(material.id)"
+            @click="toggleMaterialHighlight(material.id); editor?.selectMaterial(material.id)"
           >
             <template #prepend>
               <v-avatar size="40" rounded="0" class="mr-2 avatar-bg">
@@ -1185,7 +1261,7 @@ onBeforeUnmount(async () => {
 
     </v-col>
 
-    <v-col :cols="showMaterialList ? 9 : 12" class="preview-column">
+    <v-col :cols="editorVisible ? 8 : showMaterialList ? 9 : 12" class="preview-column">
       <div
         id="structure-preview-pane"
         class="preview-pane"
@@ -1194,6 +1270,7 @@ onBeforeUnmount(async () => {
       <canvas class="gpu-canvas" id="structure-display" width="1150" height="800"></canvas>
 
       <div class="top-controls">
+        <v-btn size="small" :color="editorVisible ? 'primary' : undefined" variant="tonal" prepend-icon="mdi-vector-square-edit" @click="toggleEditor">{{ editorModified ? '编辑副本 *' : '编辑' }}</v-btn>
         <v-btn
           :icon="showMaterialList ? 'mdi-chevron-left' : 'mdi-chevron-right'"
           variant="text"

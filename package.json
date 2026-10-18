@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "test:3dblocks": "pnpm run build && node scripts/3dblocks-browser-smoke.cjs",
+    "test:mcs-api": "node --test scripts/test-mcs-api.mjs",
+    "test:editor": "node --test scripts/test-editor-geometry.mjs",
     "preview": "vite preview",
     "tauri": "node scripts/tauri-run.cjs",
     "tauri:dev": "node scripts/tauri-run.cjs dev",

@@ -185,6 +185,39 @@ impl WeSchematic {
         Ok(entities)
     }
 
+    fn get_entities(&self, type_version: i32) -> Result<EntitiesList, SchematicError> {
+        let Compound(root) = &self.nbt else {
+            return Err(SchematicError::RootNotCompound);
+        };
+        let root = if type_version == 1 {
+            root.get_compound("Schematic")?
+        } else {
+            root
+        };
+        match root.get("Entities") {
+            None => Ok(EntitiesList::new()),
+            Some(Value::List(entries)) => {
+                for entry in entries {
+                    let Compound(entity) = entry else {
+                        return Err(SchematicError::InvalidFormat(
+                            "Sponge entity must be a compound",
+                        ));
+                    };
+                    let Some(Value::List(position)) = entity.get("Pos") else {
+                        return Err(SchematicError::InvalidFormat("Sponge entity requires Pos"));
+                    };
+                    if position.len() != 3 || !position.iter().all(|coordinate| matches!(coordinate, Value::Double(value) if value.is_finite())) {
+                        return Err(SchematicError::InvalidFormat("Sponge entity Pos requires 3 finite doubles"));
+                    }
+                }
+                EntitiesList::from_nbt(entries, 3)
+            }
+            _ => Err(SchematicError::InvalidFormat(
+                "Sponge Entities must be a list",
+            )),
+        }
+    }
+
     pub fn parse_palette(
         &self,
         type_version: i32,
@@ -322,7 +355,7 @@ impl WeSchematic {
         Ok(SchematicData::new(
             block_list,
             tile_entities,
-            EntitiesList::default(),
+            self.get_entities(type_version)?,
             Size {
                 width,
                 height,
