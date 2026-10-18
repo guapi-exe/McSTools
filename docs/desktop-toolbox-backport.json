@@ -1,5 +1,6 @@
 {
-  "status": "map_model_batch_checkpoint_native_e2e_and_i18n_pending_not_full_goal_completion",
+  "status": "native_small_sample_verified_i18n_and_heavy_performance_pending_not_full_goal_completion",
+  "nativeIntegration": "docs/desktop-native-integration.json",
   "source": {
     "repository": "new_mcs",
     "revision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
@@ -152,7 +153,7 @@
     }
   },
   "remaining": [
-    "真实Tauri二进制IPC/系统保存/取消/no-clobber端到端",
+    "真实重负载 WebView 的帧时间、GPU 释放及峰值内存；小样本真实二进制 IPC/系统选择/保存/取消/no-clobber 已通过，详见 nativeIntegration",
     "生成器、批量工具及共享导出新增文案多语言",
     "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查",
     "模型使用默认静态姿态，不运行动画；不承诺Draco/KTX2等未配置解码器的扩展支持；透明材质使用代表色体素化，非离线渲染器"

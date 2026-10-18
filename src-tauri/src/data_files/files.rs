@@ -106,16 +106,16 @@ impl FileManager {
     ) -> Result<UncommittedImportFile> {
         let extension = crate::utils::blueprint_export::extension(format)?;
         let directory = self.schematic_dir(id)?;
-        let path = directory.join(format!(
+        let path = crate::utils::atomic_file::destination(&directory.join(format!(
             "schematic_{version}.{subtype}.{format}.{extension}"
-        ));
+        )))?;
         anyhow::ensure!(
             !path.exists(),
             "import destination already exists; existing data was not replaced"
         );
         let mut file = tempfile::Builder::new()
             .prefix(".mcstools-import-")
-            .tempfile_in(directory)?;
+            .tempfile_in(path.parent().context("invalid import folder")?)?;
         file.write_all(bytes)?;
         file.as_file().sync_all()?;
         file.persist_noclobber(&path)
@@ -574,6 +574,7 @@ impl FileManager {
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent)?;
         }
+        let dest_path = crate::utils::atomic_file::destination(&dest_path)?;
 
         // A save/copy must never truncate the original (including aliases) or
         // another existing file. Commit a complete temporary copy atomically.
@@ -679,7 +680,7 @@ impl FileManager {
             "conversion would overwrite the source; use save copy instead"
         );
         let ext = crate::utils::blueprint_export::extension(options.format)?;
-        let directory = self.schematic_dir(id)?;
+        let directory = fs::canonicalize(self.schematic_dir(id)?)?;
         let path = directory.join(format!(
             "schematic_{version}.{subtype}.{}.{ext}",
             options.format

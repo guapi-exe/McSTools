@@ -9,7 +9,8 @@
     "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea",
     "parserSafety": "docs/desktop-parser-safety.json",
     "websiteToolboxRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
-    "toolboxBackport": "docs/desktop-toolbox-backport.json"
+    "toolboxBackport": "docs/desktop-toolbox-backport.json",
+    "nativeIntegration": "docs/desktop-native-integration.json"
   },
   "baseline": {
     "status": "pushed_before_edits",
@@ -34,7 +35,7 @@
   "phases": [
     {
       "id": "api",
-      "status": "implemented_initial_verification",
+      "status": "native_public_import_verified_auth_transport_faults_pending",
       "requirements": [
         "公开蓝图库：新版字段、服务端游标、分类/格式/来源版本/搜索/优选/排序",
         "个人蓝图及收藏只读范围，过期、权限不足和不可用收藏的清晰状态",
@@ -44,13 +45,12 @@
         "限流等待、并发限额、去重和过期异步响应隔离"
       ],
       "pendingVerification": [
-        "真实 Tauri IPC 在隔离应用目录完成 API 下载到本地入库；相同导入核心的真实 SQLite/文件事务已覆盖，尚不能替代完整 IPC 验证",
         "下载重定向链和账户权限的传输层故障用例仍待补充；真实本地 HTTP 正文截断与限额/permit 释放已测试"
       ]
     },
     {
       "id": "blueprint_editor_backport",
-      "status": "editing_and_export_implemented_native_integration_pending",
+      "status": "native_editing_export_ipc_verified_ui_interaction_and_i18n_pending",
       "implemented": [
         "Rust 后台非破坏编辑会话，stage/render/commit 两阶段确认；失败候选不进入撤销历史",
         "全局/区域方块替换、状态保留选项、移除被替换方块的容器载荷",
@@ -63,9 +63,9 @@
         "保持源文件的精确 DataVersion；无可靠 Java 版本时显式选目标；MCEdit 导入读取导出的 MinecraftVersion 元数据"
       ],
       "pending": [
-        "原生 IPC 集成测试；浏览器目前只模拟原生编辑协议，渲染器和资源是真实代码",
+        "真实 WebView 3D 拾取、拖动和重页面切换的组合回归；生成/编辑/裁剪/撤销/重置/选区旧版副本已通过真实 IPC 验证",
         "将新增编辑 UI 中文文案纳入现有多语言系统",
-        "原生系统保存对话框、取消、拒绝覆盖与完整 IPC 入库验证；隔离 SQLite/文件事务测试已完成"
+        "更大的实体/容器样本与真实渲染交互验证；系统保存/取消/拒绝覆盖及隔离 IPC 入库已有小样本通过"
       ],
       "requirements": [
         "3D 方块拾取与高亮，来源/目标方块选择器",
@@ -79,7 +79,7 @@
     },
     {
       "id": "conversion_and_materials",
-      "status": "shared_conversion_materials_parsing_and_all_nonprinting_toolbox_implemented_native_e2e_pending",
+      "status": "native_small_sample_exports_verified_complex_entities_and_performance_pending",
       "inspectionFindings": [
         "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
         "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
@@ -119,15 +119,14 @@
         "明确提示 Building Gadgets 输出按实际方块范围收紧空白边界；批量往返测试分别验证 BG 实际边界和其他格式声明尺寸"
       ],
       "pending": [
-        "地图画、模型与本地批量工具已完成共享格式/游戏版本导出和核心/浏览器协议验证，真实 Tauri IPC 与系统对话框仍待验收",
         "断电/进程强杀不等同普通异常：文件已落盘、SQLite 尚未提交的极短窗口可能留下孤立文件；当前保守拒绝覆盖，不宣称跨文件系统 ACID",
-        "原生界面与 IPC、系统保存对话框以及游戏内复杂实体核验",
+        "大样本原生交互与游戏内复杂实体核验；真实小样本系统保存/IPC 已通过，详见 native-integration 记录",
         "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录"
       ]
     },
     {
       "id": "toolbox_backport",
-      "status": "map_model_and_batch_backported_native_e2e_and_i18n_pending",
+      "status": "map_model_batch_native_small_sample_verified_i18n_and_heavy_performance_pending",
       "requirements": [
         "对齐网站地图画的调色板、色彩设置和目标格式/版本导出",
         "对齐非打印模型转体素蓝图工具的必要功能",
@@ -150,7 +149,7 @@
         "检查 redStoneMusic.vue：目前仅显示未实现提示，没有音频上下文、Worker、计时器或后台任务；本次不新增网站未提供的红石音乐实现"
       ],
       "pending": [
-        "真实Tauri二进制IPC及系统文件对话框的隔离端到端测试；新增面板/生成器多语言；游戏内地图颜色/脚手架物理核验"
+        "新增面板/生成器多语言；真实重负载页面性能；游戏内地图颜色/脚手架物理核验。小样本真实二进制 IPC、系统选择/保存、拒绝覆盖与隔离入库已有通过记录"
       ]
     },
     {
@@ -182,6 +181,9 @@
       "id": "verification",
       "status": "in_progress",
       "observed": [
+        "独立应用标识连接真实 WebView2，无模拟 IPC：公开不可变版本原文件下载入库、生成快照入库、编辑 stage/cancel/commit/crop/undo/reset、选区 1.7.10 副本入库通过；源文件未变",
+        "真实系统 Open/Save As：ZIP 两成功一失败隔离、1.7.10 结果 ZIP 保存，系统覆盖确认后应用仍拒绝覆盖，校验值不变；地图画保存取消后可重试",
+        "修复打包环境 AppData 跨卷重定向原子保存失败、本地 GLTF blob 被 CSP 拦截、空字体大小渲染异常、投影计数/毫秒时间戳/输出名称元数据",
         "pnpm build 通过，仍有大 chunk 提示",
         "cargo check --offline 同时通过库和 mcstools 程序入口；bin 仍有 39 个 warning，未宣称零警告",
         "API TypeScript 适配单元测试 9 项通过",

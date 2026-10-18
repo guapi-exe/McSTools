@@ -179,20 +179,34 @@ pub fn plan(
 }
 
 /// Keep the same fidelity warnings in single-file and batch exports.
-pub fn warnings(data: &SchematicData, options: &ExportOptions, source_version: Option<i32>) -> Vec<String> {
+pub fn warnings(
+    data: &SchematicData,
+    options: &ExportOptions,
+    source_version: Option<i32>,
+) -> Vec<String> {
     let mut warnings = Vec::new();
-    if options.target_data_version.is_some() && options.target_data_version != source_version
-        && (!data.tile_entities_list.elements.is_empty() || !data.entities_list.elements.is_empty()) {
+    if options.target_data_version.is_some()
+        && options.target_data_version != source_version
+        && (!data.tile_entities_list.elements.is_empty() || !data.entities_list.elements.is_empty())
+    {
         warnings.push("已转换方块 ID 和状态，但不是完整的 Minecraft DataFixer；跨版本容器物品、实体行为与模组 NBT 请在游戏中复核。".into());
     }
-    if data.blocks.elements.iter().any(|b| !b.block.id.name.starts_with("minecraft:")) {
+    if data
+        .blocks
+        .elements
+        .iter()
+        .any(|b| !b.block.id.name.starts_with("minecraft:"))
+    {
         warnings.push("命名调色板会保留模组 ID 和属性；目标游戏需要安装对应模组。旧版数字 .schematic 无法保留未知模组 ID。".into());
     }
-    if options.format == 4 && (!data.entities_list.elements.is_empty() || !data.tile_entities_list.elements.is_empty()) {
+    if options.format == 4
+        && (!data.entities_list.elements.is_empty() || !data.tile_entities_list.elements.is_empty())
+    {
         warnings.push("Building Gadgets 模板仅输出建筑方块，不包含普通实体和容器载荷。".into());
     }
     if options.format == 4 {
-        warnings.push("Building Gadgets 模板按实际方块范围保存，选区周围的空白边界不会保留。".into());
+        warnings
+            .push("Building Gadgets 模板按实际方块范围保存，选区周围的空白边界不会保留。".into());
     }
     if options.format == 5 {
         warnings.push("BE 使用独立含水层及状态映射，不应用 Java 游戏版本转换；跨版本实体 NBT 请在游戏中复核。".into());
@@ -276,6 +290,15 @@ pub fn encode(
     options: &ExportOptions,
     source_version: Option<i32>,
 ) -> Result<Vec<u8>> {
+    encode_named(data, options, source_version, "")
+}
+
+pub fn encode_named(
+    data: &SchematicData,
+    options: &ExportOptions,
+    source_version: Option<i32>,
+    name: &str,
+) -> Result<Vec<u8>> {
     let data_version = validate(options, source_version)?;
     let normalized;
     let overridden;
@@ -292,7 +315,7 @@ pub fn encode(
     } else {
         data
     };
-    let value = match options.format {
+    let mut value = match options.format {
         1 => ToCreateSchematic::new(data)?
             .create_schematic_for_data_version(options.include_air, data_version.unwrap()),
         2 => ToLmSchematic::new(data)?
@@ -348,6 +371,16 @@ pub fn encode(
         }
         _ => unreachable!(),
     };
+    if options.format == 2 {
+        if let Value::Compound(root) = &mut value {
+            if let Some(Value::Compound(metadata)) = root.get_mut("Metadata") {
+                metadata.insert(
+                    "Name".into(),
+                    Value::String(name.trim().chars().take(120).collect()),
+                );
+            }
+        }
+    }
     let opts = if options.format == 6 {
         fastnbt::SerOpts::new().root_name("Schematic")
     } else {
@@ -491,6 +524,20 @@ mod tests {
             overrides: Vec::new(),
             include_air: false,
         }
+    }
+
+    #[test]
+    fn named_litematica_keeps_output_title_and_real_statistics() {
+        let data = fixture(&["minecraft:stone", "minecraft:dirt"]);
+        let bytes = encode_named(&data, &options(2, 6, None), Some(3955), "测试地图画").unwrap();
+        let metadata = LmSchematic::new_from_bytes(&bytes)
+            .unwrap()
+            .read_metadata()
+            .unwrap();
+        assert_eq!(metadata.name, "测试地图画");
+        assert_eq!(metadata.total_blocks, 2);
+        assert_eq!(metadata.total_volume, 24);
+        assert!(metadata.time_created > 1_000_000_000_000);
     }
     #[test]
     fn format_only_preserves_exact_patch_data_version_and_unknown_palette() {

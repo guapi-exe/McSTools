@@ -174,6 +174,9 @@ impl ToLmSchematic {
     }
     pub fn encode_block_states(&self) -> Vec<u64> {
         let state_ids = self.get_block_id_list();
+        self.pack_block_states(&state_ids)
+    }
+    fn pack_block_states(&self, state_ids: &[i32]) -> Vec<u64> {
         let bits = self.bits as usize;
         let total_bits = state_ids.len() * bits;
         let longs_needed = (total_bits + 63) / 64;
@@ -276,8 +279,11 @@ impl ToLmSchematic {
         Value::List(palette)
     }
     pub fn lm_metadata(&self) -> Value {
+        self.metadata_for_states(&self.get_block_id_list())
+    }
+    fn metadata_for_states(&self, state_ids: &[i32]) -> Value {
         let mut metadata = HashMap::new();
-        let timestamp_sec = Utc::now().timestamp();
+        let timestamp_ms = Utc::now().timestamp_millis();
         let mut enclosing_size = HashMap::new();
         enclosing_size.insert("x".to_string(), Value::Int(self.width));
         enclosing_size.insert("y".to_string(), Value::Int(self.height));
@@ -289,23 +295,42 @@ impl ToLmSchematic {
             Value::String("来自MCSTOOLS转换".to_string()),
         );
         metadata.insert("RegionCount".to_string(), Value::Int(1));
-        metadata.insert("Name".to_string(), Value::String("null".to_string()));
+        metadata.insert("Name".to_string(), Value::String(String::new()));
         metadata.insert(
             "Author".to_string(),
             Value::String("www.mcschematic.top".to_string()),
         );
-        metadata.insert("TotalVolume".to_string(), Value::Int(0));
-        metadata.insert("TotalBlocks".to_string(), Value::Int(0));
-        metadata.insert("TimeModified".to_string(), Value::Long(timestamp_sec));
-        metadata.insert("TimeCreated".to_string(), Value::Long(timestamp_sec));
+        let non_air: Vec<bool> = self
+            .unique_block_states
+            .iter()
+            .map(|state| {
+                !matches!(
+                    state.id.name.as_ref(),
+                    "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
+                )
+            })
+            .collect();
+        // Count the resolved grid, not sparse records: overlapping positions
+        // and explicit air must agree with what is actually packed below.
+        let occupied = state_ids.iter().filter(|&&id| non_air[id as usize]).count();
+        metadata.insert(
+            "TotalVolume".to_string(),
+            Value::Int(state_ids.len() as i32),
+        );
+        metadata.insert("TotalBlocks".to_string(), Value::Int(occupied as i32));
+        metadata.insert("TimeModified".to_string(), Value::Long(timestamp_ms));
+        metadata.insert("TimeCreated".to_string(), Value::Long(timestamp_ms));
 
         Compound(metadata)
     }
     pub fn lm_regions(&self) -> Value {
+        self.regions_for_states(&self.get_block_id_list())
+    }
+    fn regions_for_states(&self, state_ids: &[i32]) -> Value {
         let mut regions = HashMap::new();
         let mut region: HashMap<String, Value> = HashMap::new();
 
-        let encoded = self.encode_block_states();
+        let encoded = self.pack_block_states(state_ids);
         let long_array: Vec<i64> = encoded.iter().map(|&v| v as i64).collect();
         region.insert(
             "BlockStates".to_string(),
@@ -342,14 +367,70 @@ impl ToLmSchematic {
     }
 
     pub fn lm_schematic_for_data_version(&self, version: i32, data_version: i32) -> Value {
+        let state_ids = self.get_block_id_list();
         let mut nbt = HashMap::new();
         nbt.insert("MinecraftDataVersion".to_string(), Value::Int(data_version));
         nbt.insert("Version".to_string(), Value::Int(version));
-        let metadata = self.lm_metadata();
+        let metadata = self.metadata_for_states(&state_ids);
         nbt.insert("Metadata".to_string(), metadata);
-        let regions = self.lm_regions();
+        let regions = self.regions_for_states(&state_ids);
         nbt.insert("Regions".to_string(), regions);
         nbt.insert("SubVersion".to_string(), Value::Int(1));
         Compound(nbt)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::schematic_data::Size;
+
+    #[test]
+    fn metadata_counts_resolved_non_air_and_uses_millisecond_timestamps() {
+        let mut data = SchematicData::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Size {
+                width: 4,
+                height: 2,
+                length: 2,
+            },
+        );
+        for (x, name) in [
+            (0, "minecraft:stone"),
+            (0, "minecraft:dirt"),
+            (1, "minecraft:stone"),
+            (1, "minecraft:air"),
+            (2, "minecraft:cave_air"),
+            (3, "minecraft:void_air"),
+        ] {
+            data.blocks.add_by_pos(
+                x,
+                0,
+                0,
+                Arc::new(BlockData {
+                    id: BlockId { name: name.into() },
+                    properties: BTreeMap::new(),
+                }),
+            );
+        }
+        let before = Utc::now().timestamp_millis();
+        let encoded = ToLmSchematic::new(&data)
+            .unwrap()
+            .lm_schematic_for_data_version(6, 3955);
+        let Compound(root) = encoded else {
+            panic!("root")
+        };
+        let Compound(metadata) = &root["Metadata"] else {
+            panic!("metadata")
+        };
+        assert_eq!(metadata["TotalVolume"], Value::Int(16));
+        assert_eq!(metadata["TotalBlocks"], Value::Int(1));
+        let Value::Long(created) = metadata["TimeCreated"] else {
+            panic!("timestamp")
+        };
+        assert!(created >= before && created <= Utc::now().timestamp_millis());
+        assert_eq!(metadata["TimeCreated"], metadata["TimeModified"]);
     }
 }

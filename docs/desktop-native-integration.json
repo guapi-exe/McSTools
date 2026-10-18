@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-18",
+  "status": "native_small_sample_verified_heavy_interaction_and_localization_pending",
+  "scope": "Real Tauri IPC, packaged frontend and WebView2; no browser IPC fixtures injected",
+  "isolation": {
+    "config": "scripts/testing/tauri-native.config.json",
+    "identifier": "mcSchematic.native-integration-20261018",
+    "webview": "Edge WebView2 155.0.4283.60, local foreground Windows desktop",
+    "cdp": "127.0.0.1:9223, child-process environment only; no global environment or registry changes",
+    "productionDatabaseSha256BeforeAndAfter": "5307249F351A4A56820D64805D334AD8E3F5DDC2A92FA89DB3CE0DBD9FA9C5DA",
+    "api": "Anonymous public GET/download only; no production mutations or private credentials",
+    "excluded": "3D printing; no website changes; no cache cleanup needed"
+  },
+  "reproducedAndFixed": [
+    {
+      "issue": "AppData virtualization under the Windows packaged host redirected C: writes to another volume; logical sibling tempfile persist failed with Windows error 17",
+      "fix": "Resolve the existing physical parent before creating and persisting sibling temporary files; applies to imports, shared exports, copy, batch and conversion cache. No-clobber protections retained.",
+      "evidence": "Minimal same-dependency probe reproduced CrossesDevices; physical-parent probe succeeded; same public API import changed from IMPORT failure to a committed 4169-byte source and library count 1."
+    },
+    {
+      "issue": "Packaged CSP rejected blob fetch for a locally selected GLTF BIN attachment",
+      "fix": "connect-src permits self/blob/data plus existing IPC; remote model resources are still rejected by the loader, with no new network origin allowed",
+      "evidence": "Real GLTF+BIN load emitted connect-src violation before the fix; final packaged WebView loaded the 12-triangle cube, generated 512 blocks and saved a real Bedrock structure with no new console error."
+    },
+    {
+      "issue": "Litematica metadata always reported zero blocks/volume, used seconds, and named generated library entries null",
+      "fix": "Count the resolved encoded grid, excluding all air variants; millisecond timestamps; preserve supplied output name and use filename fallback for historical placeholder names.",
+      "evidence": "Independent prismarine-nbt parsing of a real saved 256-block map exposed zero metadata. Native generated import exposed null name. Final native 2x2x2 import retained its requested name, DataVersion 3955, TotalVolume 8, TotalBlocks 8 and millisecond timestamp. Added metadata/overlap/air and placeholder-import regression tests."
+    },
+    {
+      "issue": "Unset fontSize was the string null and crashed the personalization render at toFixed",
+      "fix": "Typed numeric refs and validated legacy preference values; clearing a font/background resets size to zero",
+      "evidence": "Actual initial WebView console TypeError; repaired page showed 0.00 kb with no additional error."
+    }
+  ],
+  "verified": {
+    "publicApi": "Public listing plus immutable blueprint 01a14549-a8f5-7c10-810f-591eee61f175/v1 original-source import; 4169 bytes, Building Gadgets JSON committed to isolated SQLite/file library",
+    "map": "Real 16x16 PNG -> worker -> 256-block 16x1x16 map -> raw native snapshot -> shared export; system Save As cancel preserved the result, retry saved native-map.litematic (480 bytes before metadata fix)",
+    "batch": "System Open selected ZIP containing two real saved maps, invalid.litematic, and README; 3 queued blueprints, 2 successes and 1 isolated failure; actual 1.7.10 MCEdit target; native ZIP save wrote 768 bytes",
+    "independentBatchRead": "prismarine-nbt decoded both ZIP entries: MinecraftVersion 1.7.10, dimensions 16x1x16, 256 numeric block IDs all wool (35)",
+    "noClobber": "Even after accepting the Windows overwrite confirmation for the TEST ZIP, app refused overwrite; both success results retained; file SHA256 remained 5751AA59257D6F8626A47D7C5A02701E7075C4519173CADEF589CA20B336AA85",
+    "generatedEditor": "Real binary staging -> named generated library import -> editor stage/cancel/commit replacement -> crop -> undo -> reset -> selected-region 1.7.10 library copy. All four smoke assertions passed; source library preview unchanged. Independent NBT parse confirmed the 1x2x2 legacy copy contains 4 blocks and MinecraftVersion 1.7.10.",
+    "modelBedrock": "Actual GLTF+BIN -> 12 triangles -> filled 8x8x8 stone model -> shared Bedrock export -> system Save As. Independent little-endian NBT parse: format_version 1, size [8,8,8], primary layer 512 stone indices, second water layer 512 values all -1. No Java target selector for BE.",
+    "automated": {
+      "rust": "cargo test --offline --lib: 162 passed, 0 failed, 2 ignored; bin tests deliberately not run because historical tests write sample files",
+      "frontend": "47 Node tests passed, vue-tsc --noEmit passed",
+      "packagedBuild": "Isolated debug --no-bundle build passed, including Vite. Existing warnings remain: Rust lib 43, bin 40; Vite large-chunk warnings. Not a release build or warning-free claim."
+    },
+    "screenshots": [
+      "output/playwright/native-integration/map-export-real.png",
+      "output/playwright/native-integration/batch-no-clobber-real.png",
+      "output/playwright/native-integration/model-be-export-real.png"
+    ]
+  },
+  "reproduction": {
+    "build": "node scripts/tauri-run.cjs build --debug --no-bundle --config scripts/testing/tauri-native.config.json -- --offline",
+    "attach": "playwright-cli -s=desktop-native attach --cdp=http://127.0.0.1:9223",
+    "nativeDialog": "scripts/testing/native-dialog.ps1 requires exact test process ID; inspect controls before invoking them; optional DialogHandle checks ownership for nested confirmation windows",
+    "fixtures": "After saving native-map.litematic under output/playwright/native-integration, run node scripts/testing/native-fixtures.mjs; it refuses to overwrite existing fixture files",
+    "ipcSmoke": "Pass scripts/testing/native-ipc-smoke.js as an async function to Playwright eval (strip comment lines and join on Windows CLI); exact identifier guard prevents writes to a normal build",
+    "cleanup": "Detach CDP and normally close only the test window. Test profile and output artifacts are intentionally retained, not uploaded. A normal build without --config restores the production identifier."
+  },
+  "pending": [
+    "Native heavy-render navigation/3D editing interaction and memory measurements",
+    "API transport redirect/auth faults, remaining new-UI localization, actual game-placement limitations remain in the overall goal plan"
+  ]
+}

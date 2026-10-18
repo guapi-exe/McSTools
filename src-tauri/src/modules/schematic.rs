@@ -163,6 +163,7 @@ pub async fn encode_uploaded_schematic(
         .await
         .map_err(|_| "import worker is unavailable")?;
     tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        let _permit = _permit;
         use tauri::Manager;
         let prepared = super::blueprint_import::prepare_import(
             &file_name,
@@ -182,7 +183,7 @@ pub async fn encode_uploaded_schematic(
     })
     .await
     .map_err(|_| "blueprint import worker failed".to_string())?
-    .map_err(|error| error.to_string())
+    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]

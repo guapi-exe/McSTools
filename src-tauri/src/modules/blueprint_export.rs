@@ -26,7 +26,9 @@ pub(crate) static EXPORT_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExportSource {
-    Generated { generation_id: u64 },
+    Generated {
+        generation_id: u64,
+    },
     Editor {
         session_id: u64,
         revision: u64,
@@ -89,9 +91,18 @@ impl ParsedSource {
 fn source_data(app: &AppHandle, source: ExportSource) -> Result<ParsedSource> {
     match source {
         ExportSource::Generated { generation_id } => {
-            use crate::modules::generated_blueprint::{GeneratedBlueprintState, SOURCE_DATA_VERSION};
-            let source = app.state::<GeneratedBlueprintState>().snapshot(generation_id)?;
-            Ok(ParsedSource { data: source.data, data_version: Some(SOURCE_DATA_VERSION), name: source.name, library: None })
+            use crate::modules::generated_blueprint::{
+                GeneratedBlueprintState, SOURCE_DATA_VERSION,
+            };
+            let source = app
+                .state::<GeneratedBlueprintState>()
+                .snapshot(generation_id)?;
+            Ok(ParsedSource {
+                data: source.data,
+                data_version: Some(SOURCE_DATA_VERSION),
+                name: source.name,
+                library: None,
+            })
         }
         ExportSource::Editor {
             session_id,
@@ -169,16 +180,39 @@ pub async fn plan_blueprint_export(
         let source_version = parsed.data_version;
         let can_save_cache = parsed.can_cache(&options);
         let cached = if let Some(source) = &parsed.library {
-            let conversions = app.state::<FileManager>().get_convert_data(source.id, source.version, source.subtype, source.format)?;
+            let conversions = app.state::<FileManager>().get_convert_data(
+                source.id,
+                source.version,
+                source.subtype,
+                source.format,
+            )?;
             crate::modules::modules_data::convert_data::SchematicType::from_code(options.format)
-                .and_then(|kind| conversions.schematics.get(&kind)?.get(&blueprint_export::cache_subtype(&options)).cloned())
-        } else { None };
+                .and_then(|kind| {
+                    conversions
+                        .schematics
+                        .get(&kind)?
+                        .get(&blueprint_export::cache_subtype(&options))
+                        .cloned()
+                })
+        } else {
+            None
+        };
         let output_data_version = blueprint_export::validate(&options, source_version)?;
         let compatibility = blueprint_export::plan(&data, &options, source_version)?;
         let warnings = blueprint_export::warnings(&data, &options, source_version);
-        Ok(ExportPlan { source_data_version: source_version, output_data_version,
-            size: data.size, compatibility, warnings, can_save_cache, cached })
-    }).await.map_err(|_| "export preview worker failed".to_string())?.map_err(|e| e.to_string())
+        Ok(ExportPlan {
+            source_data_version: source_version,
+            output_data_version,
+            size: data.size,
+            compatibility,
+            warnings,
+            can_save_cache,
+            cached,
+        })
+    })
+    .await
+    .map_err(|_| "export preview worker failed".to_string())?
+    .map_err(|e| e.to_string())
 }
 
 fn copy_filename(name: &str, extension: &str) -> String {
@@ -243,7 +277,7 @@ pub async fn save_blueprint_export(
                 let path = choice
                     .into_path()
                     .map_err(|_| anyhow::anyhow!("destination must be a local file"))?;
-                let path = path.with_extension(extension);
+                let path = crate::utils::atomic_file::destination(&path.with_extension(extension))?;
                 anyhow::ensure!(
                     !path.exists(),
                     "copy destination already exists; select a new filename"
@@ -251,7 +285,7 @@ pub async fn save_blueprint_export(
                 Some(path)
             }
         };
-        let encoded = blueprint_export::encode(&data, &options, version)?;
+        let encoded = blueprint_export::encode_named(&data, &options, version, name)?;
         let bytes = encoded.len();
         if let Some(path) = path {
             let parent = path.parent().context("invalid destination folder")?;

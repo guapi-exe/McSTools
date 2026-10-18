@@ -13,6 +13,7 @@ pub mod schematic_editing;
 pub mod conversion_bounds;
 pub mod java_entities;
 pub mod blueprint_export;
+pub(crate) mod atomic_file;
 pub mod version_conversion;
 #[cfg(test)]
 mod conversion_roundtrip_tests;

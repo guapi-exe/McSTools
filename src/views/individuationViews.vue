@@ -16,16 +16,17 @@ import {
 } from "../modules/theme.ts";
 import {useI18n} from 'vue-i18n';
 import {saveFont} from "../modules/fonts.ts";
+import {storedFileSize} from '../modules/preference-values';
 
 const { t } = useI18n()
 const selectedTheme = ref('grey');
 const backgroundImage = ref('null');
-const backgroundSize = ref<number>();
+const backgroundSize = ref(0);
 const backgroundDimensions = ref();
 const backgroundName = ref();
 const fontPath = ref();
 const fontName = ref();
-const fontSize = ref();
+const fontSize = ref(0);
 const background = ref();
 const font = ref();
 const theme = useTheme()
@@ -51,11 +52,11 @@ onBeforeRouteLeave(navigationGuard)
 onMounted(async () => {
   selectedTheme.value = await appStore.get('selectedTheme', 'blue');
   backgroundImage.value = await appStore.get('backgroundImage', 'null');
-  backgroundSize.value = await appStore.get('backgroundSize', 0);
+  backgroundSize.value = storedFileSize(await appStore.get<unknown>('backgroundSize', 0));
   backgroundDimensions.value = await appStore.get('backgroundDimensions', "null")
   backgroundName.value = await appStore.get('backgroundName', "null")
   fontName.value = await appStore.get('fontName', "null")
-  fontSize.value = await appStore.get('fontSize', "null")
+  fontSize.value = storedFileSize(await appStore.get<unknown>('fontSize', 0))
   fontPath.value = await appStore.get('fontPath', "null")
   theme.global.name.value = selectedTheme.value
 });
@@ -94,6 +95,7 @@ const clearBackGround = async () => {
   await appStore.set('backgroundDimensions', 'null')
   await appStore.set('backgroundName', 'null')
   backgroundImage.value = 'null'
+  backgroundSize.value = 0
   backgroundDimensions.value = 'null'
   backgroundName.value = 'null'
   await initTheme();
@@ -104,7 +106,7 @@ const clearFont = async () => {
   await appStore.set('fontSize', 0)
   await appStore.set('fontName', 'null')
   fontPath.value = 'null'
-  fontSize.value = 'null'
+  fontSize.value = 0
   fontName.value = 'null'
   removeCustomFont();
   document.body.style.fontFamily = '';

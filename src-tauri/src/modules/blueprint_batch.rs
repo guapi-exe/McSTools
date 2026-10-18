@@ -558,7 +558,7 @@ fn convert(
     check_cancel(cancel)?;
     let output_version = blueprint_export::validate(options, source_version)?;
     let warnings = blueprint_export::warnings(&data, options, source_version);
-    let bytes = blueprint_export::encode(&data, options, source_version)?;
+    let bytes = blueprint_export::encode_named(&data, options, source_version, name)?;
     check_cancel(cancel)?;
     Ok(Conversion {
         bytes,
@@ -797,6 +797,7 @@ fn save_copy(
     cancel: &AtomicBool,
 ) -> Result<usize> {
     check_cancel(cancel)?;
+    let path = crate::utils::atomic_file::destination(path)?;
     ensure!(
         !path.exists(),
         "copy destination already exists; choose a new filename"
@@ -819,7 +820,7 @@ fn save_copy(
     temporary.as_file().sync_all()?;
     check_cancel(cancel)?;
     temporary
-        .persist_noclobber(path)
+        .persist_noclobber(&path)
         .context("could not save batch result; existing files were not replaced")?;
     Ok(size)
 }

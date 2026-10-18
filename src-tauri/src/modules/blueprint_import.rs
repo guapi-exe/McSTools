@@ -79,7 +79,7 @@ pub(crate) fn prepare_import(
             let details = parsed.read_metadata()?;
             metadata.schematic_type = 2;
             metadata.lm_version = parsed.get_lm_version()?;
-            if !details.name.trim().is_empty() && details.name.trim() != "Unnamed" {
+            if !matches!(details.name.trim(), "" | "Unnamed" | "null" | "<no name>") {
                 metadata.name = details.name;
             }
             metadata.description = details.description;
@@ -350,6 +350,47 @@ mod tests {
             assert_eq!(count(conn, table), 0, "{table}");
         }
         assert_eq!(user_count(conn), 0);
+    }
+    #[test]
+    fn litematica_placeholder_names_fall_back_to_filename_without_rewriting_bytes() {
+        use std::io::Write;
+        let base = LmSchematic::new_from_bytes(&fixture(2, 6).bytes)
+            .unwrap()
+            .nbt;
+        let labels = BlocksData {
+            blocks: Vec::new(),
+            block_to_cn: Default::default(),
+        };
+        for name in ["", "null", "Unnamed", "<no name>", "用户指定名称"] {
+            let mut root = base.clone();
+            if let fastnbt::Value::Compound(root) = &mut root {
+                if let Some(fastnbt::Value::Compound(metadata)) = root.get_mut("Metadata") {
+                    metadata.insert("Name".into(), fastnbt::Value::String(name.into()));
+                }
+            }
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            encoder
+                .write_all(&fastnbt::to_bytes(&root).unwrap())
+                .unwrap();
+            let bytes = encoder.finish().unwrap();
+            let prepared = prepare_import(
+                "MyOutput.litematic",
+                bytes.clone(),
+                &VersionData::new(),
+                &labels,
+            )
+            .unwrap();
+            assert_eq!(
+                prepared.schematic.name,
+                if name == "用户指定名称" {
+                    name
+                } else {
+                    "MyOutput.litematic"
+                }
+            );
+            assert_eq!(prepared.bytes, bytes);
+        }
     }
     #[test]
     fn every_export_format_imports_with_atomic_metadata_and_original_bytes() {
