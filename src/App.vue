@@ -162,6 +162,7 @@ import {useRouter} from "vue-router";
 import {appStore} from "./modules/store.ts";
 import {useTheme} from "vuetify/framework";
 import {useI18n} from 'vue-i18n'
+import {normalizeAppLocale} from './i18n/locale'
 import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity, resolveBackgroundLayout} from "./modules/theme.ts";
 import {applyPendingScroll, onPageChange, transitionName} from "./modules/page_transition.ts";
 import {invoke} from "@tauri-apps/api/core";
@@ -384,10 +385,7 @@ onMounted(async () => {
     appStore.get('autoUpdate', true),
   ])
 
-  let storedLocale = storedLocaleValue
-  if (storedLocale === 'zh') storedLocale = 'zh-CN'
-  if (storedLocale === 'zh_tw') storedLocale = 'zh-TW'
-  locale.value = storedLocale
+  locale.value = normalizeAppLocale(storedLocaleValue)
   selectedTheme.value = storedThemeValue
   autoUpdateEnabled.value = storedAutoUpdate
   theme.global.name.value = selectedTheme.value

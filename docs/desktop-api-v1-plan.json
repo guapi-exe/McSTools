@@ -1,6 +1,6 @@
 {
   "objective": "接入新 MCS API，回迁网站蓝图编辑及非 3D 打印工具箱功能，并在现有风格下改善流畅度",
-  "status": "in_progress",
+  "status": "implemented_and_scoped_acceptance_verified",
   "updatedOn": "2026-10-18",
   "references": {
     "conversation": "new_mcs · 继承上下文（已修复）",
@@ -10,7 +10,8 @@
     "parserSafety": "docs/desktop-parser-safety.json",
     "websiteToolboxRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
     "toolboxBackport": "docs/desktop-toolbox-backport.json",
-    "nativeIntegration": "docs/desktop-native-integration.json"
+    "nativeIntegration": "docs/desktop-native-integration.json",
+    "uiIntegration": "docs/desktop-ui-integration.json"
   },
   "baseline": {
     "status": "pushed_before_edits",
@@ -35,7 +36,7 @@
   "phases": [
     {
       "id": "api",
-      "status": "native_public_import_verified_auth_transport_faults_pending",
+      "status": "implemented_public_native_and_local_http_faults_verified",
       "requirements": [
         "公开蓝图库：新版字段、服务端游标、分类/格式/来源版本/搜索/优选/排序",
         "个人蓝图及收藏只读范围，过期、权限不足和不可用收藏的清晰状态",
@@ -44,13 +45,14 @@
         "固定 API 路径及 HTTPS 域名边界，跨来源重定向不携带凭据",
         "限流等待、并发限额、去重和过期异步响应隔离"
       ],
-      "pendingVerification": [
-        "下载重定向链和账户权限的传输层故障用例仍待补充；真实本地 HTTP 正文截断与限额/permit 释放已测试"
+      "pendingVerification": [],
+      "verificationLimits": [
+        "未使用真实私有 API Key；个人权限故障由本地真实 HTTP 响应验证，公开 API 与不可变原文件导入已原生验证。"
       ]
     },
     {
       "id": "blueprint_editor_backport",
-      "status": "native_editing_export_ipc_verified_ui_interaction_and_i18n_pending",
+      "status": "implemented_native_pick_crop_undo_export_and_localization_verified",
       "implemented": [
         "Rust 后台非破坏编辑会话，stage/render/commit 两阶段确认；失败候选不进入撤销历史",
         "全局/区域方块替换、状态保留选项、移除被替换方块的容器载荷",
@@ -62,11 +64,7 @@
         "共享格式/子格式/游戏版本导出面板；原生另存副本（拒绝覆盖、临时文件原子落盘）及新增到蓝图库",
         "保持源文件的精确 DataVersion；无可靠 Java 版本时显式选目标；MCEdit 导入读取导出的 MinecraftVersion 元数据"
       ],
-      "pending": [
-        "真实 WebView 3D 拾取、拖动和重页面切换的组合回归；生成/编辑/裁剪/撤销/重置/选区旧版副本已通过真实 IPC 验证",
-        "将新增编辑 UI 中文文案纳入现有多语言系统",
-        "更大的实体/容器样本与真实渲染交互验证；系统保存/取消/拒绝覆盖及隔离 IPC 入库已有小样本通过"
-      ],
+      "pending": [],
       "requirements": [
         "3D 方块拾取与高亮，来源/目标方块选择器",
         "全局与区域替换，保留兼容方块属性",
@@ -75,11 +73,15 @@
         "有界撤销历史和恢复原始会话，失败不覆盖已生效状态",
         "全体/选区内/选区外导出，选择格式、子格式与版本",
         "原始文件不被编辑预览静默覆盖，保存副本操作明确"
+      ],
+      "verificationLimits": [
+        "真实小样本完成拾取、两角选区、裁剪、撤销及共享导出；拖动还有浏览器协议/几何测试，不宣称所有原生视角组合均已穷举。",
+        "跨游戏版本的复杂实体、物品及容器 NBT 仍需游戏内核验，不等同完整 Minecraft DataFixer。"
       ]
     },
     {
       "id": "conversion_and_materials",
-      "status": "native_small_sample_exports_verified_complex_entities_and_performance_pending",
+      "status": "implemented_native_exports_and_roundtrips_verified_with_documented_limits",
       "inspectionFindings": [
         "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
         "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
@@ -118,15 +120,15 @@
         "本地批量转换复用六格式解析与共享编码器；默认保留各文件的精确 DataVersion，旧版需要显式目标，BE 清空 Java 参数；单文件与批量共用格式控件和兼容警告",
         "明确提示 Building Gadgets 输出按实际方块范围收紧空白边界；批量往返测试分别验证 BG 实际边界和其他格式声明尺寸"
       ],
-      "pending": [
+      "limitations": [
         "断电/进程强杀不等同普通异常：文件已落盘、SQLite 尚未提交的极短窗口可能留下孤立文件；当前保守拒绝覆盖，不宣称跨文件系统 ACID",
-        "大样本原生交互与游戏内复杂实体核验；真实小样本系统保存/IPC 已通过，详见 native-integration 记录",
-        "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录"
+        "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录",
+        "已完成真实小样本系统导出、独立 NBT 读回及多格式往返；复杂实体/物品的实际游戏表现仍需目标游戏验证。"
       ]
     },
     {
       "id": "toolbox_backport",
-      "status": "map_model_batch_native_small_sample_verified_i18n_and_heavy_performance_pending",
+      "status": "implemented_map_model_batch_native_and_localization_verified",
       "requirements": [
         "对齐网站地图画的调色板、色彩设置和目标格式/版本导出",
         "对齐非打印模型转体素蓝图工具的必要功能",
@@ -148,13 +150,14 @@
         "批量队列在页签/路由缓存中保留；停用阻止下一项并请求取消当前项，迟到停止确认前禁止启动下一轮；固定行高虚拟化不受隐藏页面 0 行高污染",
         "检查 redStoneMusic.vue：目前仅显示未实现提示，没有音频上下文、Worker、计时器或后台任务；本次不新增网站未提供的红石音乐实现"
       ],
-      "pending": [
-        "新增面板/生成器多语言；真实重负载页面性能；游戏内地图颜色/脚手架物理核验。小样本真实二进制 IPC、系统选择/保存、拒绝覆盖与隔离入库已有通过记录"
+      "pending": [],
+      "verificationLimits": [
+        "游戏内地图色阶、重力/易碎方块及脚手架物理条件仍需实际放置验证；模型扩展支持范围见 toolboxBackport。"
       ]
     },
     {
       "id": "smoothness",
-      "status": "in_progress",
+      "status": "implemented_and_measured_in_native_webview_with_limits",
       "implemented": [
         "页面不再退场到完全透明后才挂载目标页，避免叠加入口动画",
         "固定蓝图库不使用父级位移动画，保留侧栏边界",
@@ -167,19 +170,20 @@
         "地图画匹配移到可终止Worker；预览和导出同源；自选方块控件仅在弹窗打开时创建，切页取消未完成任务并复用方块数据",
         "模型采样与外露面生成移到Worker、单渲染器按需绘制、停用释放上下文，固定方块模式跳过颜色工作；PBR环境贴图只在需要的源模型创建",
         "批量源文件和结果驻留原生内存，前端仅展示元数据；原生选择不发送文件字节，拖入走有界二进制 IPC；原生解析/编码在共享单许可后台工作线程",
-        "修复新批量工具的 KeepAlive 虚拟行高归零问题：固定 106px 行高/530px 视窗/最多 9 行，无隐藏尺寸观测；1000 条记录返回页面不再全量挂载"
+        "修复新批量工具的 KeepAlive 虚拟行高归零问题：固定 106px 行高/530px 视窗/最多 9 行，无隐藏尺寸观测；1000 条记录返回页面不再全量挂载",
+        "工具源切换按 ID 隔离缓存，清空/重选以 epoch 丢弃迟到结果；共享加载与重试，避免 undefined sizes 和错误转圈。",
+        "编辑/导出/调色板/地图画/模型/批量新增文案纳入简中、繁中、英文、日文，规范旧语言代码；修复窄窗口英文编辑页签和文本对比度。",
+        "JSON Code 校验 Worker 改为同源独立构建资源，保留真实校验，避免打包 CSP 与 data URL importScripts 失败。"
       ],
-      "pending": [
-        "地图画和模型 Worker、批量队列已治理；音乐页是无后台任务的占位提示。真实 WebView 峰值内存及启动指标仍需复核",
-        "首次进入重工具页面的前台帧时间检查",
-        "编辑和生成任务下的导航延迟、资源释放及峰值内存回归",
-        "新增文案与现有多语言设置对齐",
-        "旧蓝图库上传的本地 File 仍走数字数组 IPC，需要减少大文件前端分配；批量工具已使用原生选择/二进制传输。跨编辑/转换/导入整体调度和解析中途取消仍待完善"
+      "measurements": "真实前台 WebView：1024²地图画生成中切页60帧0空白，目标55.7ms，Worker18.1ms终止；128³模型2097152块切页目标41.3ms，GPU上下文和画布释放、返回结果保留。单机样本非60fps保证。",
+      "followUps": [
+        "进程峰值 RSS/GPU 字节和跨设备长期性能基准未测；当前记录仅包含帧时间、JS heap 及资源生命周期。",
+        "旧本地上传数字数组 IPC、跨编辑/转换/导入全局调度和解析中途取消仍可继续优化；本轮 API/新工具已采用有界原生处理。"
       ]
     },
     {
       "id": "verification",
-      "status": "in_progress",
+      "status": "scoped_acceptance_completed",
       "observed": [
         "独立应用标识连接真实 WebView2，无模拟 IPC：公开不可变版本原文件下载入库、生成快照入库、编辑 stage/cancel/commit/crop/undo/reset、选区 1.7.10 副本入库通过；源文件未变",
         "真实系统 Open/Save As：ZIP 两成功一失败隔离、1.7.10 结果 ZIP 保存，系统覆盖确认后应用仍拒绝覆盖，校验值不变；地图画保存取消后可重试",
@@ -243,22 +247,20 @@
         "批量现代源转 MCEdit 未选目标时报错，选择 1.7.10 后 targetDataVersion=5；BE 清空 Java 参数并隐藏目标列表。真实 16×16 地图画 Worker 同时回归共享控件的另存/临时快照释放",
         "1000 项测试发现 Vuetify 隐藏行高被记为 0、返回后挂载 1000 行（观察到 121.1ms 长帧）；固定行高改造后返回 9 行、底部 7 行，两轮各 60 帧最大 24.2/24.2ms、0 空白，每轮只开始一项且取消后成功数 0。单机诊断、模拟计算，不是原生 WebView/60fps 保证",
         "拖入原始二进制载荷 54 字节对应 3 字节源；拒绝第 1001 项、跳过不支持文件。延迟 1200ms 的停止 IPC 确认前新运行按钮保持禁用，之后恢复执行成功",
-        "批量截图检查修复复选框 grid-area 引发的文件名挤窄；1000px 无横向溢出。C8.57GiB/D40.49GiB，无需清缓存；真实系统选择/保存与完整 IPC 仍未宣称通过"
+        "批量截图检查修复复选框 grid-area 引发的文件名挤窄；1000px 无横向溢出。C8.57GiB/D40.49GiB，无需清缓存；真实系统选择/保存与完整 IPC 仍未宣称通过",
+        "最终 Node 60项通过，Rust库168项通过/2项默认忽略；JSON Code本地Worker收到annotate回包，原生切换两份蓝图零运行时/CSP错误；繁体重启恢复和日文工具箱已核查。详见desktop-ui-integration。",
+        "原生编辑UI同一方块两次拾取得到1块选区，应用裁剪为1×1×1，撤销恢复2×2×2；源码Code/拆分缓存切换后新源回到详情，不继承旧大尺寸警告。"
       ],
-      "remaining": [
-        "后续转换及导出能力的坐标/属性/实体往返测试",
-        "实际导出再解析核验格式、子格式和 DataVersion",
-        "BE 含水层、JE 方块状态、多版本输出的联合回归",
-        "原生桌面端完整交互复核，不能用浏览器 mock 代替原生验证",
-        "完成所有显式功能后再进行最终 Goal 完成审计",
-        "版本转换保留/清理的复杂实体及物品 NBT 仍需游戏内核验；现有提示明确不等同完整 Minecraft DataFixer"
+      "followUpValidation": [
+        "更复杂实体/物品/模组以及游戏内放置行为；不声称实现完整 Minecraft DataFixer。",
+        "更多硬件的峰值内存和持续负载基准；本次未制作或发布签名安装包。"
       ]
     }
   ],
   "checkpoint": {
-    "status": "validated_source_checkpoint",
+    "status": "final_source_handoff",
     "branch": "desktop-api-v1-20261018",
-    "scope": "本批：网站本地批量转换回迁、原生有界 ZIP/队列/安全另存、共用格式版本控件与固定行高虚拟化；完整原生端到端、多语言及剩余流畅度验收仍待完成",
+    "scope": "API v1、网站编辑及地图画/模型/批量工具回迁、统一多版本导出和流畅度治理已实现并完成分层验收；非打印范围。正常标识调试构建已通过，不包含私有测试资料或生成物。",
     "excluded": [
       "src-tauri/schematic/out2.litematic",
       ".playwright-cli/",
@@ -266,6 +268,15 @@
       "output/",
       "pelican-bicycle.html"
     ],
-    "baseCommit": "f6554babbe39316e07a9be78412e466dbdcf6d5d"
+    "baseCommit": "5016398420fa528b8fb7a0033c37fd14f5abfaaf"
+  },
+  "finalAcceptance": {
+    "scope": "Requested software integration/backport/smoothness work completed; remaining items are explicitly bounded game/runtime verification limits and optional follow-ups, not unimplemented requested features.",
+    "automated": "Node60 + Rust lib168,2 default-ignored + vue-tsc/Vite + WebGL2 smoke",
+    "native": "Real isolated WebView/system dialogs/IPC plus native heavy navigation; not presented as browser mocks.",
+    "normalDebugBuild": "Passed: node scripts/tauri-run.cjs build --debug --no-bundle, mcSchematic identifier; binary built but normal profile not launched",
+    "release": "No signed installer, release upload, website deployment or 3D printing port",
+    "userData": "Production DB SHA256 unchanged; unrelated sample, personal files, profiles and output artifacts excluded",
+    "cleanup": "No caches deleted; disk space sufficient"
   }
 }

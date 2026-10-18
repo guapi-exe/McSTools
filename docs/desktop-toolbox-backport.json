@@ -1,5 +1,5 @@
 {
-  "status": "native_small_sample_verified_i18n_and_heavy_performance_pending_not_full_goal_completion",
+  "status": "implemented_native_functional_performance_and_localization_verified",
   "nativeIntegration": "docs/desktop-native-integration.json",
   "source": {
     "repository": "new_mcs",
@@ -57,7 +57,10 @@
       "allFilesBytes": 67108864,
       "fileCount": 128,
       "trianglesIncludingInstances": 200000,
-      "resolution": [8, 128],
+      "resolution": [
+        8,
+        128
+      ],
       "barycentricSamples": 40000000,
       "gltfDeclaredAccessorBytes": 134217728,
       "gltfDeclaredBufferBytes": 67108864,
@@ -125,10 +128,22 @@
       "navigation": {
         "scenario": "1000 queued metadata records, one 800ms simulated native conversion, warmed foreground browser",
         "framesEach": 60,
-        "maxFrameMs": [24.2, 24.2],
-        "blankFrames": [0, 0],
-        "startedPerRound": [1, 1],
-        "successAfterCancel": [0, 0],
+        "maxFrameMs": [
+          24.2,
+          24.2
+        ],
+        "blankFrames": [
+          0,
+          0
+        ],
+        "startedPerRound": [
+          1,
+          1
+        ],
+        "successAfterCancel": [
+          0,
+          0
+        ],
         "caveat": "单机浏览器诊断，不是原生计算、WebView或60fps保证；修复前观察到121.1ms长帧"
       },
       "stopAcknowledgement": "1200ms延迟停止回包时下一轮保持禁用；确认后恢复执行成功，未误取消新任务",
@@ -144,19 +159,36 @@
         "scenario": "128 resolution, 120 large triangles, color matching; warmed foreground UI; no concurrent build",
         "rounds": 3,
         "framesEach": 60,
-        "maxFrameMs": [42.4, 36.3, 36.5],
-        "targetVisibleAfterClickMs": [36, 30.6, 29.8],
-        "workerTerminateAfterClickMs": [41.6, 34.6, 33.1],
-        "blankFrames": [0, 0, 0],
+        "maxFrameMs": [
+          42.4,
+          36.3,
+          36.5
+        ],
+        "targetVisibleAfterClickMs": [
+          36,
+          30.6,
+          29.8
+        ],
+        "workerTerminateAfterClickMs": [
+          41.6,
+          34.6,
+          33.1
+        ],
+        "blankFrames": [
+          0,
+          0,
+          0
+        ],
         "caveat": "单机诊断样本，不是60fps或WebView保证；此前与构建并行的样本出现84.9ms长帧，不纳入空闲条件结果。源格式解析/源纹理解码的长帧与峰值内存仍待原生复核。"
       }
-    }
+    },
+    "final": "Supersedes checkpoint counts above: Node60, Rust168+2ignored; native 1024² map navigation and 128³ filled model/GPU lifecycle, locale persistence and packaged worker checks documented in uiIntegration."
   },
   "remaining": [
-    "真实重负载 WebView 的帧时间、GPU 释放及峰值内存；小样本真实二进制 IPC/系统选择/保存/取消/no-clobber 已通过，详见 nativeIntegration",
-    "生成器、批量工具及共享导出新增文案多语言",
-    "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查",
-    "模型使用默认静态姿态，不运行动画；不承诺Draco/KTX2等未配置解码器的扩展支持；透明材质使用代表色体素化，非离线渲染器"
+    "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查。",
+    "模型使用默认静态姿态，不运行动画；不承诺Draco/KTX2等未配置解码器的扩展支持；透明材质使用代表色体素化，非离线渲染器。",
+    "跨设备峰值进程RSS/GPU字节未测；已完成真实WebView帧时间与GPU释放，不宣称60fps保证。"
   ],
-  "excluded": "3D printing"
+  "excluded": "3D printing",
+  "uiIntegration": "docs/desktop-ui-integration.json"
 }

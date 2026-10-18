@@ -1,18 +1,22 @@
 <script setup lang="ts">
+import {useI18n} from 'vue-i18n'
 import {computed, onDeactivated, ref, watch} from 'vue'
+import {materialName} from '../../modules/materials/block_names'
 import {mapArtData} from '../../modules/map_art/map_art_data'
 import {getBlockImg} from '../../modules/others'
 import {blockColourFamilies, gravityBlocks} from '../../modules/toolbox/block-families'
+const {t: $t, locale} = useI18n()
+
 const props = defineProps<{modelValue: string[]; disabled?: boolean}>()
 const emit = defineEmits<{'update:modelValue': [value: string[]]}>()
 const open = ref(false), query = ref(''), groupBy = ref('material')
 const expanded = ref<string[]>([]), draft = ref<string[]>([])
 const chosen = computed(() => new Set(draft.value)), selected = computed(() => new Set(props.modelValue))
-const families: Record<string, string> = {white:'白色',grey:'灰色',black:'黑色',brown:'棕色',red:'红色',orange:'橙色',yellow:'黄色',lime:'黄绿',green:'绿色',cyan:'青色',blue:'蓝色',purple:'紫色',magenta:'品红',pink:'粉色'}
-const all = computed(() => (mapArtData.value ?? []).flatMap(group => group.items.map(block => ({...block, group: group.name, groupTitle: group.zh_cn}))))
+const families = ['white','grey','black','brown','red','orange','yellow','lime','green','cyan','blue','purple','magenta','pink']
+const all = computed(() => (mapArtData.value ?? []).flatMap(group => group.items.map(block => ({...block, label: materialName(block.id, locale.value), group: group.name, groupTitle: $t(`desktop.group_${group.name}`)}))))
 const matched = computed(() => {
   const needle = String(query.value ?? '').trim().toLowerCase()
-  return needle ? all.value.filter(block => `${block.id} ${block.zh_cn}`.toLowerCase().includes(needle)) : all.value
+  return needle ? all.value.filter(block => `${block.id} ${block.zh_cn} ${block.label}`.toLowerCase().includes(needle)) : all.value
 })
 const canonical = (id: string) => id.includes(':') ? id : 'minecraft:' + id
 const sections = computed(() => {
@@ -20,11 +24,11 @@ const sections = computed(() => {
   for (const block of matched.value) {
     const key = groupBy.value === 'material' ? block.group : (blockColourFamilies[canonical(block.id)] ?? 'grey')
     let section = buckets.get(key)
-    if (!section) { section = {key, title: groupBy.value === 'material' ? block.groupTitle : families[key], blocks: []}; buckets.set(key, section) }
+    if (!section) { section = {key, title: groupBy.value === 'material' ? block.groupTitle : $t(`desktop.color_${key}`), blocks: []}; buckets.set(key, section) }
     section.blocks.push(block)
   }
   const sections = [...buckets.values()]
-  if (groupBy.value === 'colour') sections.sort((a,b) => Object.keys(families).indexOf(a.key) - Object.keys(families).indexOf(b.key))
+  if (groupBy.value === 'colour') sections.sort((a,b) => families.indexOf(a.key) - families.indexOf(b.key))
   return sections
 })
 const colors = computed(() => new Set(all.value.filter(block => selected.value.has(block.id)).map(block => block.average_rgb_hex)).size)
@@ -45,37 +49,37 @@ onDeactivated(() => { open.value = false })
 </script>
 <template>
   <section class="tool-palette">
-    <v-btn block variant="tonal" color="primary" prepend-icon="mdi-palette-outline" :disabled="disabled" @click="begin">自选方块 · {{ modelValue.length }}</v-btn>
-    <p class="text-caption my-2">{{ modelValue.length }} 种方块 · {{ colors }} 种颜色<span v-if="gravityCount"> · {{ gravityCount }} 种重力方块需支撑</span></p>
+    <v-btn block variant="tonal" color="primary" prepend-icon="mdi-palette-outline" :disabled="disabled" @click="begin">{{ $t('desktop.paletteButton', {count: modelValue.length}) }}</v-btn>
+    <p class="text-caption my-2">{{ $t('desktop.paletteSummary', {count: modelValue.length, colors}) }}<span v-if="gravityCount">{{ $t('desktop.gravitySummary', {count: gravityCount}) }}</span></p>
     <v-dialog v-model="open" max-width="800" scrollable>
       <v-card>
-        <v-card-title class="d-flex align-center">方块组合<v-spacer/><v-btn icon="mdi-close" aria-label="取消方块选择" variant="text" @click="open = false"/></v-card-title>
+        <v-card-title class="d-flex align-center">{{ $t('desktop.paletteTitle') }}<v-spacer/><v-btn icon="mdi-close" :aria-label="$t('desktop.paletteCancel')" variant="text" @click="open = false"/></v-card-title>
         <div class="pa-4 pt-0 palette-filters">
-          <v-text-field v-model="query" label="搜索方块名称或 ID" prepend-inner-icon="mdi-magnify" clearable hide-details density="compact"/>
-          <v-btn-toggle v-model="groupBy" mandatory density="compact"><v-btn value="material">按材质</v-btn><v-btn value="colour">按颜色</v-btn></v-btn-toggle>
-          <div class="d-flex flex-wrap align-center ga-2 text-caption">已选 {{ draft.length }} 种<v-btn size="small" variant="text" @click="selectVisible">选中当前结果</v-btn><v-btn size="small" variant="text" @click="draft = []">清空选择</v-btn></div>
+          <v-text-field v-model="query" :label="$t('desktop.paletteSearch')" prepend-inner-icon="mdi-magnify" clearable hide-details density="compact"/>
+          <v-btn-toggle v-model="groupBy" mandatory density="compact"><v-btn value="material">{{ $t('desktop.byMaterial') }}</v-btn><v-btn value="colour">{{ $t('desktop.byColor') }}</v-btn></v-btn-toggle>
+          <div class="d-flex flex-wrap align-center ga-2 text-caption">{{ $t('desktop.selectedTypes', {count: draft.length}) }}<v-btn size="small" variant="text" @click="selectVisible">{{ $t('desktop.selectResults') }}</v-btn><v-btn size="small" variant="text" @click="draft = []">{{ $t('desktop.clearSelection') }}</v-btn></div>
         </div>
         <v-card-text class="palette-scroll">
           <v-list v-model:opened="expanded" open-strategy="multiple">
             <v-list-group v-for="section in sections" :key="section.key" :value="section.key">
               <template #activator="{props: activator}">
-                <v-list-item v-bind="activator" :title="section.title" :subtitle="`${count(section.blocks)} / ${section.blocks.length} 种`" class="category-header">
-                  <template #prepend><v-checkbox-btn :model-value="count(section.blocks) === section.blocks.length" :indeterminate="count(section.blocks) > 0 && count(section.blocks) < section.blocks.length" :aria-label="'选择整组 ' + section.title" @click.stop="toggleSection(section.blocks)"/></template>
+                <v-list-item v-bind="activator" :title="section.title" :subtitle="$t('desktop.groupCount', {selected: count(section.blocks), count: section.blocks.length})" class="category-header">
+                  <template #prepend><v-checkbox-btn :model-value="count(section.blocks) === section.blocks.length" :indeterminate="count(section.blocks) > 0 && count(section.blocks) < section.blocks.length" :aria-label="$t('desktop.selectGroup', {name: section.title})" @click.stop="toggleSection(section.blocks)"/></template>
                 </v-list-item>
               </template>
               <v-virtual-scroll v-if="expanded.includes(section.key)" :items="section.blocks" :item-height="64" max-height="320">
                 <template #default="{item}">
-                  <v-list-item :key="item.id" class="block-item" :title="item.zh_cn" :subtitle="item.id" @click="toggle(item.id)">
-                    <template #prepend><v-checkbox-btn :model-value="chosen.has(item.id)" :aria-label="item.zh_cn" @click.stop="toggle(item.id)"/><img :src="icon(item.id)" :alt="item.id" width="32" height="32" loading="lazy" decoding="async" class="mr-3"/></template>
+                  <v-list-item :key="item.id" class="block-item" :title="item.label" :subtitle="item.id" @click="toggle(item.id)">
+                    <template #prepend><v-checkbox-btn :model-value="chosen.has(item.id)" :aria-label="item.label" @click.stop="toggle(item.id)"/><img :src="icon(item.id)" :alt="item.id" width="32" height="32" loading="lazy" decoding="async" class="mr-3"/></template>
                     <template #append><span class="palette-swatch" :style="{background: item.average_rgb_hex}" :title="item.average_rgb_hex"/></template>
                   </v-list-item>
                 </template>
               </v-virtual-scroll>
             </v-list-group>
           </v-list>
-          <p v-if="!sections.length" class="text-caption">没有匹配的方块。</p>
+          <p v-if="!sections.length" class="text-caption">{{ $t('desktop.noBlocks') }}</p>
         </v-card-text>
-        <v-card-actions><v-spacer/><v-btn @click="open = false">取消</v-btn><v-btn color="primary" :disabled="!draft.length" @click="save">应用 {{ draft.length }} 种方块</v-btn></v-card-actions>
+        <v-card-actions><v-spacer/><v-btn @click="open = false">{{ $t('desktop.cancel') }}</v-btn><v-btn color="primary" :disabled="!draft.length" @click="save">{{ $t('desktop.applyPalette', {count: draft.length}) }}</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
   </section>

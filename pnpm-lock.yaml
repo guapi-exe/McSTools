@@ -53,6 +53,9 @@ dependencies:
   axios:
     specifier: 1.9.0
     version: 1.9.0
+  ace-builds:
+    specifier: 1.43.3
+    version: 1.43.3
   dayjs:
     specifier: 1.11.13
     version: 1.11.13
@@ -71,6 +74,9 @@ dependencies:
   json-editor-vue3:
     specifier: ^1.1.1
     version: 1.1.1
+  jsoneditor:
+    specifier: 9.10.5
+    version: 9.10.5
   jszip:
     specifier: ^3.10.1
     version: 3.10.1

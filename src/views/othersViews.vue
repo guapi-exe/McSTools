@@ -14,7 +14,7 @@ const redStoneMusic = defineAsyncComponent(() => import("../units/others/redSton
 const ModelToSchem = defineAsyncComponent(() => import("../units/others/modelToSchem.vue"))
 const BlueprintBatchConverter = defineAsyncComponent(() => import("../units/others/BlueprintBatchConverter.vue"))
 
-const { t } = useI18n()
+const { t, t: $t } = useI18n()
 const active = ref('img')
 const mapArtReady = ref(Boolean(mapArtData.value?.length))
 const mapArtLoading = ref(false)
@@ -75,10 +75,8 @@ onBeforeRouteLeave(navigationGuard)
         <v-window-item value="img">
             <div v-if="!mapArtReady" class="tool-panel-loading">
               <v-progress-circular v-if="mapArtLoading" indeterminate color="info" size="32" />
-              <v-alert v-else-if="mapArtError" variant="tonal" color="error" density="compact">
-                地图画方块数据加载失败，请重试。
-                <template #append>
-                  <v-btn size="small" variant="text" @click="loadMapArtData">重试</v-btn>
+              <v-alert v-else-if="mapArtError" variant="tonal" color="error" density="compact">{{ $t('desktop.blockLoadFailed') }}<template #append>
+                  <v-btn size="small" variant="text" @click="loadMapArtData">{{ $t('desktop.retry') }}</v-btn>
                 </template>
               </v-alert>
             </div>
@@ -87,10 +85,8 @@ onBeforeRouteLeave(navigationGuard)
         <v-window-item value="model">
             <div v-if="!mapArtReady" class="tool-panel-loading">
               <v-progress-circular v-if="mapArtLoading" indeterminate color="info" size="32" />
-              <v-alert v-else-if="mapArtError" variant="tonal" color="error" density="compact">
-                地图画方块数据加载失败，请重试。
-                <template #append>
-                  <v-btn size="small" variant="text" @click="loadMapArtData">重试</v-btn>
+              <v-alert v-else-if="mapArtError" variant="tonal" color="error" density="compact">{{ $t('desktop.blockLoadFailed') }}<template #append>
+                  <v-btn size="small" variant="text" @click="loadMapArtData">{{ $t('desktop.retry') }}</v-btn>
                 </template>
               </v-alert>
             </div>

@@ -629,7 +629,8 @@ export default {
     tabs: {
       mapArt: 'マップアート',
       ModelToSchem: 'モデルを設計図へ',
-      redstoneMusic: 'レッドストーンミュージック'
+      redstoneMusic: 'レッドストーンミュージック',
+      batchConvert: '一括変換'
     },
     modelToSCHEM: {
       tip: 'マップアートのブロック・色対応表に基づき、現在選択中の設計図モデルを投影してマップアート設計図として出力します。',

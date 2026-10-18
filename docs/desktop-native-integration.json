@@ -1,6 +1,6 @@
 {
   "date": "2026-10-18",
-  "status": "native_small_sample_verified_heavy_interaction_and_localization_pending",
+  "status": "native_small_and_large_representative_samples_verified",
   "scope": "Real Tauri IPC, packaged frontend and WebView2; no browser IPC fixtures injected",
   "isolation": {
     "config": "scripts/testing/tauri-native.config.json",
@@ -31,6 +31,16 @@
       "issue": "Unset fontSize was the string null and crashed the personalization render at toFixed",
       "fix": "Typed numeric refs and validated legacy preference values; clearing a font/background resets size to zero",
       "evidence": "Actual initial WebView console TypeError; repaired page showed 0.00 kb with no additional error."
+    },
+    {
+      "issue": "Cached Split/Source Data read cleared sizes and could retain older source state",
+      "fix": "Keyed panels, reset active tab, guarded empty source, epoch-gated async store and text loads, visible retry",
+      "evidence": "Final native source3 -> source4 -> source3 switch, Split and Code/Tree paths: zero runtime/CSP errors and fresh details selection."
+    },
+    {
+      "issue": "Packaged JSON Code Worker was blocked, then its embedded data importScripts failed",
+      "fix": "Local-worker CSP plus existing JSONEditor Ace singleton configured to emit a separate same-origin worker asset, without Blob trampoline or remote/eval permissions",
+      "evidence": "Actual /assets/worker-json-DgwNIOck.js?no-inline worker sent annotate; errors[] and csp[]."
     }
   ],
   "verified": {
@@ -42,9 +52,9 @@
     "generatedEditor": "Real binary staging -> named generated library import -> editor stage/cancel/commit replacement -> crop -> undo -> reset -> selected-region 1.7.10 library copy. All four smoke assertions passed; source library preview unchanged. Independent NBT parse confirmed the 1x2x2 legacy copy contains 4 blocks and MinecraftVersion 1.7.10.",
     "modelBedrock": "Actual GLTF+BIN -> 12 triangles -> filled 8x8x8 stone model -> shared Bedrock export -> system Save As. Independent little-endian NBT parse: format_version 1, size [8,8,8], primary layer 512 stone indices, second water layer 512 values all -1. No Java target selector for BE.",
     "automated": {
-      "rust": "cargo test --offline --lib: 162 passed, 0 failed, 2 ignored; bin tests deliberately not run because historical tests write sample files",
-      "frontend": "47 Node tests passed, vue-tsc --noEmit passed",
-      "packagedBuild": "Isolated debug --no-bundle build passed, including Vite. Existing warnings remain: Rust lib 43, bin 40; Vite large-chunk warnings. Not a release build or warning-free claim."
+      "rust": "cargo test --offline --lib: 168 passed, 0 failed, 2 ignored; bin tests deliberately excluded because historical tests write samples",
+      "frontend": "60 Node tests passed; vue-tsc and Vite passed; current WebGL2 smoke passed (31514 non-empty pixels, eager32/lazy8 chunks)",
+      "packagedBuild": "Final isolated and normal-identifier debug --no-bundle builds passed. Normal profile not launched. Rust lib43/bin40 and Vite large-chunk warnings remain; not a release or zero-warning claim."
     },
     "screenshots": [
       "output/playwright/native-integration/map-export-real.png",
@@ -61,7 +71,7 @@
     "cleanup": "Detach CDP and normally close only the test window. Test profile and output artifacts are intentionally retained, not uploaded. A normal build without --config restores the production identifier."
   },
   "pending": [
-    "Native heavy-render navigation/3D editing interaction and memory measurements",
-    "API transport redirect/auth faults, remaining new-UI localization, actual game-placement limitations remain in the overall goal plan"
-  ]
+    "游戏内复杂实体/物品/模组与物理放置、跨设备峰值RSS/GPU字节测量；不是本轮已实现功能缺口。"
+  ],
+  "uiIntegration": "docs/desktop-ui-integration.json"
 }

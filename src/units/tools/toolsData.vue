@@ -12,6 +12,7 @@ import {Tag} from "../../modules/nbt/tag.ts";
 import {activeTools, fetchSchematicStr, schematic_id, schematicData} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import JsonEditorVue from 'json-editor-vue3'
+import '../../modules/json_editor_runtime'
 import {data, json_data} from "../../modules/toolsData_data.ts"
 import {invoke} from "@tauri-apps/api/core";
 const isJson = ref(false)
@@ -19,24 +20,32 @@ const snbtdata = ref();
 const isLoading = ref(false);
 const sureLoading = ref(false);
 const couldView = ref(["tree", "form", "view", "code"])
-const get_schematicStr = async (id: number) => {
+let disposed = false, loadEpoch = 0
+const get_schematicStr = async (id: number | undefined) => {
+  if (id == undefined || disposed) return
+  const epoch = ++loadEpoch
   try {
     isLoading.value = true
-    data.value = await fetchSchematicStr(id)
-    json_data.value = parseSNBTWithBigIntToString(data.value)
+    const text = await fetchSchematicStr(id)
+    if (disposed || loadEpoch !== epoch || schematic_id.value !== id) return
+    const parsed = parseSNBTWithBigIntToString(text)
+    data.value = text
+    json_data.value = parsed
     isJson.value = true;
   }catch (e){
+    if (disposed || loadEpoch !== epoch || schematic_id.value !== id) return
     toast.error($t('toolsData.loadFailed', {error: String(e)}), {
       timeout: 3000
     });
   }finally {
-    isLoading.value = false
+    if (!disposed && loadEpoch === epoch) isLoading.value = false
   }
 
 }
 onMounted(async()=>{
 
-  let size = schematicData.value.sizes
+  const size = schematicData.value?.sizes
+  if (!size) return
   const [length, width, height] = size.split(',').map(Number);
   if (length * width * height >= 100*100*100) sureLoading.value = true
   else await get_schematicStr(schematic_id.value);
@@ -79,6 +88,7 @@ const updateModelValue = (val: Tag) => {
   change_data.value = true;
 }
 const saveChange = async () => {
+  if (!schematicData.value || schematic_id.value == undefined || disposed) return
   try {
     await invoke(`save_snbt`, {
       id: schematic_id.value,
@@ -98,6 +108,7 @@ const saveChange = async () => {
 };
 
 onBeforeUnmount(() => {
+  disposed = true; ++loadEpoch;
   if (activateTimer !== null) clearTimeout(activateTimer)
   json_data.value = undefined;
   snbtdata.value = undefined;
@@ -123,7 +134,7 @@ onBeforeUnmount(() => {
             icon="mdi-information-outline"
             class="mt-4 monospace-font"
         >
-          {{$t('toolsData.tooLarge', {size: schematicData.sizes})}}
+          {{$t('toolsData.tooLarge', {size: schematicData?.sizes ?? ''})}}
         </v-alert>
         <div class="button-group">
           <v-btn
@@ -172,7 +183,7 @@ onBeforeUnmount(() => {
   {{$t('toolsData.confirmSave')}}
       </v-card-title>
 
-      <v-card-text v-if="schematicData.schematic_type == 4">
+      <v-card-text v-if="schematicData?.schematic_type == 4">
   {{$t('toolsData.noEditForType4')}}
       </v-card-text>
       <v-card-text v-else>
@@ -188,7 +199,7 @@ onBeforeUnmount(() => {
           {{$t('toolsData.cancel')}}
         </v-btn>
         <v-btn
-            :disabled="schematicData.schematic_type == 4"
+            :disabled="!schematicData || schematicData.schematic_type == 4"
             color="info"
             @click="saveChange"
         >

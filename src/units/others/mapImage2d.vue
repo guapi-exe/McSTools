@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed, defineAsyncComponent, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, shallowRef, watch} from 'vue'
+import {materialName} from '../../modules/materials/block_names'
 import {ensureMapArtData, mapArtData} from '../../modules/map_art/map_art_data'
 import {toast} from '../../modules/others'
 import {encode_image, image_data, releaseProcessedImage} from '../../modules/map_art/encode_image'
@@ -10,7 +11,7 @@ import type {MapArtResult, RGB, ToolBlock} from '../../modules/toolbox/types'
 import {useI18n} from 'vue-i18n'
 const ToolPalettePicker = defineAsyncComponent(() => import('./ToolPalettePicker.vue'))
 const GeneratedBlueprintExport = defineAsyncComponent(() => import('./GeneratedBlueprintExport.vue'))
-const {t: $t} = useI18n()
+const {t: $t, locale} = useI18n()
 const exportSettings = reactive({
   width: 128, height: 128, maxResolution: 2048,
   axios: 'y' as 'x' | 'y' | 'z', targetRotation: 0,
@@ -102,7 +103,7 @@ async function refreshImage() {
   const selected = new Set(selectedBlocks.value)
   const palette: ToolBlock[] = (mapArtData.value ?? []).flatMap(category => category.items
     .filter(block => selected.has(block.id)).map(block => ({
-      id: block.id.includes(':') ? block.id : 'minecraft:' + block.id, label: block.zh_cn, group: category.name,
+      id: block.id.includes(':') ? block.id : 'minecraft:' + block.id, label: materialName(block.id, locale.value), group: category.name,
       color: block.average_rgb as unknown as RGB, normal: block.normal_rgb as unknown as RGB,
       low: block.low_rgb as unknown as RGB, high: block.high_rgb as unknown as RGB,
     })))
@@ -110,8 +111,8 @@ async function refreshImage() {
   isProcessing.value = true; progress.value = 0
   try {
     const {width, height} = options
-    if (![width, height].every(n => Number.isInteger(n) && n >= 1 && n <= 2048) || width * height > 1024 * 1024) throw new Error('最多 1,048,576 个像素、单边 2048，请降低分辨率。')
-    if (!palette.length) throw new Error('请至少选择一种方块。')
+    if (![width, height].every(n => Number.isInteger(n) && n >= 1 && n <= 2048) || width * height > 1024 * 1024) throw new Error($t('desktop.pixelLimit'))
+    if (!palette.length) throw new Error($t('desktop.chooseBlocks'))
     const bitmap = await createImageBitmap(source.file, {resizeWidth: width, resizeHeight: height, resizeQuality: 'high'})
     let rgba: Uint8ClampedArray, w: number, h: number
     try {
@@ -120,7 +121,7 @@ async function refreshImage() {
       w = swapped ? height : width; h = swapped ? width : height
       const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
       const ctx = canvas.getContext('2d', {willReadFrequently: true})
-      if (!ctx) throw new Error('无法读取图片')
+      if (!ctx) throw new Error($t('desktop.readImage'))
       ctx.translate(w / 2, h / 2); ctx.rotate(options.targetRotation * Math.PI / 180)
       ctx.drawImage(bitmap, -width / 2, -height / 2, width, height)
       rgba = ctx.getImageData(0, 0, w, h).data
@@ -142,22 +143,22 @@ async function refreshImage() {
     previewCanvas.value.width = canvas.width; previewCanvas.value.height = canvas.height
     previewCanvas.value.getContext('2d')?.drawImage(canvas, 0, 0)
   } catch (error) {
-    if (run === epoch && active && !task.signal.aborted) toast.error('地图画生成失败：' + error, {timeout: 5000})
+    if (run === epoch && active && !task.signal.aborted) toast.error($t('desktop.mapFailed', {error: String(error)}), {timeout: 5000})
   } finally { if (run === epoch) { isProcessing.value = false; controller = undefined } }
 }
 async function uploadImage(file?: File) {
   if (!file) { cleanImage(); return }
   cancelWork(); const run = ++uploadEpoch
   try {
-    if (file.size > 64 * 1024 * 1024) throw new Error('图片文件超过 64 MiB。')
+    if (file.size > 64 * 1024 * 1024) throw new Error($t('desktop.imageLimit'))
     const data = await encode_image(file)
     if (run !== uploadEpoch || !active || disposed) { releaseProcessedImage(data); return }
-    if (data.width * data.height > 64 * 1024 * 1024) { releaseProcessedImage(data); throw new Error('源图片超过 6400 万像素，请先缩小。') }
+    if (data.width * data.height > 64 * 1024 * 1024) { releaseProcessedImage(data); throw new Error($t('desktop.sourcePixelLimit')) }
     releaseProcessedImage(image_data.value)
     image_data.value = data; result.value = undefined; resize.value = 1
     updateSize()
     await refreshImage()
-  } catch (error) { if (run === uploadEpoch && active) toast.error('图片加载失败：' + error, {timeout: 4000}) }
+  } catch (error) { if (run === uploadEpoch && active) toast.error($t('desktop.imageFailed', {error: String(error)}), {timeout: 4000}) }
 }
 function updateSize() {
   if (!image_data.value) return
@@ -166,7 +167,7 @@ function updateSize() {
 }
 async function prepareExport() {
   if (!result.value || stale.value) await refreshImage()
-  if (!result.value || stale.value || !active) throw new Error('生成结果已过期或已取消，请刷新预览。')
+  if (!result.value || stale.value || !active) throw new Error($t('desktop.mapExpired'))
   return {structure: result.value.structure, name: image_data.value?.name || 'map-art'}
 }
 async function exportImage() {
@@ -181,12 +182,12 @@ async function exportImage() {
     try {
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
       if (task.signal.aborted || !active) return
-      if (!blob) throw new Error('无法编码 PNG 图片')
+      if (!blob) throw new Error($t('desktop.encodePng'))
       const url = URL.createObjectURL(blob), link = document.createElement('a')
       link.download = name.replace(/[<>:"/\\|?*]/g, '_') + '-block-texture.png'; link.href = url; link.click()
       setTimeout(() => URL.revokeObjectURL(url), 0)
     } finally { canvas.width = canvas.height = 0 }
-  } catch (error) { if (active && (error as Error).name !== 'AbortError') toast.error('图片导出失败：' + error) }
+  } catch (error) { if (active && (error as Error).name !== 'AbortError') toast.error($t('desktop.imageExportFailed', {error: String(error)})) }
   finally { if (task && imageController === task) { imageController = undefined; exportImageLoading.value = false } }
 }
 function cleanImage() {
@@ -203,7 +204,7 @@ onMounted(async () => {
     if (disposed) return
     if (!selectedBlocks.value.length) selectedBlocks.value = (data.find(category => category.name === 'wool') ?? data[0])?.items.map(item => item.id) ?? []
     blocksLoaded.value = true
-  } catch (error) { if (!disposed) toast.error('方块数据加载失败：' + error) }
+  } catch (error) { if (!disposed) toast.error($t('desktop.blocksFailed', {error: String(error)})) }
 })
 onActivated(() => { active = true })
 onDeactivated(() => {
@@ -213,7 +214,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
 </script>
 
 <template>
-  <v-row no-gutters class="mx-auto v-theme--custom text-primary map-editor-row">
+  <v-row no-gutters class="mx-auto v-theme--custom map-editor-row">
     <v-col cols="12" md="4" class="pa-4 d-flex flex-column text-medium-emphasis config-column">
       <div class="config-scroll">
       <v-row v-if="image_data != undefined">
@@ -347,26 +348,26 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
         >
         </v-text-field>
 
-        <v-select v-model="exportSettings.ditherMode" :items="[{title:'Floyd-Steinberg',value:'floyd'},{title:'Atkinson',value:'atkinson'},{title:'有序抖动（Bayer）',value:'ordered'},{title:'关闭抖动',value:'none'}]" label="抖动模式" density="compact"/>
-        <v-slider v-model="exportSettings.adaptiveThreshold" :min="0" :max="1" :step="0.05" label="自适应阈值" thumb-label/>
-        <v-slider v-model="exportSettings.alphaThreshold" :min="0" :max="255" :step="1" label="透明度阈值" thumb-label/>
-        <v-switch v-model="threeD" label="阶梯地图画" color="info" density="compact" hide-details/>
-        <v-number-input v-model="maxZ" :min="1" :max="256" :disabled="!threeD" label="最大阶梯高度" :precision="0" density="compact"/>
-        <v-select v-model="exportSettings.axios" :items="[{title:'水平 XZ（地图画）',value:'y'},{title:'立面 XY',value:'z'},{title:'立面 ZY',value:'x'}]" label="朝向" density="compact"/>
-        <v-switch v-model="exportSettings.backing" label="在画面下增加背板" color="info" density="compact" hide-details/>
+        <v-select v-model="exportSettings.ditherMode" :items="[{title:'Floyd-Steinberg',value:'floyd'},{title:'Atkinson',value:'atkinson'},{title:$t('desktop.ordered'),value:'ordered'},{title:$t('desktop.noDither'),value:'none'}]" :label="$t('desktop.ditherMode')" density="compact"/>
+        <v-slider v-model="exportSettings.adaptiveThreshold" :min="0" :max="1" :step="0.05" :label="$t('desktop.adaptive')" thumb-label/>
+        <v-slider v-model="exportSettings.alphaThreshold" :min="0" :max="255" :step="1" :label="$t('desktop.alphaThreshold')" thumb-label/>
+        <v-switch v-model="threeD" :label="$t('desktop.relief')" color="info" density="compact" hide-details/>
+        <v-number-input v-model="maxZ" :min="1" :max="256" :disabled="!threeD" :label="$t('desktop.maxHeight')" :precision="0" density="compact"/>
+        <v-select v-model="exportSettings.axios" :items="[{title:$t('desktop.horizontal'),value:'y'},{title:$t('desktop.verticalXY'),value:'z'},{title:$t('desktop.verticalZY'),value:'x'}]" :label="$t('desktop.orientation')" density="compact"/>
+        <v-switch v-model="exportSettings.backing" :label="$t('desktop.backing')" color="info" density="compact" hide-details/>
         <v-select v-model="exportSettings.supportBlock"
-          :items="[{title:'石头',value:'minecraft:stone'},{title:'玻璃',value:'minecraft:glass'},{title:'脚手架',value:'minecraft:scaffolding'}]" label="背板 / 支撑材料" density="compact"/>
-        <v-switch v-model="exportSettings.support" label="脚手架支撑到底部（水平地图画）" :disabled="exportSettings.supportBlock !== 'minecraft:scaffolding' || exportSettings.axios !== 'y'" color="info" density="compact" hide-details/>
-        <p class="text-caption mb-3">阶梯限高内匹配色阶；朝向不是水平时是立面像素画。重力方块、地毯等仍需在游戏中确认支撑条件。</p>
+          :items="[{title:$t('desktop.stone'),value:'minecraft:stone'},{title:$t('desktop.glass'),value:'minecraft:glass'},{title:$t('desktop.scaffolding'),value:'minecraft:scaffolding'}]" :label="$t('desktop.supportMaterial')" density="compact"/>
+        <v-switch v-model="exportSettings.support" :label="$t('desktop.supportGround')" :disabled="exportSettings.supportBlock !== 'minecraft:scaffolding' || exportSettings.axios !== 'y'" color="info" density="compact" hide-details/>
+        <p class="text-caption mb-3">{{ $t('desktop.mapNote') }}</p>
         <v-select
           v-model="exportSettings.matchMode"
           :items="[
-            { title: 'RGB欧式', value: 'rgb' },
-            { title: '加权距离', value: 'weighted' },
+            { title: $t('desktop.rgb'), value: 'rgb' },
+            { title: $t('desktop.weighted'), value: 'weighted' },
             { title: 'Redmean', value: 'redmean' },
-            { title: 'OKLab感知色差', value: 'oklab' }
+            { title: $t('desktop.oklab'), value: 'oklab' }
           ]"
-          label="色彩匹配算法"
+          :label="$t('desktop.matchMode')"
           density="compact"
           class="mb-2"
         ></v-select>
@@ -377,7 +378,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
           :max="2"
           :step="0.05"
           thumb-label
-          label="亮度"
+          :label="$t('desktop.brightness')"
           color="info"
           class="mb-1"
         ></v-slider>
@@ -388,7 +389,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
           :max="2"
           :step="0.05"
           thumb-label
-          label="对比度"
+          :label="$t('desktop.contrast')"
           color="info"
           class="mb-1"
         ></v-slider>
@@ -399,7 +400,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
           :max="2"
           :step="0.05"
           thumb-label
-          label="饱和度"
+          :label="$t('desktop.saturation')"
           color="info"
           class="mb-1"
         ></v-slider>
@@ -454,8 +455,8 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
 
     <v-col cols="12" md="8" class="pa-4 d-flex flex-column preview-column">
       <div class="preview-scroll">
-        <v-alert v-if="stale" type="warning" density="compact" variant="tonal" class="mb-2">设置已改变，当前仍显示上次结果。刷新后导出；导出也会自动重新生成。</v-alert>
-        <div v-if="result" class="text-caption mb-2">地图色阶预览 · {{ result.width }} × {{ result.height }} · {{ result.structure.blockCount.toLocaleString() }} 方块 · 蓝图 {{ result.structure.size.join(' × ') }}</div>
+        <v-alert v-if="stale" type="warning" density="compact" variant="tonal" class="mb-2">{{ $t('desktop.mapStale') }}</v-alert>
+        <div v-if="result" class="text-caption mb-2">{{ $t('desktop.mapSummary', {size: [result.width, result.height].join(' × '), count: result.structure.blockCount.toLocaleString(), dimensions: result.structure.size.join(' × ')}) }}</div>
       <div class="preview-container elevation-3 rounded-lg">
         <div v-if="isProcessing" class="processing-overlay">
           <v-progress-circular
@@ -463,7 +464,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
               size="64"
               color="info"
           ></v-progress-circular>
-          <div class="text-caption mt-2">{{ $t('mapImage2d.processingImage') }} {{ progress }}%</div><v-btn @click="cancelWork" variant="text">取消生成</v-btn>
+          <div class="text-caption mt-2">{{ $t('mapImage2d.processingImage') }} {{ progress }}%</div><v-btn @click="cancelWork" variant="text">{{ $t('desktop.cancelGeneration') }}</v-btn>
         </div>
 
         <div class="preview-content">
@@ -474,7 +475,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
               color="info"
               class="fullscreen-btn"
               @click="openFullscreen"
-          >全屏查看</v-btn>
+          >{{ $t('desktop.fullscreen') }}</v-btn>
           <canvas
               ref="previewCanvas"
               class="pixel-canvas"
@@ -503,8 +504,8 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
       <v-toolbar density="compact">
         
         <v-spacer></v-spacer>
-        <v-btn variant="text" @click="resetFullscreenView">重置</v-btn>
-        <v-btn variant="text" @click="fullscreenDialog = false">关闭</v-btn>
+        <v-btn variant="text" @click="resetFullscreenView">{{ $t('desktop.reset') }}</v-btn>
+        <v-btn variant="text" @click="fullscreenDialog = false">{{ $t('desktop.close') }}</v-btn>
       </v-toolbar>
       <div
           class="fullscreen-stage"
@@ -526,6 +527,7 @@ onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
 </template>
 <style scoped>
 .map-editor-row {
+  color: rgb(var(--v-theme-on-surface));
   height: calc(100vh - 64px);
 }
 

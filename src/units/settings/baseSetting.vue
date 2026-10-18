@@ -10,6 +10,7 @@ import {invoke} from "@tauri-apps/api/core";
 import {openData} from "../../modules/copy_file.ts";
 import {relaunch} from "@tauri-apps/plugin-process";
 import {useI18n} from "vue-i18n";
+import {normalizeAppLocale} from '../../i18n/locale';
 const theme = useTheme()
 const dialog = ref(false)
 const autoUpdateEnabled = ref(true);
@@ -43,7 +44,7 @@ onMounted(async () => {
   autoUpdateEnabled.value = await appStore.get('autoUpdate', true)
   devMode.value = await appStore.get('devMode', false)
   autoTheme.value = await appStore.get('autoTheme', false)
-  locale.value = await appStore.get('locale', 'zh')
+  locale.value = normalizeAppLocale(await appStore.get('locale', 'zh'))
 })
 const updateData = async () => {
   await appStore.set('autoUpdate', autoUpdateEnabled.value)

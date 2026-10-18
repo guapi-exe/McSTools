@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import {useI18n} from 'vue-i18n'
 import {computed, defineAsyncComponent, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, shallowRef, watch} from 'vue'
+import {materialName} from '../../modules/materials/block_names'
 import {ensureMapArtData, mapArtData} from '../../modules/map_art/map_art_data'
 import {loadLocalModel, disposeModel} from '../../modules/toolbox/model-loader'
 import {runVoxelModel} from '../../modules/toolbox/model-client'
 import {defaultColorSettings, type GeneratedStructure, type RGB, type ToolBlock, type VoxelSettings} from '../../modules/toolbox/types'
 import ToolModelPreview from './ToolModelPreview.vue'
+
+const {t: $t, locale} = useI18n()
 
 const ToolPalettePicker = defineAsyncComponent(() => import('./ToolPalettePicker.vue'))
 const GeneratedBlueprintExport = defineAsyncComponent(() => import('./GeneratedBlueprintExport.vue'))
@@ -16,7 +20,7 @@ const rotation = computed(() => [settings.rotateX, settings.rotateY, settings.ro
 const mode = ref<'source' | 'blocks'>('source'), error = ref(''), loading = ref(false), generating = ref(false), progress = ref(0)
 const stale = ref(false), showExport = ref(false), ready = ref(false), dragging = ref(false)
 const allBlocks = computed<ToolBlock[]>(() => (mapArtData.value ?? []).flatMap(category => category.items.map(block => ({
-  id: block.id.includes(':') ? block.id : 'minecraft:' + block.id, label: block.zh_cn, group: category.name,
+  id: block.id.includes(':') ? block.id : 'minecraft:' + block.id, label: materialName(block.id, locale.value), group: category.name,
   color: block.average_rgb as unknown as RGB, normal: block.normal_rgb as unknown as RGB,
   low: block.low_rgb as unknown as RGB, high: block.high_rgb as unknown as RGB,
 }))))
@@ -63,7 +67,7 @@ async function generate() {
   const palette = allBlocks.value.filter(block => options.useColors ? chosen.has(block.id.replace(/^minecraft:/,'')) || chosen.has(block.id) : block.id === options.blockId)
   const task = new AbortController(); controller = task; generating.value = true; progress.value = 0
   try {
-    if (options.useColors && !palette.length) throw new Error('按颜色匹配需要至少选择一种方块。')
+    if (options.useColors && !palette.length) throw new Error($t('desktop.modelChooseBlocks'))
     const generated = await runVoxelModel(source.triangles, options, palette, task.signal, n => { if (run === epoch) progress.value = n })
     if (run !== epoch || !active || disposed) return
     result.value = generated; stale.value = false; mode.value = 'blocks'
@@ -73,7 +77,7 @@ async function generate() {
 }
 async function prepareExport() {
   if (!result.value || stale.value) await generate()
-  if (!result.value || stale.value || !active || loading.value) throw new Error(error.value || '生成已取消或结果已过期，请重新生成。')
+  if (!result.value || stale.value || !active || loading.value) throw new Error(error.value || $t('desktop.modelExpired'))
   return {structure: result.value, name: name.value.trim() || 'model'}
 }
 function closeExport() { showExport.value = false; cancelGeneration() }
@@ -99,62 +103,62 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-row no-gutters class="model-editor-row text-primary" data-testid="model-tool">
+  <v-row no-gutters class="model-editor-row" data-testid="model-tool">
     <v-col cols="12" md="4" class="pa-4 config-column">
       <div class="model-config">
         <div class="model-drop rounded-lg pa-3 mb-4" :class="{'is-dragging': dragging}" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="drop">
-          <v-file-input :model-value="files" multiple show-size chips clearable density="compact" variant="outlined" label="模型与附件" accept=".obj,.mtl,.stl,.gltf,.glb,.bin,.png,.jpg,.jpeg,.webp" :disabled="showExport" :loading="loading" hide-details @update:model-value="loadFiles"/>
-          <p class="text-caption text-medium-emphasis mt-2">选择或拖入一个 OBJ / STL / GLTF / GLB。MTL、BIN 和纹理图片请一起选择；模型 ≤ 32 MiB，附件合计 ≤ 64 MiB，最多 20 万个三角面。不会联网下载附件。</p>
-          <v-btn v-if="loading" size="small" variant="text" color="warning" @click="cancelLoad">取消读取</v-btn>
-          <p v-if="model" class="text-caption mt-2" data-testid="model-loaded">当前模型：{{ model.name }} · {{ model.triangleCount.toLocaleString() }} 个三角面</p>
+          <v-file-input :model-value="files" multiple show-size chips clearable density="compact" variant="outlined" :label="$t('desktop.modelFiles')" accept=".obj,.mtl,.stl,.gltf,.glb,.bin,.png,.jpg,.jpeg,.webp" :disabled="showExport" :loading="loading" hide-details @update:model-value="loadFiles"/>
+          <p class="text-caption text-medium-emphasis mt-2">{{ $t('desktop.modelFilesNote') }}</p>
+          <v-btn v-if="loading" size="small" variant="text" color="warning" @click="cancelLoad">{{ $t('desktop.cancelRead') }}</v-btn>
+          <p v-if="model" class="text-caption mt-2" data-testid="model-loaded">{{ $t('desktop.modelLoaded', {name: model.name, count: model.triangleCount.toLocaleString()}) }}</p>
         </div>
-        <v-text-field v-model="name" label="输出名称" density="compact" hide-details class="mb-4" :disabled="showExport"/>
-        <v-number-input v-model="settings.resolution" label="最长边方块数" :min="8" :max="128" :step="8" density="compact" :disabled="showExport" control-variant="split" hide-details/>
-        <p class="text-caption text-medium-emphasis mt-2 mb-3">8–128；其余两轴按模型比例缩放，值越大生成量和材料用量越大。</p>
-        <v-switch v-model="settings.solid" label="填充封闭模型内部" color="primary" density="compact" hide-details :disabled="showExport"/>
-        <p class="text-caption text-medium-emphasis mb-2">只填充无法连通外部的空腔；开放表面不会被填成包围盒。</p>
-        <v-switch v-model="settings.useColors" label="按模型颜色匹配方块" color="primary" density="compact" hide-details :disabled="showExport"/>
-        <v-autocomplete v-model="settings.blockId" :items="allBlocks" item-title="label" item-value="id" :label="settings.useColors ? '内部填充方块' : '统一使用的方块'" density="compact" hide-details class="my-3" :disabled="showExport"/>
+        <v-text-field v-model="name" :label="$t('desktop.outputName')" density="compact" hide-details class="mb-4" :disabled="showExport"/>
+        <v-number-input v-model="settings.resolution" :label="$t('desktop.resolution')" :min="8" :max="128" :step="8" density="compact" :disabled="showExport" control-variant="split" hide-details/>
+        <p class="text-caption text-medium-emphasis mt-2 mb-3">{{ $t('desktop.resolutionNote') }}</p>
+        <v-switch v-model="settings.solid" :label="$t('desktop.fillSolid')" color="primary" density="compact" hide-details :disabled="showExport"/>
+        <p class="text-caption text-medium-emphasis mb-2">{{ $t('desktop.fillNote') }}</p>
+        <v-switch v-model="settings.useColors" :label="$t('desktop.modelMatch')" color="primary" density="compact" hide-details :disabled="showExport"/>
+        <v-autocomplete v-model="settings.blockId" :items="allBlocks" item-title="label" item-value="id" :label="settings.useColors ? $t('desktop.fillBlock') : $t('desktop.uniformBlock')" density="compact" hide-details class="my-3" :disabled="showExport"/>
         <ToolPalettePicker v-if="settings.useColors" v-model="selectedBlocks" :disabled="!ready || showExport"/>
         <v-expansion-panels variant="accordion" class="mt-3">
-          <v-expansion-panel title="模型方向 · 三轴旋转">
+          <v-expansion-panel :title="$t('desktop.modelRotation')">
             <v-expansion-panel-text>
               <div v-for="axis in (['X','Y','Z'] as const)" :key="axis" class="mb-3">
-                <v-text-field v-model.number="settings[`rotate${axis}`]" type="number" :label="`${axis} 轴旋转（度）`" density="compact" hide-details :disabled="showExport"/>
+                <v-text-field v-model.number="settings[`rotate${axis}`]" type="number" :label="$t('desktop.axisRotation', {axis})" density="compact" hide-details :disabled="showExport"/>
                 <div class="d-flex flex-wrap ga-1 mt-1"><v-btn v-for="angle in [0,90,180,270]" :key="angle" size="x-small" variant="tonal" :disabled="showExport" @click="settings[`rotate${axis}`] = angle">{{ angle }}°</v-btn></div>
               </div>
-              <p class="text-caption text-medium-emphasis">依次旋转 X → Y → Z；原始模型预览与生成使用相同方向。</p>
+              <p class="text-caption text-medium-emphasis">{{ $t('desktop.rotationNote') }}</p>
             </v-expansion-panel-text>
           </v-expansion-panel>
-          <v-expansion-panel title="颜色与匹配" :disabled="!settings.useColors">
+          <v-expansion-panel :title="$t('desktop.colorMatching')" :disabled="!settings.useColors">
             <v-expansion-panel-text>
-              <v-select v-model="settings.match" :items="[{title:'OKLab 感知色差',value:'oklab'},{title:'RGB 距离',value:'rgb'},{title:'加权 RGB',value:'weighted'},{title:'Redmean',value:'redmean'}]" label="颜色匹配算法" density="compact" :disabled="showExport"/>
-              <v-slider v-model="settings.brightness" label="亮度" :min=".5" :max="1.5" :step=".05" thumb-label :disabled="showExport"/>
-              <v-slider v-model="settings.contrast" label="对比度" :min=".5" :max="1.5" :step=".05" thumb-label :disabled="showExport"/>
-              <v-slider v-model="settings.saturation" label="饱和度" :min="0" :max="2" :step=".05" thumb-label :disabled="showExport"/>
+              <v-select v-model="settings.match" :items="[{title:$t('desktop.oklab'),value:'oklab'},{title:$t('desktop.rgb'),value:'rgb'},{title:$t('desktop.weighted'),value:'weighted'},{title:'Redmean',value:'redmean'}]" :label="$t('desktop.matchMode')" density="compact" :disabled="showExport"/>
+              <v-slider v-model="settings.brightness" :label="$t('desktop.brightness')" :min=".5" :max="1.5" :step=".05" thumb-label :disabled="showExport"/>
+              <v-slider v-model="settings.contrast" :label="$t('desktop.contrast')" :min=".5" :max="1.5" :step=".05" thumb-label :disabled="showExport"/>
+              <v-slider v-model="settings.saturation" :label="$t('desktop.saturation')" :min="0" :max="2" :step=".05" thumb-label :disabled="showExport"/>
               <v-slider v-model="settings.gamma" label="Gamma" :min=".5" :max="2" :step=".05" thumb-label :disabled="showExport"/>
             </v-expansion-panel-text>
           </v-expansion-panel>
         </v-expansion-panels>
         <div class="model-actions pt-4">
-          <v-btn color="info" variant="tonal" block prepend-icon="mdi-cube-scan" :disabled="!model || !ready || loading || generating || showExport" @click="generate">生成方块预览</v-btn>
-          <v-btn color="primary" block prepend-icon="mdi-export" :disabled="!model || !ready || loading || generating || showExport" @click="showExport = true">导出蓝图 · 选择版本</v-btn>
+          <v-btn color="info" variant="tonal" block prepend-icon="mdi-cube-scan" :disabled="!model || !ready || loading || generating || showExport" @click="generate">{{ $t('desktop.generatePreview') }}</v-btn>
+          <v-btn color="primary" block prepend-icon="mdi-export" :disabled="!model || !ready || loading || generating || showExport" @click="showExport = true">{{ $t('desktop.exportVersion') }}</v-btn>
         </div>
       </div>
     </v-col>
     <v-col cols="12" md="8" class="pa-4 preview-column">
       <v-alert v-if="error" type="error" variant="tonal" closable class="mb-3" role="alert" @click:close="error = ''">{{ error }}</v-alert>
       <div class="d-flex flex-wrap align-center ga-2 mb-3">
-        <v-btn-toggle v-model="mode" mandatory color="primary" density="compact" variant="tonal"><v-btn value="source">原始模型</v-btn><v-btn value="blocks">方块效果</v-btn></v-btn-toggle>
-        <v-chip v-if="stale && result" color="warning" size="small">设置已更改，需重新生成</v-chip>
-        <v-spacer/><v-btn v-if="generating" color="warning" variant="tonal" size="small" @click="cancelGeneration">取消生成</v-btn>
+        <v-btn-toggle v-model="mode" mandatory color="primary" density="compact" variant="tonal"><v-btn value="source">{{ $t('desktop.sourceModel') }}</v-btn><v-btn value="blocks">{{ $t('desktop.blockPreview') }}</v-btn></v-btn-toggle>
+        <v-chip v-if="stale && result" color="warning" size="small">{{ $t('desktop.modelStale') }}</v-chip>
+        <v-spacer/><v-btn v-if="generating" color="warning" variant="tonal" size="small" @click="cancelGeneration">{{ $t('desktop.cancelGeneration') }}</v-btn>
       </div>
-      <v-progress-linear v-if="generating" :model-value="progress" color="primary" height="18" class="mb-3"><span class="text-caption">后台生成 {{ progress }}%</span></v-progress-linear>
+      <v-progress-linear v-if="generating" :model-value="progress" color="primary" height="18" class="mb-3"><span class="text-caption">{{ $t('desktop.generating', {progress}) }}</span></v-progress-linear>
       <ToolModelPreview :model="model?.object" :structure="result" :mode="mode" :rotation="rotation"/>
       <v-card v-if="result" variant="tonal" class="mt-3 pa-3" data-testid="model-result">
-        <div class="d-flex flex-wrap ga-3 text-body-2"><strong>{{ result.blockCount.toLocaleString() }} 个方块</strong><span>{{ result.size.join(' × ') }}</span><span>{{ Object.keys(result.counts).length }} 种材料</span></div>
+        <div class="d-flex flex-wrap ga-3 text-body-2"><strong>{{ $t('desktop.blockCount', {count: result.blockCount.toLocaleString()}) }}</strong><span>{{ result.size.join(' × ') }}</span><span>{{ $t('desktop.materialCount', {count: Object.keys(result.counts).length}) }}</span></div>
         <div class="d-flex flex-wrap ga-2 mt-2"><v-chip v-for="[id,count] in materials" :key="id" size="small" :title="id">{{ labels.get(id) || id.replace('minecraft:','') }} · {{ count.toLocaleString() }}</v-chip></div>
-        <p class="text-caption text-medium-emphasis mt-2">材料前 8 项。方块效果使用代表色；纹理、透明材质和游戏内光照可能不同。易碎／重力方块仍需实际支撑。</p>
+        <p class="text-caption text-medium-emphasis mt-2">{{ $t('desktop.modelMaterialsNote') }}</p>
       </v-card>
     </v-col>
     <GeneratedBlueprintExport v-if="showExport" :prepare="prepareExport" @close="closeExport"/>
@@ -162,7 +166,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.model-editor-row { min-width: 0; align-items: stretch; }
+.model-editor-row { min-width: 0; align-items: stretch; color: rgb(var(--v-theme-on-surface)); }
 .config-column, .preview-column { min-width: 0; }
 .model-config { max-height: calc(100dvh - 150px); overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
 .model-drop { border: 1px dashed rgba(var(--v-theme-on-surface), .28); transition: background-color 120ms; }

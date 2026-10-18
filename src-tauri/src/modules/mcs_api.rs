@@ -84,6 +84,26 @@ impl McsApiState {
         query: &BTreeMap<String, String>,
         authenticated: bool,
     ) -> Result<LimitedResponse<'_>, McsApiError> {
+        self.get_with(path, query, authenticated, |request| {
+            self.client.execute(request)
+        })
+        .await
+    }
+
+    // Keep URL validation, credential stripping, status handling and permits
+    // in one path. Tests can route the already-built requests to loopback
+    // without adding test domains or insecure TLS exceptions to the policy.
+    async fn get_with<F, Fut>(
+        &self,
+        path: &str,
+        query: &BTreeMap<String, String>,
+        authenticated: bool,
+        mut send: F,
+    ) -> Result<LimitedResponse<'_>, McsApiError>
+    where
+        F: FnMut(reqwest::Request) -> Fut,
+        Fut: std::future::Future<Output = Result<Response, reqwest::Error>>,
+    {
         validate_path(path)?;
         validate_query(query)?;
         let _permit = self
@@ -123,8 +143,10 @@ impl McsApiState {
                     request = request.bearer_auth(token);
                 }
             }
-            let response = request
-                .send()
+            let request = request
+                .build()
+                .map_err(|_| McsApiError::new("NETWORK", "无法创建蓝图站请求"))?;
+            let response = send(request)
                 .await
                 .map_err(|_| McsApiError::new("NETWORK", "无法连接蓝图站，请检查网络后重试"))?;
             if response.status().is_redirection() {
@@ -466,6 +488,256 @@ pub async fn import_mcs_blueprint(
 mod tests {
     use super::*;
     const ID: &str = "01a14549-a8f5-7c10-810f-591eee61f175";
+
+    // A real HTTP peer with deterministic response headers. Outbound API URLs
+    // are recorded before the test-only transport changes the socket address.
+    // No real API key, production request, custom CA, or TLS bypass is used.
+    async fn loopback_get<'a>(
+        api: &'a McsApiState,
+        replies: Vec<String>,
+        authenticated: bool,
+    ) -> (
+        Result<LimitedResponse<'a>, McsApiError>,
+        Vec<(Url, bool)>,
+        Vec<String>,
+    ) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut received = Vec::new();
+            for reply in replies {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                let mut socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "test HTTP request timed out");
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("test HTTP accept: {error}"),
+                    }
+                };
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                while !bytes.windows(4).any(|w| w == b"\r\n\r\n") {
+                    let mut chunk = [0; 1024];
+                    let count = socket.read(&mut chunk).unwrap();
+                    assert!(count > 0 && bytes.len() < 16 * 1024);
+                    bytes.extend_from_slice(&chunk[..count]);
+                }
+                received.push(String::from_utf8(bytes).unwrap().to_ascii_lowercase());
+                socket.write_all(reply.as_bytes()).unwrap();
+                socket.flush().unwrap();
+            }
+            received
+        });
+        let transport = Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let mut outgoing = Vec::new();
+        let result = api
+            .get_with(
+                "/api/v1/account/blueprints",
+                &BTreeMap::new(),
+                authenticated,
+                |mut request| {
+                    assert_eq!(request.method(), reqwest::Method::GET);
+                    outgoing.push((
+                        request.url().clone(),
+                        request.headers().contains_key(header::AUTHORIZATION),
+                    ));
+                    let route = format!(
+                        "http://{address}{}{}",
+                        request.url().path(),
+                        request
+                            .url()
+                            .query()
+                            .map_or(String::new(), |q| format!("?{q}"))
+                    );
+                    *request.url_mut() = Url::parse(&route).unwrap();
+                    transport.execute(request)
+                },
+            )
+            .await;
+        (result, outgoing, server.join().unwrap())
+    }
+
+    fn reply(status: u16, headers: &str) -> String {
+        format!(
+            "HTTP/1.1 {status} Test\r\n{headers}Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        )
+    }
+
+    #[test]
+    fn http_redirect_chain_strips_credentials_permanently_after_leaving_api_scope() {
+        tauri::async_runtime::block_on(async {
+            let api = McsApiState::new().unwrap();
+            *api.key.lock().unwrap() = Some("mcs_live_test_not_a_real_key".into());
+            let (result, requests, wire) = loopback_get(
+                &api,
+                vec![
+                    reply(302, "Location: /api/v1/categories\r\n"),
+                    reply(
+                        307,
+                        "Location: https://cdn.mcschematic.top/objects/test\r\n",
+                    ),
+                    reply(
+                        303,
+                        "Location: https://www.mcschematic.top/api/v1/categories\r\n",
+                    ),
+                    reply(200, ""),
+                ],
+                true,
+            )
+            .await;
+            assert_eq!(
+                requests.iter().map(|r| r.1).collect::<Vec<_>>(),
+                [true, true, false, false]
+            );
+            assert_eq!(
+                wire.iter()
+                    .map(|r| r.contains("authorization: bearer "))
+                    .collect::<Vec<_>>(),
+                [true, true, false, false]
+            );
+            assert_eq!(requests[2].0.host_str(), Some("cdn.mcschematic.top"));
+            assert!(requests.iter().all(|r| !r.0.as_str().contains("mcs_live_")));
+            assert_eq!(api.requests.available_permits(), 3);
+            assert_eq!(read_bounded(result.unwrap(), 32).await.unwrap(), b"{}");
+            assert_eq!(api.requests.available_permits(), 4);
+        });
+    }
+
+    #[test]
+    fn http_anonymous_requests_never_attach_a_connected_key() {
+        tauri::async_runtime::block_on(async {
+            let api = McsApiState::new().unwrap();
+            *api.key.lock().unwrap() = Some("mcs_live_test_not_a_real_key".into());
+            let (result, requests, wire) = loopback_get(&api, vec![reply(200, "")], false).await;
+            assert!(!requests[0].1);
+            assert!(!wire[0].contains("authorization:"));
+            drop(result.unwrap());
+            assert_eq!(api.requests.available_permits(), 4);
+        });
+    }
+
+    #[test]
+    fn http_status_errors_are_specific_and_release_request_slots() {
+        tauri::async_runtime::block_on(async {
+            for (status, code) in [
+                (400, "BAD_REQUEST"),
+                (401, "AUTH_REQUIRED"),
+                (403, "FORBIDDEN"),
+                (404, "NOT_FOUND"),
+                (410, "NOT_FOUND"),
+                (503, "SERVER"),
+            ] {
+                let api = McsApiState::new().unwrap();
+                let (result, _, _) = loopback_get(&api, vec![reply(status, "")], false).await;
+                let error = result.err().unwrap();
+                assert_eq!(error.code, code);
+                assert!(!error.message.contains("mcs_live_"));
+                assert_eq!(api.requests.available_permits(), 4);
+            }
+        });
+    }
+
+    #[test]
+    fn http_rate_limit_is_bounded_and_blocks_retry_before_sending() {
+        tauri::async_runtime::block_on(async {
+            for (value, seconds) in [("0", 1), ("999999", 3600), ("invalid", 60)] {
+                let api = McsApiState::new().unwrap();
+                let (result, _, _) = loopback_get(
+                    &api,
+                    vec![reply(429, &format!("Retry-After: {value}\r\n"))],
+                    false,
+                )
+                .await;
+                let error = result.err().unwrap();
+                assert_eq!(error.code, "RATE_LIMITED");
+                assert_eq!(error.retry_after_seconds, Some(seconds));
+                let second = api
+                    .get_with("/api/v1/categories", &BTreeMap::new(), false, |_| async {
+                        panic!("rate-limited requests must not reach the transport");
+                        #[allow(unreachable_code)]
+                        Err::<Response, reqwest::Error>(unreachable!())
+                    })
+                    .await;
+                assert_eq!(second.err().unwrap().code, "RATE_LIMITED");
+                assert_eq!(api.requests.available_permits(), 4);
+            }
+        });
+    }
+
+    #[test]
+    fn http_bad_redirects_stop_before_following_and_loops_are_bounded() {
+        tauri::async_runtime::block_on(async {
+            for (headers, code) in [
+                ("", "REDIRECT"),
+                (
+                    "Location: https://mcschematic.top.evil.test/stolen\r\n",
+                    "UNTRUSTED_REDIRECT",
+                ),
+                (
+                    "Location: http://www.mcschematic.top/api/v1/categories\r\n",
+                    "UNTRUSTED_REDIRECT",
+                ),
+                (
+                    "Location: https://user@www.mcschematic.top/api/v1/categories\r\n",
+                    "UNTRUSTED_REDIRECT",
+                ),
+                (
+                    "Location: https://www.mcschematic.top:8443/api/v1/categories\r\n",
+                    "UNTRUSTED_REDIRECT",
+                ),
+            ] {
+                let api = McsApiState::new().unwrap();
+                let (result, requests, _) =
+                    loopback_get(&api, vec![reply(302, headers)], false).await;
+                assert_eq!(result.err().unwrap().code, code);
+                assert_eq!(requests.len(), 1);
+                assert_eq!(api.requests.available_permits(), 4);
+            }
+            let api = McsApiState::new().unwrap();
+            let (result, requests, _) = loopback_get(
+                &api,
+                vec![reply(302, "Location: /api/v1/categories\r\n"); 5],
+                false,
+            )
+            .await;
+            assert_eq!(result.err().unwrap().code, "REDIRECT");
+            assert_eq!(requests.len(), 5);
+            assert_eq!(api.requests.available_permits(), 4);
+        });
+    }
+
+    #[test]
+    fn disconnected_account_fails_before_transport_and_releases_slot() {
+        tauri::async_runtime::block_on(async {
+            let api = McsApiState::new().unwrap();
+            let result = api
+                .get_with(
+                    "/api/v1/account/blueprints",
+                    &BTreeMap::new(),
+                    true,
+                    |_| async {
+                        panic!("disconnected account must not reach transport");
+                        #[allow(unreachable_code)]
+                        Err::<Response, reqwest::Error>(unreachable!())
+                    },
+                )
+                .await;
+            assert_eq!(result.err().unwrap().code, "AUTH_REQUIRED");
+            assert_eq!(api.requests.available_permits(), 4);
+        });
+    }
 
     #[test]
     #[ignore = "Explicit live public-API check; downloads a small public fixture without writing user data"]

@@ -1270,7 +1270,7 @@ onBeforeUnmount(async () => {
       <canvas class="gpu-canvas" id="structure-display" width="1150" height="800"></canvas>
 
       <div class="top-controls">
-        <v-btn size="small" :color="editorVisible ? 'primary' : undefined" variant="tonal" prepend-icon="mdi-vector-square-edit" @click="toggleEditor">{{ editorModified ? '编辑副本 *' : '编辑' }}</v-btn>
+        <v-btn size="small" :color="editorVisible ? 'primary' : undefined" variant="tonal" prepend-icon="mdi-vector-square-edit" @click="toggleEditor">{{ editorModified ? $t('desktop.editedCopy') + ' *' : $t('desktop.edit') }}</v-btn>
         <v-btn
           :icon="showMaterialList ? 'mdi-chevron-left' : 'mdi-chevron-right'"
           variant="text"
@@ -1282,7 +1282,7 @@ onBeforeUnmount(async () => {
           :icon="previewFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
           variant="text"
           @click="togglePreviewFullscreen"
-          :title="previewFullscreen ? '退出全屏' : '全屏预览'"
+          :title="previewFullscreen ? $t('desktop.exitFullscreen') : $t('desktop.fullscreen')"
         ></v-btn>
 
         <v-btn-toggle

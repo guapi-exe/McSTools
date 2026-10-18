@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import {useI18n} from 'vue-i18n'
 import {computed, defineAsyncComponent, onBeforeUnmount, onDeactivated, ref, shallowRef, watch} from 'vue'
 import type {SchematicPreviewData} from '../../modules/schematic_data'
 import {cancelEdit, closeEditor, commitEdit, openEditor, stageEdit,
   type EditRegion, type EditorAction, type EditorInfo, type EditorPoint, type PickMode, type WorkPlane} from '../../modules/blueprint_editor'
 import {validRegion} from '../../modules/editor_geometry'
 import {fetchJeBlocks, jeBlocks} from '../../modules/je_blocks'
+import {materialName} from '../../modules/materials/block_names'
 import type {ExportSource} from '../../modules/blueprint_export'
+
+const {t: $t, locale} = useI18n()
 
 const BlueprintExportPanel = defineAsyncComponent(() => import('./BlueprintExportPanel.vue'))
 
@@ -44,10 +48,9 @@ const dimensions = computed<EditorPoint>(() => info.value ? [info.value.size.wid
 const regionValid = computed(() => validRegion(region.value, dimensions.value))
 const showRegion = computed(() => tab.value === 'crop' || scope.value === 'region' || (exportOpen.value && exportScope.value !== 'all'))
 const selectionSize = computed(() => regionValid.value ? region.value.max.map((n, a) => n - region.value.min[a] + 1).join(' × ') : '—')
-const labels = computed(() => new Map((jeBlocks.value ?? []).map(block => [block.block_id, block.zh_cn || block.block_id])))
-const sourceOptions = computed(() => (preview.value?.materials ?? []).map(item => ({value: item.id, title: `${labels.value.get(item.id) ?? item.id} · ${item.count}`})))
+const sourceOptions = computed(() => (preview.value?.materials ?? []).map(item => ({value: item.id, title: `${materialName(item.id, locale.value)} · ${item.count}`})))
 const targetOptions = computed(() => Array.from(new Set([...(jeBlocks.value ?? []).map(block => block.block_id), ...(preview.value?.materials ?? []).map(item => item.id)]))
-  .map(id => ({value: id, title: `${labels.value.get(id) ?? id} (${id})`})))
+  .map(id => ({value: id, title: `${materialName(id, locale.value)} (${id})`})))
 const canonicalTarget = computed(() => {
   const id = String(replacementId.value ?? '').trim()
   return id && !id.includes(':') ? `minecraft:${id}` : id
@@ -90,12 +93,12 @@ function adjustRegion(value: EditRegion) { if (!busy.value && validRegion(value,
 function message(reason: unknown): string {
   const text = String(reason)
   const messages: [string, string][] = [
-    ['2000000', '编辑副本最多支持 200 万条方块记录，请先拆分为较小蓝图。'],
-    ['no matching blocks', '所选范围中没有匹配的原方块。'],
-    ['no visible blocks', '裁剪结果没有可见方块，请调整选区。'],
-    ['position cannot be determined', '存在无法安全定位的实体，已取消裁剪并保留原数据。'],
-    ['outside the visible', '选区超出了当前蓝图范围。'],
-    ['stale editor', '编辑状态已更新，本次操作未提交。'],
+    ['2000000', $t('desktop.editLimit')],
+    ['no matching blocks', $t('desktop.noMatching')],
+    ['no visible blocks', $t('desktop.cropEmpty')],
+    ['position cannot be determined', $t('desktop.unsafeEntity')],
+    ['outside the visible', $t('desktop.selectionOutside')],
+    ['stale editor', $t('desktop.staleEdit')],
   ]
   return messages.find(([part]) => text.includes(part))?.[1] ?? text
 }
@@ -152,7 +155,7 @@ async function runAction(action: EditorAction) {
       error.value = message(reason)
       if (applied) {
         try { await props.applyPreview(beforePreview) }
-        catch { error.value += '；上一个预览暂时无法恢复，原蓝图与编辑记录未被覆盖。' }
+        catch { error.value += $t('desktop.restorePreviewFailed') }
       }
     }
   } finally {
@@ -186,34 +189,34 @@ defineExpose({getPreview: () => preview.value, pick, adjustRegion, selectMateria
 <template>
   <v-card class="blueprint-editor" variant="tonal">
     <div class="editor-heading">
-      <strong><v-icon size="20">mdi-vector-square-edit</v-icon> 预览编辑</strong>
-      <v-chip v-if="info?.modified" size="x-small" color="warning">编辑副本</v-chip>
+      <strong><v-icon size="20">mdi-vector-square-edit</v-icon>{{ $t('desktop.editorTitle') }}</strong>
+      <v-chip v-if="info?.modified" size="x-small" color="warning">{{ $t('desktop.editedCopy') }}</v-chip>
     </div>
-    <p class="editor-note">编辑仅影响临时副本，不覆盖蓝图库原文件。切换页面会保留副本，关闭软件或切换蓝图会释放。</p>
-    <v-btn v-if="!info" color="primary" block :loading="busy" :disabled="inactive" @click="start">开始副本编辑</v-btn>
+    <p class="editor-note">{{ $t('desktop.editorNote') }}</p>
+    <v-btn v-if="!info" color="primary" block :loading="busy" :disabled="inactive" @click="start">{{ $t('desktop.startEditing') }}</v-btn>
     <template v-else>
       <div class="editor-actions">
-        <v-btn size="small" variant="text" prepend-icon="mdi-undo" :disabled="busy || !info.undo_steps" @click="runAction({action: 'undo'})">撤销 ({{ info.undo_steps }})</v-btn>
-        <v-btn size="small" variant="text" :disabled="busy || !info.modified" @click="runAction({action: 'reset'})">重置副本</v-btn>
+        <v-btn size="small" variant="text" prepend-icon="mdi-undo" :disabled="busy || !info.undo_steps" @click="runAction({action: 'undo'})">{{ $t('desktop.undo', {count: info.undo_steps}) }}</v-btn>
+        <v-btn size="small" variant="text" :disabled="busy || !info.modified" @click="runAction({action: 'reset'})">{{ $t('desktop.resetCopy') }}</v-btn>
       </div>
-      <small class="editor-note">最多撤销 3 步，历史副本合计上限 400 万条方块记录。</small>
+      <small class="editor-note">{{ $t('desktop.undoLimit') }}</small>
       <v-tabs v-model="tab" density="compact" grow :disabled="busy">
-        <v-tab value="replace">替换方块</v-tab><v-tab value="crop">裁剪区域</v-tab>
+        <v-tab value="replace">{{ $t('desktop.replaceBlocks') }}</v-tab><v-tab value="crop">{{ $t('desktop.cropRegion') }}</v-tab>
       </v-tabs>
       <fieldset :disabled="busy || inactive" class="editor-fields">
         <template v-if="tab === 'replace'">
-          <v-autocomplete v-model="originalId" :items="sourceOptions" label="原方块" item-title="title" item-value="value" density="compact" hide-details/>
-          <v-combobox v-model="replacementId" :items="targetOptions" label="替换为（支持模组 ID）" item-title="title" item-value="value" :return-object="false" density="compact" hide-details/>
-          <v-btn size="small" variant="outlined" :color="picking === 'block' ? 'primary' : undefined" @click="picking = picking === 'block' ? null : 'block'">从预览点选原方块</v-btn>
-          <v-select v-model="scope" :items="[{title: '整个蓝图', value: 'all'}, {title: '仅选区', value: 'region'}]" label="替换范围" density="compact" hide-details/>
-          <v-checkbox v-model="preserveProperties" label="保留原有方块状态" density="compact" hide-details/>
-          <small class="editor-note">替换会移除被替换方块的容器等方块实体数据；保留状态不保证目标方块支持所有属性。</small>
-          <small v-if="!targetValid" class="text-error">请输入合法的小写方块 ID。</small>
+          <v-autocomplete v-model="originalId" :items="sourceOptions" :label="$t('desktop.originalBlock')" item-title="title" item-value="value" density="compact" hide-details/>
+          <v-combobox v-model="replacementId" :items="targetOptions" :label="$t('desktop.replaceWith')" item-title="title" item-value="value" :return-object="false" density="compact" hide-details/>
+          <v-btn size="small" variant="outlined" :color="picking === 'block' ? 'primary' : undefined" @click="picking = picking === 'block' ? null : 'block'">{{ $t('desktop.pickBlock') }}</v-btn>
+          <v-select v-model="scope" :items="[{title: $t('desktop.wholeBlueprint'), value: 'all'}, {title: $t('desktop.regionOnly'), value: 'region'}]" :label="$t('desktop.replaceScope')" density="compact" hide-details/>
+          <v-checkbox v-model="preserveProperties" :label="$t('desktop.preserveStates')" density="compact" hide-details/>
+          <small class="editor-note">{{ $t('desktop.replaceWarning') }}</small>
+          <small v-if="!targetValid" class="text-error">{{ $t('desktop.invalidBlockId') }}</small>
         </template>
         <template v-if="showRegion">
-          <div class="editor-actions"><v-btn size="small" variant="outlined" @click="picking = 'first'; dragMode = false">点选两个角</v-btn><v-btn size="small" variant="text" @click="selectAll">全选</v-btn></div>
+          <div class="editor-actions"><v-btn size="small" variant="outlined" @click="picking = 'first'; dragMode = false">{{ $t('desktop.pickCorners') }}</v-btn><v-btn size="small" variant="text" @click="selectAll">{{ $t('desktop.selectAll') }}</v-btn></div>
           <div class="editor-coordinates">
-            <span></span><span>起点</span><span>终点（包含）</span>
+            <span></span><span>{{ $t('desktop.startPoint') }}</span><span>{{ $t('desktop.endPoint') }}</span>
             <template v-for="(axis, index) in axes" :key="axis">
               <label>{{ axis }}</label>
               <input v-for="edge in (['min', 'max'] as const)" :key="edge" type="number" min="0" :max="dimensions[index] - 1" step="1"
@@ -221,30 +224,28 @@ defineExpose({getPreview: () => preview.value, pick, adjustRegion, selectMateria
                 @input="coordinate(edge, index, ($event.target as HTMLInputElement).value)"/>
             </template>
           </div>
-          <small :class="regionValid ? 'editor-note' : 'text-error'">{{ regionValid ? `选区：${selectionSize}` : '请填写范围内的整数，终点不能小于起点。' }}</small>
-          <v-select v-model="planeAxis" :items="[{title: '贴着方块点选', value: -1}, {title: 'X 工作平面', value: 0}, {title: 'Y 工作平面', value: 1}, {title: 'Z 工作平面', value: 2}]" label="点选方式" density="compact" hide-details/>
-          <v-text-field v-if="planeAxis >= 0" v-model.number="planeCoordinate" type="number" label="工作平面坐标" :min="0" :max="dimensions[planeAxis] - 1" density="compact" hide-details/>
-          <div class="editor-actions"><v-btn v-for="(view, index) in (['front', 'side', 'top'] as const)" :key="view" size="small" variant="text" @click="emit('view', view)">{{ ['正视', '侧视', '俯视'][index] }}</v-btn></div>
-          <v-switch v-model="dragMode" label="拖动选区的面调整范围" density="compact" hide-details :disabled="!regionValid" @update:model-value="picking = null"/>
-          <small v-if="dragMode" class="editor-note">拖动高亮框的表面；若表面正对相机，请先旋转视角。</small>
+          <small :class="regionValid ? 'editor-note' : 'text-error'">{{ regionValid ? $t('desktop.selectionSize', {size: selectionSize}) : $t('desktop.invalidSelection') }}</small>
+          <v-select v-model="planeAxis" :items="[{title: $t('desktop.pickSurface'), value: -1}, {title: $t('desktop.workPlane', {axis: 'X'}), value: 0}, {title: $t('desktop.workPlane', {axis: 'Y'}), value: 1}, {title: $t('desktop.workPlane', {axis: 'Z'}), value: 2}]" :label="$t('desktop.pickMethod')" density="compact" hide-details/>
+          <v-text-field v-if="planeAxis >= 0" v-model.number="planeCoordinate" type="number" :label="$t('desktop.planeCoordinate')" :min="0" :max="dimensions[planeAxis] - 1" density="compact" hide-details/>
+          <div class="editor-actions"><v-btn v-for="(view, index) in (['front', 'side', 'top'] as const)" :key="view" size="small" variant="text" @click="emit('view', view)">{{ [$t('desktop.front'), $t('desktop.side'), $t('desktop.top')][index] }}</v-btn></div>
+          <v-switch v-model="dragMode" :label="$t('desktop.dragFaces')" density="compact" hide-details :disabled="!regionValid" @update:model-value="picking = null"/>
+          <small v-if="dragMode" class="editor-note">{{ $t('desktop.dragNote') }}</small>
         </template>
-        <v-select v-if="tab === 'crop'" v-model="cropPart" :items="[{title: '保留选区内部', value: 'inside'}, {title: '保留选区外部（内部清空）', value: 'outside'}]" label="裁剪方式" density="compact" hide-details/>
-        <v-alert v-if="picking" density="compact" type="info" variant="tonal">{{ picking === 'block' ? '单击一个原方块' : picking === 'first' ? '单击第一个角' : '单击第二个角' }}<v-btn size="x-small" variant="text" @click="picking = null">取消</v-btn></v-alert>
+        <v-select v-if="tab === 'crop'" v-model="cropPart" :items="[{title: $t('desktop.keepInside'), value: 'inside'}, {title: $t('desktop.keepOutside'), value: 'outside'}]" :label="$t('desktop.cropMode')" density="compact" hide-details/>
+        <v-alert v-if="picking" density="compact" type="info" variant="tonal">{{ picking === 'block' ? $t('desktop.clickBlock') : picking === 'first' ? $t('desktop.clickFirst') : $t('desktop.clickSecond') }}<v-btn size="x-small" variant="text" @click="picking = null">{{ $t('desktop.cancel') }}</v-btn></v-alert>
       </fieldset>
-      <v-btn v-if="tab === 'replace'" block color="primary" :disabled="!canReplace || inactive" :loading="busy" @click="replace">应用替换</v-btn>
-      <v-btn v-else block color="primary" :disabled="!regionValid || inactive" :loading="busy" @click="crop">应用裁剪</v-btn>
-      <v-btn block variant="tonal" prepend-icon="mdi-export" class="mt-3" :disabled="busy || inactive" @click="exportOpen = true">导出 / 保存副本</v-btn>
+      <v-btn v-if="tab === 'replace'" block color="primary" :disabled="!canReplace || inactive" :loading="busy" @click="replace">{{ $t('desktop.applyReplacement') }}</v-btn>
+      <v-btn v-else block color="primary" :disabled="!regionValid || inactive" :loading="busy" @click="crop">{{ $t('desktop.applyCrop') }}</v-btn>
+      <v-btn block variant="tonal" prepend-icon="mdi-export" class="mt-3" :disabled="busy || inactive" @click="exportOpen = true">{{ $t('desktop.exportCopy') }}</v-btn>
     </template>
     <v-alert v-if="error" type="error" variant="tonal" density="compact" class="mt-3" role="alert">{{ error }}</v-alert>
     <v-dialog v-model="exportOpen" max-width="720" scrollable :persistent="exportBusy">
       <v-card v-if="info && exportSource">
-        <v-card-title class="d-flex align-center justify-space-between">
-          导出编辑副本
-          <v-btn icon="mdi-close" variant="text" size="small" :disabled="exportBusy" aria-label="关闭导出" @click="exportOpen = false"/>
+        <v-card-title class="d-flex align-center justify-space-between">{{ $t('desktop.exportEdited') }}<v-btn icon="mdi-close" variant="text" size="small" :disabled="exportBusy" :aria-label="$t('desktop.closeExport')" @click="exportOpen = false"/>
         </v-card-title>
         <v-card-text>
-          <v-select v-model="exportScope" :disabled="exportBusy" :items="[{title: '整个当前副本', value: 'all'}, {title: '仅选区内部', value: 'inside'}, {title: '仅选区外部', value: 'outside'}]" label="导出范围" density="compact" hide-details class="mb-3"/>
-          <v-alert v-if="exportScope !== 'all' && !regionValid" type="error" variant="tonal">当前选区无效，请先关闭弹窗并调整选区。</v-alert>
+          <v-select v-model="exportScope" :disabled="exportBusy" :items="[{title: $t('desktop.wholeCopy'), value: 'all'}, {title: $t('desktop.insideOnly'), value: 'inside'}, {title: $t('desktop.outsideOnly'), value: 'outside'}]" :label="$t('desktop.exportScope')" density="compact" hide-details class="mb-3"/>
+          <v-alert v-if="exportScope !== 'all' && !regionValid" type="error" variant="tonal">{{ $t('desktop.invalidExportSelection') }}</v-alert>
           <BlueprintExportPanel v-else :source="exportSource" :initial-format="info.source_format" :initial-subtype="info.source_subtype"
             :inactive="inactive" @busy="exportBusy = $event"/>
         </v-card-text>
@@ -254,7 +255,11 @@ defineExpose({getPreview: () => preview.value, pick, adjustRegion, selectMateria
 </template>
 
 <style scoped>
-.blueprint-editor { padding: 14px; margin: 12px; }
+.blueprint-editor { padding: 14px; margin: 12px; color: rgb(var(--v-theme-on-surface)); }
+.blueprint-editor :deep(.v-tab) { min-width: 0; flex: 1 1 0; padding-inline: 6px; font-size: 12px; letter-spacing: 0; }
+.blueprint-editor :deep(.v-tabs .v-slide-group__content) { width: 100%; }
+.blueprint-editor :deep(.v-btn__content) { white-space: normal; line-height: 1.3; text-align: center; }
+.blueprint-editor :deep(.v-btn:not(.v-btn--icon):not(.v-tab)) { height: auto; min-height: 32px; padding-block: 6px; }
 .editor-heading, .editor-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .editor-heading { justify-content: space-between; }
 .editor-note { font-size: 12px; opacity: .72; line-height: 1.6; margin: 8px 0; display: block; }

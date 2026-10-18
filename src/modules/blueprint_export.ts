@@ -1,4 +1,5 @@
 import {invoke} from '@tauri-apps/api/core'
+import {desktopTranslations} from '../i18n/desktop'
 import type {EditRegion} from './blueprint_editor'
 import type {Size} from './schematic_data'
 
@@ -40,7 +41,14 @@ export const planExport = (source: ExportSource, options: ExportOptions) =>
 export const saveExport = (source: ExportSource, options: ExportOptions, destination: ExportResult['destination']) =>
   invoke<ExportResult>('save_blueprint_export', {source, options, destination})
 
-export function exportError(reason: unknown): string {
+const localizedMessages = new Map(Object.entries(desktopTranslations).map(([key, values]) => [values[0] as string, `desktop.${key}`]))
+/** Translate known user-facing native messages; keep unknown diagnostics intact. */
+export function exportWarning(text: string, translate: (key: string) => string): string {
+  const key = localizedMessages.get(text.replace(/^Error:\s*/, ''))
+  return key ? translate(key) : text
+}
+
+export function exportError(reason: unknown, translate?: (key: string) => string): string {
   const text = String(reason)
   const known: [string, string][] = [
     ['source DataVersion is unknown', '源文件没有可靠的 Java DataVersion，请明确选择目标游戏版本。'],
@@ -57,5 +65,6 @@ export function exportError(reason: unknown): string {
     ['no visible blocks', '所选导出范围没有可见方块，请调整选区。'],
     ['position cannot be determined', '有实体无法安全定位，已停止裁剪导出，原数据未改动。'],
   ]
-  return known.find(([part]) => text.includes(part))?.[1] ?? text
+  const message = known.find(([part]) => text.includes(part))?.[1] ?? text
+  return translate ? exportWarning(message, translate) : message
 }

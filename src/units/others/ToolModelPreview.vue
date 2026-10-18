@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useI18n} from 'vue-i18n'
 import {computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch} from 'vue'
 import {useTheme} from 'vuetify'
 import * as THREE from 'three'
@@ -6,6 +7,8 @@ import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js'
 import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js'
 import {runVoxelSurface} from '../../modules/toolbox/model-client'
 import type {GeneratedStructure} from '../../modules/toolbox/types'
+
+const {t: $t} = useI18n()
 
 const props = defineProps<{
   model?: THREE.Object3D
@@ -61,7 +64,7 @@ function ensureRenderer() {
   next.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
   next.outputColorSpace = THREE.SRGBColorSpace
   next.domElement.className = 'model-preview-canvas'
-  next.domElement.setAttribute('aria-label', '可拖动旋转、滚轮缩放的模型预览')
+  next.domElement.setAttribute('aria-label', $t('desktop.modelCanvas'))
   host.value.appendChild(next.domElement)
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(50,1,.01,10000)
   scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7280, 2.2))
@@ -119,7 +122,7 @@ async function refresh() {
     }
     const box = new THREE.Box3().setFromObject(content, true)
     const center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3())
-    if (![...center.toArray(), ...size.toArray()].every(Number.isFinite) || box.isEmpty()) throw new Error('模型没有可预览的表面。')
+    if (![...center.toArray(), ...size.toArray()].every(Number.isFinite) || box.isEmpty()) throw new Error($t('desktop.modelNoSurface'))
     content.position.copy(center).negate(); radius = Math.max(size.length() / 2, .01)
     root = content; scene.add(content); resize(); fit()
   } catch (reason) {
@@ -143,19 +146,19 @@ onBeforeUnmount(() => { disposed = true; active = false; releaseRenderer() })
 </script>
 
 <template>
-  <section class="model-preview rounded-lg border" aria-label="模型预览区域">
+  <section class="model-preview rounded-lg border" :aria-label="$t('desktop.modelRegion')">
     <div class="d-flex align-center flex-wrap ga-2 pa-2 preview-toolbar">
-      <v-btn-toggle v-model="view" mandatory density="compact" variant="text" color="primary" aria-label="预览视角">
-        <v-btn value="free">自由</v-btn><v-btn value="front">正面</v-btn><v-btn value="side">侧面</v-btn><v-btn value="top">俯视</v-btn>
+      <v-btn-toggle v-model="view" mandatory density="compact" variant="text" color="primary" :aria-label="$t('desktop.previewAngle')">
+        <v-btn value="free">{{ $t('desktop.free') }}</v-btn><v-btn value="front">{{ $t('desktop.front') }}</v-btn><v-btn value="side">{{ $t('desktop.side') }}</v-btn><v-btn value="top">{{ $t('desktop.top') }}</v-btn>
       </v-btn-toggle>
-      <v-spacer/><v-btn icon="mdi-fit-to-screen-outline" variant="text" size="small" aria-label="适应预览区域" @click="fit"/>
+      <v-spacer/><v-btn icon="mdi-fit-to-screen-outline" variant="text" size="small" :aria-label="$t('desktop.fitPreview')" @click="fit"/>
     </div>
     <div ref="host" class="model-preview-stage">
-      <div v-if="!hasContent" class="preview-message text-medium-emphasis"><v-icon icon="mdi-cube-scan" size="48"/><p>{{ mode === 'source' ? '选择模型及附件后查看原始模型' : '生成后在这里查看方块效果' }}</p></div>
-      <div v-if="building" class="preview-message"><v-progress-circular indeterminate color="primary"/><p>正在后台构建可见表面…</p></div>
+      <div v-if="!hasContent" class="preview-message text-medium-emphasis"><v-icon icon="mdi-cube-scan" size="48"/><p>{{ mode === 'source' ? $t('desktop.sourceEmpty') : $t('desktop.blocksEmpty') }}</p></div>
+      <div v-if="building" class="preview-message"><v-progress-circular indeterminate color="primary"/><p>{{ $t('desktop.surfaceBuilding') }}</p></div>
       <div v-if="error" class="preview-message"><v-alert type="warning" variant="tonal">{{ error }}</v-alert></div>
     </div>
-    <div class="text-caption text-medium-emphasis px-3 py-2">拖动旋转 · 滚轮缩放 · 仅绘制可见表面，导出保留完整方块</div>
+    <div class="text-caption text-medium-emphasis px-3 py-2">{{ $t('desktop.modelPreviewNote') }}</div>
   </section>
 </template>
 

@@ -1081,7 +1081,7 @@ const formatInfo = computed(() => {
                         </div>
                         <div class="d-flex justify-space-between mt-1">
                           <span class="text-caption ">{{ $t('toolsConvert.subVersion') }}:</span>
-                          <span class="text-caption font-weight-medium">{{ props.data?.schematics?.McEdit?.[-1]?.output?.game_version ?? '未记录' }}</span>
+                          <span class="text-caption font-weight-medium">{{ props.data?.schematics?.McEdit?.[-1]?.output?.game_version ?? $t('desktop.unrecorded') }}</span>
                         </div>
                         <div class="d-flex justify-space-between mt-1">
                           <span class="text-caption ">{{ $t('toolsConvert.exist') }}:</span>
@@ -1122,7 +1122,7 @@ const formatInfo = computed(() => {
         <v-icon icon="mdi-autorenew" class="mr-2"/>
         {{ $t('toolsConvert.convertToTargetVersion') }}
         <v-spacer/>
-        <v-btn icon="mdi-close" variant="text" size="small" :disabled="isLoading" aria-label="关闭转换设置" @click="closeDialog"/>
+        <v-btn icon="mdi-close" variant="text" size="small" :disabled="isLoading" :aria-label="$t('desktop.closeConversion')" @click="closeDialog"/>
       </v-card-title>
       <v-card-text>
         <BlueprintExportPanel v-if="conversionDialog && source" :source="source"

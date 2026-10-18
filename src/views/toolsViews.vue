@@ -22,6 +22,7 @@ import {
   schematic_id,
   fetch_data,
   schematicData,
+  schematicLoadError,
   schematicRequirements,
   convertData,
   uniqueBlocks,
@@ -43,13 +44,25 @@ watch(activeTools, (value) => {
     }
 }, {immediate: true})
 
+// A newly selected blueprint must not inherit mounted panels or pending UI
+// from the previous source. Cached navigation of the same source is retained.
+watch(schematic_id, () => {
+  loadedToolTabs.value = {schematic: true}
+  activeTools.value = 'schematic'
+}, {flush: 'sync'})
+
 onBeforeRouteLeave(navigationGuard)
+const reloadSchematic = async () => {
+    if (schematic_id.value == undefined) return
+    // The store exposes a retryable error state; service errors already toast.
+    try { await fetch_data(schematic_id.value) } catch { /* shown below */ }
+}
 onMounted(async() => {
     // Selecting a blueprint already populated the shared tool store.  Avoid
     // refetching all requirements/history every time the left navigation
     // returns to this cached page.
     if (schematic_id.value != undefined && !schematicData.value){
-        await fetch_data(schematic_id.value)
+        await reloadSchematic()
     }
 })
 
@@ -89,7 +102,7 @@ onMounted(async() => {
           <v-tabs v-model="activeTools"
                   align-tabs="center"
                   color="blue-lighten-1"
-                  :disabled="schematic_id == undefined"
+                  :disabled="!schematicData"
           >
             <v-tab value="schematic" class="text-medium-emphasis">{{ t('tools.tabs.schematic') }}</v-tab>
             <v-tab value="history" class="text-medium-emphasis">{{ t('tools.tabs.history') }}</v-tab>
@@ -103,7 +116,7 @@ onMounted(async() => {
         </v-toolbar>
         <!-- No transition on purpose: the tool panels are heavy (stats table,
              JSON editor) and the editor should switch tabs instantly. -->
-        <v-window v-model="activeTools" :transition="false" :reverse-transition="false">
+        <v-window v-if="schematicData && schematic_id != undefined" :key="schematic_id" v-model="activeTools" :transition="false" :reverse-transition="false">
           <v-window-item value="schematic">
             <toolsSchematic v-if="loadedToolTabs.schematic" :data="schematicData"/>
           </v-window-item>
@@ -134,6 +147,14 @@ onMounted(async() => {
             </KeepAlive>
           </v-window-item>
         </v-window>
+        <div v-else class="pa-6 text-medium-emphasis" role="status">
+          <v-alert v-if="schematicLoadError" type="error" variant="tonal">
+            {{ t('desktop.blueprintLoadFailed', {error: schematicLoadError}) }}
+            <v-btn class="mt-3" variant="outlined" @click="reloadSchematic">{{ t('desktop.retry') }}</v-btn>
+          </v-alert>
+          <template v-else-if="schematic_id != undefined"><v-progress-linear indeterminate color="primary" class="mb-3"/>{{ t('toolsData.loading') }}</template>
+          <template v-else>{{ t('tools.noSchematic') }}</template>
+        </div>
       </v-card>
     </v-col>
   </v-row>

@@ -40,6 +40,7 @@
       "csp": {
         "default-src": "'self' customprotocol: asset: http://asset.localhost blob: data: https:",
         "connect-src": "'self' blob: data: ipc: http://ipc.localhost",
+        "worker-src": "'self' blob:",
         "img-src": "'self' asset: http://asset.localhost blob: data: https:",
         "style-src": "'unsafe-inline' 'self' asset: http://asset.localhost"
       },

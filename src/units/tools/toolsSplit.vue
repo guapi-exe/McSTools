@@ -29,7 +29,7 @@ const splitTypes = ref([
 ]);
 
 const isSplitNumberDisabled = (num: number) => {
-  if (!schematicData.value.sizes) return true;
+  if (!schematicData.value?.sizes) return true;
 
   const [x, y, z] = schematicData.value.sizes.split(',').map(Number);
 
@@ -45,6 +45,7 @@ const isSplitNumberDisabled = (num: number) => {
   return true;
 };
 const parseDimensions = (sizeStr: string) => {
+  if (!sizeStr) return [];
   const [length, width, height] = sizeStr.split(',').map(Number);
   return [`X${length}`, `Y${width}`, `Z${height}`]
 };
@@ -57,6 +58,7 @@ const dimensionLabel = computed(() => {
 });
 
 const parseSplitDimensions = (sizeStr: string) => {
+  if (!sizeStr) return [];
   const [length, width, height] = sizeStr.split(',').map(Number);
 
   if (spiltType.value === 1) {
@@ -77,6 +79,7 @@ const parseSplitDimensions = (sizeStr: string) => {
 
 
 const SplitDimensions = async () => {
+  if (!schematicData.value || schematic_id.value == undefined) return;
   try {
     loading.value = true;
     splitFiles.value = await splitSchematicParts({
@@ -348,7 +351,7 @@ const downloadAll = async () => {
                 <div class="d-flex align-center">
                   <v-icon icon="mdi-axis-arrow" class="mr-1"></v-icon>
                   <div class="dimension-values">
-                    <span v-for="(dim, index) in parseDimensions(schematicData.sizes)" :key="index">
+                    <span v-for="(dim, index) in parseDimensions(schematicData?.sizes ?? '')" :key="index">
                       {{ dim }}
                       <v-icon v-if="index < 2" icon="mdi-close" size="x-small" class="mx-1"></v-icon>
                     </span>
@@ -368,7 +371,7 @@ const downloadAll = async () => {
                 <div class="d-flex align-center">
                   <v-icon icon="mdi-ruler" class="mr-1"></v-icon>
                   <div class="dimension-values">
-                    <span v-for="(dim, index) in parseSplitDimensions(schematicData.sizes)" :key="index">
+                    <span v-for="(dim, index) in parseSplitDimensions(schematicData?.sizes ?? '')" :key="index">
                       {{ dim }}
                       <v-icon v-if="index < 2" icon="mdi-close" size="x-small" class="mx-1"></v-icon>
                     </span>
