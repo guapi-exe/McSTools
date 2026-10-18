@@ -12,7 +12,8 @@ use tauri::{AppHandle, State};
 
 const API_ORIGIN: &str = "https://www.mcschematic.top";
 const MAX_JSON_BYTES: usize = 8 * 1024 * 1024;
-const MAX_SOURCE_BYTES: usize = 1024 * 1024 * 1024;
+// Match the parser before downloading; a compressed file can expand to 1 GiB.
+const MAX_SOURCE_BYTES: usize = crate::utils::parse_limits::MAX_INPUT_BYTES;
 const MAX_PREVIEW_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
@@ -42,6 +43,25 @@ pub struct McsApiState {
     imports: tokio::sync::Semaphore,
 }
 
+// Keep the concurrency slot until the bounded body is consumed (or cancelled),
+// not merely until the server sends its response headers.
+struct LimitedResponse<'a> {
+    response: Response,
+    _permit: tokio::sync::SemaphorePermit<'a>,
+}
+
+impl std::ops::Deref for LimitedResponse<'_> {
+    type Target = Response;
+    fn deref(&self) -> &Response {
+        &self.response
+    }
+}
+impl std::ops::DerefMut for LimitedResponse<'_> {
+    fn deref_mut(&mut self) -> &mut Response {
+        &mut self.response
+    }
+}
+
 impl McsApiState {
     pub fn new() -> Result<Self, reqwest::Error> {
         Ok(Self {
@@ -63,7 +83,7 @@ impl McsApiState {
         path: &str,
         query: &BTreeMap<String, String>,
         authenticated: bool,
-    ) -> Result<Response, McsApiError> {
+    ) -> Result<LimitedResponse<'_>, McsApiError> {
         validate_path(path)?;
         validate_query(query)?;
         let _permit = self
@@ -157,7 +177,7 @@ impl McsApiState {
                 };
                 return Err(McsApiError::new(code, message));
             }
-            return Ok(response);
+            return Ok(LimitedResponse { response, _permit });
         }
         Err(McsApiError::new("REDIRECT", "文件重定向次数过多"))
     }
@@ -269,15 +289,15 @@ fn allowed_redirect(url: &Url) -> bool {
             .is_some_and(|h| h == "mcschematic.top" || h.ends_with(".mcschematic.top"))
 }
 
-async fn read_bounded(mut response: Response, limit: usize) -> Result<Vec<u8>, McsApiError> {
+async fn read_bounded(
+    mut response: LimitedResponse<'_>,
+    limit: usize,
+) -> Result<Vec<u8>, McsApiError> {
     if response
         .content_length()
         .is_some_and(|size| size > limit as u64)
     {
-        return Err(McsApiError::new(
-            "TOO_LARGE",
-            "文件超过当前安全读取上限，请在网站下载后导入",
-        ));
+        return Err(McsApiError::new("TOO_LARGE", "文件超过当前安全读取上限"));
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
@@ -413,7 +433,7 @@ pub async fn import_mcs_blueprint(
     {
         return Err(McsApiError::new(
             "TOO_LARGE",
-            "原文件超过 1 GiB，请在网站下载后导入",
+            "原文件超过 256 MiB 输入上限（解压后的 NBT 上限为 1 GiB）",
         ));
     }
     let filename = source_filename(
@@ -556,5 +576,96 @@ mod tests {
             "城堡.litematic"
         );
         assert!(source_filename("unknown.exe", "unknown").is_err());
+    }
+
+    #[test]
+    fn body_read_owns_the_concurrency_permit_and_releases_it_on_limits() {
+        tauri::async_runtime::block_on(async {
+            let semaphore = tokio::sync::Semaphore::new(1);
+            let response = tauri::http::Response::builder()
+                .header("Content-Length", "4")
+                .body("test")
+                .unwrap();
+            let response = LimitedResponse {
+                response: response.into(),
+                _permit: semaphore.acquire().await.unwrap(),
+            };
+            assert_eq!(semaphore.available_permits(), 0);
+            assert_eq!(read_bounded(response, 4).await.unwrap(), b"test");
+            assert_eq!(semaphore.available_permits(), 1);
+            let response = tauri::http::Response::builder()
+                .header("Content-Length", "5")
+                .body("large")
+                .unwrap();
+            let response = LimitedResponse {
+                response: response.into(),
+                _permit: semaphore.acquire().await.unwrap(),
+            };
+            assert_eq!(
+                read_bounded(response, 4).await.unwrap_err().code,
+                "TOO_LARGE"
+            );
+            assert_eq!(semaphore.available_permits(), 1);
+            let response = tauri::http::Response::builder()
+                .body("unannounced")
+                .unwrap();
+            let response = LimitedResponse {
+                response: response.into(),
+                _permit: semaphore.acquire().await.unwrap(),
+            };
+            assert_eq!(
+                read_bounded(response, 4).await.unwrap_err().code,
+                "TOO_LARGE"
+            );
+            assert_eq!(semaphore.available_permits(), 1);
+            let response = tauri::http::Response::builder().body("cancelled").unwrap();
+            drop(LimitedResponse {
+                response: response.into(),
+                _permit: semaphore.acquire().await.unwrap(),
+            });
+            assert_eq!(semaphore.available_permits(), 1);
+        });
+    }
+
+    #[test]
+    fn truncated_http_body_is_a_network_error_and_releases_the_slot() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = [0; 4096];
+            socket.read(&mut request).unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nabc")
+                .unwrap();
+            socket.flush().unwrap();
+        });
+        tauri::async_runtime::block_on(async {
+            let slots = tokio::sync::Semaphore::new(1);
+            let client = Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(3))
+                .build()
+                .unwrap();
+            let response = client
+                .get(format!("http://{address}/test"))
+                .send()
+                .await
+                .unwrap();
+            let response = LimitedResponse {
+                response,
+                _permit: slots.acquire().await.unwrap(),
+            };
+            assert_eq!(
+                read_bounded(response, 32).await.unwrap_err().code,
+                "NETWORK"
+            );
+            assert_eq!(slots.available_permits(), 1);
+        });
+        server.join().unwrap();
     }
 }

@@ -1,0 +1,77 @@
+{
+  "updatedOn": "2026-10-18",
+  "scope": "桌面端六格式有界读取、大稀疏蓝图、文本预览预算；不包含 3D 打印",
+  "source": {
+    "repository": "new_mcs",
+    "nbtScannerRevision": "c7b23596167e2a86d9ec8f5be049b05cc3986902",
+    "snbtScannerRevision": "28bec5d6fef235bcac116334e95bbe9a582aadfa",
+    "references": [
+      "docs/upload-preview-nbt-limit-production-20261015.md",
+      "docs/sparse-legacy-upload-production-20261015.md",
+      "crates/mcs-core/src/nbt_scan.rs",
+      "crates/mcs-core/src/snbt_scan.rs",
+      "crates/mcs-core/src/limits.rs",
+      "crates/mcs-core/src/mcs/mcedit/mcedit_schematic.rs",
+      "crates/mcs-core/src/mcs/building_gadges/bg_schematic.rs"
+    ],
+    "localReferenceFilesWereClean": true,
+    "dependency": "fastnbt 2.5.0 -> 2.6.2；Cargo.lock 只改变该包版本与校验和，未升级其余依赖"
+  },
+  "limits": {
+    "sourceInputBytes": 268435456,
+    "decodedNbtBytes": 1073741824,
+    "sourceCells": 512000000,
+    "axisMagnitude": 4096,
+    "paletteEntries": 65536,
+    "nbtDepth": 128,
+    "nbtListEntries": 256000000,
+    "nbtTags": 32000000,
+    "primitiveArrays": "按元素宽度和累计字节预算限制，不套用 List 条目数；标签/预估内存计数仍适用",
+    "estimatedNbtAllocationBytes": 1073741824,
+    "retainedBlockRecords": "min(100000000, 512 MiB / size_of::<BlockStatePos>())；逐项检查，有限增量 try_reserve_exact",
+    "interactivePreviewCells": 50000000,
+    "denseLegacyExportCellsUnchanged": 67108864,
+    "textPreviewDecodedBytes": 16777216,
+    "textPreviewEstimatedOutputBytes": 8388608,
+    "notes": [
+      "桌面端不像网站验证器那样运行在受 2 GiB 地址空间限制的独立进程，因此额外增加 NBT 预计分配和方块记录预算",
+      "预算不是进程 RSS 上限：fastnbt 内部缓冲、集合容量、字符串、转换副本和 GPU 资源仍额外占用内存",
+      "API 下载、本地上传前置检查、原生输入检查统一为 256 MiB，不能把原来的 1 GiB 网络传输上限当成文件可解码保证",
+      "大文件超过文本/3D 预算不等于禁止材料统计和支持范围内的转换；稠密旧格式输出保留独立限制"
+    ]
+  },
+  "changes": [
+    "Java gzip 先流式预检，校验深度/长度/标签/累计解压量/预计分配/CRC/尾随数据，再从第二个有界流解码；不保留完整解压 Vec",
+    "原始 Java NBT 与 BE little-endian NBT 使用同一结构扫描器；BE 字符串长度按 u16 解码",
+    "Building Gadgets gzip/base64 与 SNBT 均有界；移除 malformed SNBT 的 unwrap panic，尺寸计算防溢出",
+    "本地/API/导出再入库借用原始编码字节，FileManager 读取统一走输入与解析预算",
+    "MCEdit 借用 Blocks/Data/AddBlocks，跳过精确空气，按 12-bit ID/4-bit metadata 缓存并共享状态；保留未知数字 ID 与两种 AddBlocks 编码",
+    "Litematica 直接借用区域数组写入一个有界列表，移除区域数组副本、并行 Y 列表及二次合并；Sponge 借用 VarInt 数据，不复制整份数组",
+    "BE 主层/水层逐位置合并后才压缩空气，移除副层方块列表和逐方块位置哈希表，含水状态按调色板复用",
+    "文本预览先检查解压及 SNBT 输出预算，超限沿用现有空预览状态，原文件仍完整保留；文本保存先结构预检",
+    "三个原生读取命令转后台阻塞工作线程，读取并发限为一；API GET 的并发 permit 保留到正文读取完成、出错或取消",
+    "本地上传提前检查大小、防重复提交、捕获文件队列、清除旧重置定时器；逐个成功后刷新计数，更新不算新增"
+  ],
+  "largeSyntheticVerification": {
+    "sourceContainsUserData": false,
+    "networkUpload": false,
+    "databaseWrite": false,
+    "dimensions": [1000, 400, 1000],
+    "sourceCells": 400000000,
+    "decodedBlocksAndDataBytes": 800000000,
+    "compressedBytes": 7465096,
+    "retainedStoneBlocks": 4000000,
+    "checks": ["完整解码", "尺寸", "首尾坐标", "全部保留块为石头", "相同状态共享 Arc"],
+    "debugElapsedIncludingGenerationMs": 48785,
+    "processPeakMemoryMeasured": false,
+    "command": "cargo test --manifest-path src-tauri/Cargo.toml --lib --offline --locked large_sparse_400_million_cells_decode_without_air_records -- --ignored --nocapture",
+    "notes": "测试默认忽略以避免每轮单测产生较高内存开销；本轮已显式执行成功。不是任意机器性能承诺，也不是大文件 GPU/实际游戏验收。"
+  },
+  "remaining": [
+    "完整 Tauri IPC、系统对话框与隔离应用目录集成验收",
+    "本地 File 上传仍使用 WebView 数字数组 IPC；原生路径/原始二进制传输可进一步减少前端大文件开销",
+    "原生任务取消、跨编辑/转换/导入的统一内存调度，以及真实大文件交互压力测量",
+    "完整网络重定向和账户权限的传输层测试",
+    "工具箱共享多格式/多版本导出与本地批量转换"
+  ]
+}

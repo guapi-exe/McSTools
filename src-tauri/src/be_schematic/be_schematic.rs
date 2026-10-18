@@ -1,16 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
-use std::io::Read;
 use std::sync::Arc;
 
 use fastnbt::Value;
 use fastnbt::Value::Compound;
 
 use crate::be_schematic::bedrock_map::bedrock_map;
-use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
+use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le_with_limits;
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
 use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
+use crate::utils::parse_limits::{ParseLimits, read_source_file};
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::TileEntitiesList;
 
@@ -22,15 +21,19 @@ pub struct BESchematic {
 impl BESchematic {
     /// 从文件构造
     pub fn new(file_path: &str) -> Result<Self, SchematicError> {
-        let mut file = File::open(file_path)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-        Self::new_from_bytes(buf)
+        Self::new_from_bytes(read_source_file(file_path)?)
     }
 
     /// 从字节数组构造
-    pub fn new_from_bytes(data: Vec<u8>) -> Result<Self, SchematicError> {
-        let nbt = load_nbt_le(&data[..])?;
+    pub fn new_from_bytes(data: impl AsRef<[u8]>) -> Result<Self, SchematicError> {
+        Self::new_from_bytes_with_limits(data.as_ref(), &ParseLimits::default())
+    }
+
+    pub fn new_from_bytes_with_limits(
+        data: &[u8],
+        limits: &ParseLimits,
+    ) -> Result<Self, SchematicError> {
+        let nbt = load_nbt_le_with_limits(data, limits)?;
         let value = Compound(nbt);
 
         if matches!(value, Compound(_)) {
@@ -120,6 +123,11 @@ impl BESchematic {
             ));
         };
 
+        ParseLimits::default().check(
+            "palette entries",
+            palette_list.len(),
+            ParseLimits::default().max_palette_entries,
+        )?;
         let mut palette = Vec::with_capacity(palette_list.len());
         for entry in palette_list {
             let block = Self::parse_palette_entry(entry)?;
@@ -193,80 +201,97 @@ impl BESchematic {
 
     /// 解析 block_indices，生成 SchematicData
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
+        self.get_blocks_pos_with_limits(&ParseLimits {
+            retain_air_blocks: true,
+            ..ParseLimits::default()
+        })
+    }
+
+    pub fn get_blocks_pos_with_limits(
+        &self,
+        limits: &ParseLimits,
+    ) -> Result<SchematicData, SchematicError> {
         let structure = self.get_structure()?;
-
         let size = self.get_size()?;
+        let volume = limits.validate_dimensions(size.width, size.height, size.length)?;
         let palette = self.parse_block_palette(structure)?;
-
-        let block_indices_value = structure
+        limits.check("palette entries", palette.len(), limits.max_palette_entries)?;
+        let value = structure
             .get("block_indices")
             .ok_or(SchematicError::InvalidFormat("Missing block_indices"))?;
-        let block_indices = match block_indices_value {
-            Value::List(layers) => layers,
-            // A few non-vanilla writers emit a single IntArray when the
-            // secondary layer is omitted. Treat it as the primary layer.
-            Value::IntArray(_) | Value::LongArray(_) => std::slice::from_ref(block_indices_value),
+        let layers = match value {
+            Value::List(layers) => layers.as_slice(),
+            Value::IntArray(_) | Value::LongArray(_) => std::slice::from_ref(value),
             _ => {
                 return Err(SchematicError::InvalidFormat(
                     "block_indices must be a List or IntArray",
                 ));
             }
         };
-
-        let mut block_list = BlockStatePosList::default();
-
-        let Some(layer0) = block_indices.first() else {
+        if layers.is_empty() || layers.len() > 2 {
             return Err(SchematicError::InvalidFormat(
-                "block_indices must contain a primary layer",
+                "block_indices requires one or two layers",
             ));
-        };
-        self.parse_block_layer(layer0, &palette, &size, &mut block_list)?;
-
-        // 副层（水覆盖）。Layer 1 uses the same palette and may contain
-        // -1 for positions without a liquid block. Java stores waterlogged
-        // blocks as one state, so merge a water overlay into the primary
-        // block when that state exposes a `waterlogged` property.
-        if let Some(layer1) = block_indices.get(1) {
-            let mut liquid_blocks = BlockStatePosList::default();
-            self.parse_block_layer(layer1, &palette, &size, &mut liquid_blocks)?;
-
-            let mut position_index = HashMap::new();
-            for (index, block) in block_list.elements.iter().enumerate() {
-                position_index.insert((block.pos.x, block.pos.y, block.pos.z), index);
-            }
-            for block in liquid_blocks.elements {
-                // Some Bedrock writers use palette[air] instead of -1 for an
-                // empty secondary-layer slot. It must not erase a primary
-                // block or manufacture an air entry in the Java model.
-                if is_air_block(&block.block) {
-                    continue;
+        }
+        let primary = NumericArray::new(&layers[0])?;
+        let secondary = layers.get(1).map(NumericArray::new).transpose()?;
+        if primary.len() != volume
+            || secondary
+                .as_ref()
+                .is_some_and(|layer| layer.len() != volume)
+        {
+            return Err(SchematicError::InvalidFormat(
+                "block_indices layer length does not match size",
+            ));
+        }
+        let mut blocks = BlockStatePosList::default();
+        let mut wet_palette: Vec<Option<Arc<BlockData>>> = vec![None; palette.len()];
+        // Merge both layers at the same index, before air compaction. This
+        // preserves water-only cells without allocating a second block list or
+        // a position hash table proportional to the entire structure.
+        for index in 0..volume {
+            let primary_id = primary.get(index)?;
+            let secondary_id = secondary
+                .as_ref()
+                .map(|layer| layer.get(index))
+                .transpose()?
+                .unwrap_or(-1);
+            let resolve = |id: i32| -> Result<Option<&Arc<BlockData>>, SchematicError> {
+                if id == -1 {
+                    return Ok(None);
                 }
-                let key = (block.pos.x, block.pos.y, block.pos.z);
-                if let Some(index) = position_index.get(&key).copied() {
-                    if is_water_block(&block.block) {
-                        if is_air_block(&block_list.elements[index].block) {
-                            // An air primary plus a water secondary is a
-                            // normal full water block, not a waterlogged air
-                            // block.
-                            block_list.elements[index] = block;
-                        } else if !is_bubble_column(&block_list.elements[index].block)
-                            && supports_waterlogged(&block_list.elements[index].block)
-                        {
-                            block_list.elements[index].block =
-                                with_waterlogged(&block_list.elements[index].block);
-                        }
-                    }
-                } else if is_water_block(&block.block) {
-                    // A -1 primary entry can still have a valid secondary
-                    // water entry. Preserve it as the only block at the
-                    // coordinate; unsupported secondary states (including
-                    // bubble_column) are ignored because Bedrock only uses
-                    // the secondary layer for water overlays.
-                    position_index.insert(key, block_list.elements.len());
-                    block_list.elements.push_back(block);
+                let id = usize::try_from(id).map_err(|_| {
+                    SchematicError::InvalidFormat("Invalid negative state_id in block_indices")
+                })?;
+                palette
+                    .get(id)
+                    .map(Some)
+                    .ok_or(SchematicError::InvalidFormat(
+                        "Invalid state_id in block_indices",
+                    ))
+            };
+            let main = resolve(primary_id)?;
+            let liquid = resolve(secondary_id)?.filter(|block| is_water_block(block));
+            let merged = match (main, liquid) {
+                (None, water) => water,
+                (Some(block), Some(water)) if is_air_block(block) => Some(water),
+                (Some(block), Some(_))
+                    if !is_bubble_column(block) && supports_waterlogged(block) =>
+                {
+                    Some(
+                        wet_palette[primary_id as usize]
+                            .get_or_insert_with(|| with_waterlogged(block))
+                            as &Arc<BlockData>,
+                    )
                 }
+                (block, _) => block,
+            };
+            if let Some(block) = merged {
+                let pos = Self::index_to_pos(index as i64, &size);
+                limits.push_block(&mut blocks, pos.x, pos.y, pos.z, block)?;
             }
         }
+        let block_list = blocks;
 
         let tile_entities = self.parse_block_position_data(structure, &size)?;
         let entities = structure
@@ -284,44 +309,6 @@ impl BESchematic {
             entities,
             size,
         ))
-    }
-
-    fn parse_block_layer(
-        &self,
-        layer: &Value,
-        palette: &[Arc<BlockData>],
-        size: &Size,
-        block_list: &mut BlockStatePosList,
-    ) -> Result<(), SchematicError> {
-        let expected_len = (size.width as u128)
-            .checked_mul(size.height as u128)
-            .and_then(|value| value.checked_mul(size.length as u128))
-            .and_then(|value| usize::try_from(value).ok())
-            .ok_or(SchematicError::InvalidFormat(
-                "block_indices dimensions are too large",
-            ))?;
-        let layer_values = numeric_array(layer).ok_or(SchematicError::InvalidFormat(
-            "block_indices layer must contain ints",
-        ))?;
-        if layer_values.len() != expected_len {
-            return Err(SchematicError::InvalidFormat(
-                "block_indices layer length does not match size",
-            ));
-        }
-
-        for (i, state_id) in layer_values.into_iter().enumerate() {
-            if state_id >= 0 {
-                let pos = Self::index_to_pos(i as i64, size);
-                let block_data =
-                    palette
-                        .get(state_id as usize)
-                        .ok_or(SchematicError::InvalidFormat(
-                            "Invalid state_id in block_indices",
-                        ))?;
-                block_list.add(pos, Arc::clone(block_data));
-            }
-        }
-        Ok(())
     }
 
     fn parse_block_position_data(
@@ -458,6 +445,42 @@ fn with_waterlogged(block: &Arc<BlockData>) -> Arc<BlockData> {
         .properties
         .insert(Arc::from("waterlogged"), Arc::from("true"));
     Arc::new(waterlogged)
+}
+
+enum NumericArray<'a> {
+    List(&'a [Value]),
+    Int(&'a [i32]),
+    Long(&'a [i64]),
+}
+
+impl<'a> NumericArray<'a> {
+    fn new(value: &'a Value) -> Result<Self, SchematicError> {
+        match value {
+            Value::List(values) => Ok(Self::List(values)),
+            Value::IntArray(values) => Ok(Self::Int(values)),
+            Value::LongArray(values) => Ok(Self::Long(values)),
+            _ => Err(SchematicError::InvalidFormat(
+                "block_indices layer must contain ints",
+            )),
+        }
+    }
+    fn len(&self) -> usize {
+        match self {
+            Self::List(v) => v.len(),
+            Self::Int(v) => v.len(),
+            Self::Long(v) => v.len(),
+        }
+    }
+    fn get(&self, index: usize) -> Result<i32, SchematicError> {
+        match self {
+            Self::List(v) => v.get(index).and_then(numeric_value),
+            Self::Int(v) => v.get(index).copied(),
+            Self::Long(v) => v.get(index).and_then(|v| i32::try_from(*v).ok()),
+        }
+        .ok_or(SchematicError::InvalidFormat(
+            "block_indices layer must contain i32 values",
+        ))
+    }
 }
 
 fn numeric_array(value: &Value) -> Option<Vec<i32>> {

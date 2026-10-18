@@ -33,6 +33,8 @@ pub(crate) fn prepare_import(
     versions: &VersionData,
     blocks: &BlocksData,
 ) -> Result<PreparedImport> {
+    let limits = crate::utils::parse_limits::ParseLimits::default();
+    limits.validate_input(bytes.len())?;
     let path = Path::new(file_name);
     let extension = path
         .extension()
@@ -65,12 +67,15 @@ pub(crate) fn prepare_import(
     let mut legacy_version_unknown = false;
     let (data, data_version) = match extension.as_str() {
         "nbt" => {
-            let parsed = CreateSchematic::new_from_bytes(bytes.clone())?;
+            let parsed = CreateSchematic::new_from_bytes(&bytes)?;
             metadata.schematic_type = 1;
-            (parsed.get_blocks_pos()?, parsed.get_data_version().ok())
+            (
+                parsed.get_blocks_pos_with_limits(&limits)?,
+                parsed.get_data_version().ok(),
+            )
         }
         "litematic" => {
-            let parsed = LmSchematic::new_from_bytes(bytes.clone())?;
+            let parsed = LmSchematic::new_from_bytes(&bytes)?;
             let details = parsed.read_metadata()?;
             metadata.schematic_type = 2;
             metadata.lm_version = parsed.get_lm_version()?;
@@ -79,39 +84,42 @@ pub(crate) fn prepare_import(
             }
             metadata.description = details.description;
             metadata.user = details.author;
-            (parsed.get_blocks_pos()?, parsed.get_data_version().ok())
+            (
+                parsed.get_blocks_pos_with_limits(&limits)?,
+                parsed.get_data_version().ok(),
+            )
         }
         "schem" => {
-            let parsed = WeSchematic::new_from_bytes(bytes.clone())?;
+            let parsed = WeSchematic::new_from_bytes(&bytes)?;
             metadata.schematic_type = 3;
             metadata.sub_type = parsed.get_type()?;
             (
-                parsed.get_blocks_pos()?,
+                parsed.get_blocks_pos_with_limits(&limits)?,
                 parsed.get_data_version(metadata.sub_type).ok(),
             )
         }
         "json" => {
-            let parsed = BgSchematic::new_from_data(bytes.clone())?;
+            let parsed = BgSchematic::new_from_slice(&bytes)?;
             metadata.schematic_type = 4;
             metadata.sub_type = parsed.get_type()?;
             metadata.game_version.clear();
-            (parsed.get_blocks_pos()?, None)
+            (parsed.get_blocks_pos_with_limits(&limits)?, None)
         }
         "mcstructure" => {
-            let parsed = BESchematic::new_from_bytes(bytes.clone())?;
+            let parsed = BESchematic::new_from_bytes(&bytes)?;
             metadata.schematic_type = 5;
             metadata.game_version.clear();
-            (parsed.get_blocks_pos()?, None)
+            (parsed.get_blocks_pos_with_limits(&limits)?, None)
         }
         "schematic" => {
-            let parsed = McEditSchematic::new_from_bytes(bytes.clone())?;
+            let parsed = McEditSchematic::new_from_bytes(&bytes)?;
             metadata.schematic_type = 6;
             if let Some(name) = legacy_map::declared_game_version(&parsed.nbt) {
                 metadata.game_version = name.into();
             } else {
                 legacy_version_unknown = true;
             }
-            (parsed.get_blocks_pos()?, None)
+            (parsed.get_blocks_pos_with_limits(&limits)?, None)
         }
         _ => anyhow::bail!("unsupported blueprint file extension: {extension}"),
     };

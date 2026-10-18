@@ -1,13 +1,12 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
 use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
+use crate::utils::nbt_scan::read_gzip_java_nbt;
+use crate::utils::parse_limits::{ParseLimits, read_source_file};
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
 use fastnbt::{self, Value, Value::Compound};
-use flate2::read::GzDecoder;
 use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufReader, Cursor};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -17,32 +16,20 @@ pub struct CreateSchematic {
 
 impl CreateSchematic {
     pub fn new(file_path: &str) -> Result<Self, SchematicError> {
-        let file = File::open(file_path)?;
-        let reader = BufReader::new(file);
-        let decoder = GzDecoder::new(reader);
-
-        let nbt: Value = fastnbt::from_reader(decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+        Self::new_from_bytes(read_source_file(file_path)?)
     }
 
-    pub fn new_from_bytes(data: Vec<u8>) -> Result<Self, SchematicError> {
-        let cursor = Cursor::new(data);
-        let mut decoder = GzDecoder::new(cursor);
-
-        let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+    pub fn new_from_bytes(data: impl AsRef<[u8]>) -> Result<Self, SchematicError> {
+        Self::new_from_bytes_with_limits(data.as_ref(), &ParseLimits::default())
     }
 
+    pub fn new_from_bytes_with_limits(
+        data: &[u8],
+        limits: &ParseLimits,
+    ) -> Result<Self, SchematicError> {
+        let nbt = read_gzip_java_nbt(data, limits)?;
+        Ok(Self { nbt })
+    }
     pub fn get_pos_list(&self) -> Result<&Vec<Value>, SchematicError> {
         if let Compound(root) = &self.nbt {
             root.get("blocks")
@@ -148,10 +135,26 @@ impl CreateSchematic {
     }
 
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
+        self.get_blocks_pos_with_limits(&ParseLimits {
+            retain_air_blocks: true,
+            ..ParseLimits::default()
+        })
+    }
+
+    pub fn get_blocks_pos_with_limits(
+        &self,
+        limits: &ParseLimits,
+    ) -> Result<SchematicData, SchematicError> {
         let mut block_list = BlockStatePosList::default();
         let mut tile_entities = TileEntitiesList::default();
         tile_entities.original_type = 1;
         let blocks = self.get_pos_list()?;
+        limits.check("source block entries", blocks.len(), limits.max_volume)?;
+        limits.check(
+            "palette entries",
+            self.get_palette()?.len(),
+            limits.max_palette_entries,
+        )?;
         let palette = self.parse_palette()?;
         let size = self.get_size()?;
 
@@ -169,6 +172,7 @@ impl CreateSchematic {
                 "Create schematic size must contain three positive integers",
             ));
         }
+        limits.validate_dimensions(sizes[0], sizes[1], sizes[2])?;
         if palette.is_empty() {
             return Err(SchematicError::InvalidFormat(
                 "Create schematic palette cannot be empty",
@@ -239,7 +243,7 @@ impl CreateSchematic {
                     "Create schematic block position is outside size",
                 ));
             }
-            block_list.add(pos, Arc::clone(block_data));
+            limits.push_block(&mut block_list, pos.x, pos.y, pos.z, block_data)?;
 
             if let Some(nbt_value) = compound.get("nbt") {
                 tile_entities.elements.push(TileEntities {

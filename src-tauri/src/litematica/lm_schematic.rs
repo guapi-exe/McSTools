@@ -2,15 +2,13 @@ use crate::litematica::lm_schematic_data::{LmMetadata, RegionData, RegionList, R
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
 use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
+use crate::utils::nbt_scan::read_gzip_java_nbt;
+use crate::utils::parse_limits::{ParseLimits, read_source_file};
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::{TileEntities, TileEntitiesList};
 use fastnbt::Value;
 use fastnbt::Value::Compound;
-use flate2::read::GzDecoder;
-use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
-use std::io::{BufReader, Cursor};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -20,31 +18,20 @@ pub struct LmSchematic {
 
 impl LmSchematic {
     pub fn new(file_path: &str) -> Result<Self, SchematicError> {
-        let file = File::open(file_path)?;
-        let reader = BufReader::new(file);
-        let decoder = GzDecoder::new(reader);
-        let nbt: Value = fastnbt::from_reader(decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+        Self::new_from_bytes(read_source_file(file_path)?)
     }
 
-    pub fn new_from_bytes(data: Vec<u8>) -> Result<Self, SchematicError> {
-        let cursor = Cursor::new(data);
-        let mut decoder = GzDecoder::new(cursor);
-
-        let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+    pub fn new_from_bytes(data: impl AsRef<[u8]>) -> Result<Self, SchematicError> {
+        Self::new_from_bytes_with_limits(data.as_ref(), &ParseLimits::default())
     }
 
+    pub fn new_from_bytes_with_limits(
+        data: &[u8],
+        limits: &ParseLimits,
+    ) -> Result<Self, SchematicError> {
+        let nbt = read_gzip_java_nbt(data, limits)?;
+        Ok(Self { nbt })
+    }
     pub fn get_data_version(&self) -> Result<i32, SchematicError> {
         let Compound(root) = &self.nbt else {
             return Err(SchematicError::InvalidFormat("Root is not a Compound"));
@@ -313,111 +300,110 @@ impl LmSchematic {
     }
 
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
-        let metadata = self.read_metadata()?;
-        let size = metadata.enclosing_size;
-        if size.x <= 0 || size.y <= 0 || size.z <= 0 {
-            return Err(SchematicError::InvalidFormat(
-                "Litematica enclosing dimensions must be positive",
-            ));
+        self.get_blocks_pos_with_limits(&ParseLimits {
+            retain_air_blocks: true,
+            ..ParseLimits::default()
+        })
+    }
+
+    pub fn get_blocks_pos_with_limits(
+        &self,
+        limits: &ParseLimits,
+    ) -> Result<SchematicData, SchematicError> {
+        let size = self.read_metadata()?.enclosing_size;
+        limits.validate_dimensions(size.x, size.y, size.z)?;
+        let regions = self.get_regions()?;
+        validate_enclosing_bounds(regions, size)?;
+        let legacy_wrappers = self.get_lm_version().unwrap_or(2) <= 1;
+        let mut blocks = BlockStatePosList::default();
+        let mut tiles = TileEntitiesList::default();
+        tiles.original_type = 2;
+        let mut entities = EntitiesList::default();
+        entities.original_type = 2;
+        let mut source_cells = 0usize;
+
+        // Borrow each region directly. No duplicated packed array, parallel Y
+        // lists or second merge buffer. Each retained state shares its palette.
+        for value in regions.values() {
+            let Compound(region) = value else {
+                return Err(SchematicError::InvalidFormat("Region is not a Compound"));
+            };
+            let position = region.get_pos("Position")?;
+            let region_size = region.get_pos("Size")?;
+            let volume =
+                limits.validate_signed_dimensions(region_size.x, region_size.y, region_size.z)?;
+            source_cells = source_cells.checked_add(volume).ok_or_else(|| {
+                SchematicError::LimitExceeded("Litematica aggregate source volume overflow".into())
+            })?;
+            limits.check(
+                "Litematica aggregate source volume",
+                source_cells,
+                limits.max_volume,
+            )?;
+            let palette_raw = region.get_list("BlockStatePalette")?;
+            limits.check(
+                "palette entries",
+                palette_raw.len(),
+                limits.max_palette_entries,
+            )?;
+            if palette_raw.is_empty() {
+                return Err(SchematicError::InvalidFormat(
+                    "Litematica region palette cannot be empty",
+                ));
+            }
+            let palette = self.parse_palette(palette_raw)?;
+            let packed = region.get_long_array("BlockStates")?;
+            let bits = (usize::BITS - (palette.len() - 1).leading_zeros()).max(2) as usize;
+            let required = volume
+                .checked_mul(bits)
+                .ok_or_else(|| {
+                    SchematicError::LimitExceeded("packed state length overflow".into())
+                })?
+                .div_ceil(64);
+            if packed.len() < required {
+                return Err(SchematicError::InvalidFormat(
+                    "Litematica BlockStates array is shorter than the region volume",
+                ));
+            }
+            let min = region_min_corner(position, region_size)?;
+            let width = region_size.x.unsigned_abs() as usize;
+            let plane = width * region_size.z.unsigned_abs() as usize;
+            for index in 0..volume {
+                let state = self.get_at(index as i64, bits as i32, packed) as usize;
+                let block = palette.get(state).ok_or(SchematicError::InvalidFormat(
+                    "Litematica block state index exceeds the palette",
+                ))?;
+                if !limits.should_retain_block(block) {
+                    continue;
+                }
+                // validate_enclosing_bounds checked the inclusive axis endpoints.
+                limits.push_block(
+                    &mut blocks,
+                    min.x + (index % width) as i32,
+                    min.y + (index / plane) as i32,
+                    min.z + ((index % plane) / width) as i32,
+                    block,
+                )?;
+            }
+            let tile_raw = match region.get("TileEntities") {
+                Some(Value::List(entries)) => entries.as_slice(),
+                _ => &[],
+            };
+            tiles.elements.extend(
+                offset_region_tile_entities(tile_raw, min, region_size, legacy_wrappers)?.elements,
+            );
+            let entity_raw = match region.get("Entities") {
+                Some(Value::List(entries)) => entries.as_slice(),
+                _ => &[],
+            };
+            entities
+                .elements
+                .extend(offset_region_entities(entity_raw, position, legacy_wrappers)?.elements);
         }
-        validate_enclosing_bounds(self.get_regions()?, size)?;
-        let (regions_list, regions_name_list, region_tile_entities, region_entities) =
-            self.process_regions()?;
-
-        let region_blocks: Vec<BlockStatePosList> = regions_name_list
-            .names
-            .par_iter()
-            .map(|name| {
-                let region = regions_list
-                    .get(name)
-                    .ok_or_else(|| SchematicError::MissingField(name.clone()))?;
-
-                let palette = self.parse_palette(&region.block_state_palette)?;
-                let block_states = region.block_states.clone();
-                let bits = region.bits;
-                let size = region.size;
-                let position = region.position;
-
-                let width = size.x.unsigned_abs() as usize;
-                let height = size.y.unsigned_abs() as usize;
-                let length = size.z.unsigned_abs() as usize;
-                let region_min = region_min_corner(position, size)?;
-
-                let y_blocks: Result<Vec<BlockStatePosList>, SchematicError> = (0..height)
-                    .into_par_iter()
-                    .map(|y| -> Result<BlockStatePosList, SchematicError> {
-                        let mut local_blocks = BlockStatePosList::default();
-
-                        for z in 0..length {
-                            for x in 0..width {
-                                let state_id = self.get_block_state(
-                                    x as i32,
-                                    y as i32,
-                                    z as i32,
-                                    size,
-                                    bits,
-                                    &block_states,
-                                ) as usize;
-                                let block_data =
-                                    palette.get(state_id).ok_or(SchematicError::InvalidFormat(
-                                        "Litematica block state index exceeds the palette",
-                                    ))?;
-                                let x = region_min.x.checked_add(x as i32).ok_or(
-                                    SchematicError::InvalidFormat(
-                                        "Litematica block x coordinate overflow",
-                                    ),
-                                )?;
-                                let y = region_min.y.checked_add(y as i32).ok_or(
-                                    SchematicError::InvalidFormat(
-                                        "Litematica block y coordinate overflow",
-                                    ),
-                                )?;
-                                let z = region_min.z.checked_add(z as i32).ok_or(
-                                    SchematicError::InvalidFormat(
-                                        "Litematica block z coordinate overflow",
-                                    ),
-                                )?;
-                                local_blocks.add_by_pos(x, y, z, block_data.clone());
-                            }
-                        }
-                        Ok(local_blocks)
-                    })
-                    .collect();
-                let y_blocks = y_blocks?;
-
-                Ok(y_blocks
-                    .into_iter()
-                    .fold(BlockStatePosList::default(), |mut acc, blocks| {
-                        acc.merge(blocks);
-                        acc
-                    }))
-            })
-            .collect::<Result<Vec<_>, SchematicError>>()?;
-
-        let final_block_list =
-            region_blocks
-                .into_iter()
-                .fold(BlockStatePosList::default(), |mut acc, blocks| {
-                    acc.merge(blocks);
-                    acc
-                });
-
-        let mut all_tile_entities = TileEntitiesList::default();
-        for list in region_tile_entities.values() {
-            all_tile_entities.elements.extend(list.elements.clone());
-        }
-        all_tile_entities.original_type = 2;
-
-        let mut all_entities = EntitiesList::default();
-        for list in region_entities.values() {
-            all_entities.elements.extend(list.elements.clone());
-        }
-        all_entities.original_type = 2;
-
         Ok(SchematicData::new(
-            final_block_list,
-            all_tile_entities,
-            all_entities,
+            blocks,
+            tiles,
+            entities,
             Size {
                 width: size.x,
                 height: size.y,

@@ -28,6 +28,7 @@ struct Snapshot {
 impl Snapshot {
     fn preview(&self) -> Result<SchematicPreviewData> {
         let size = self.frame.size()?;
+        crate::modules::schematic::validate_preview_size(size)?;
         // Bound coordinates before the compact IPC representation is built.
         for block in &self.data.blocks.elements {
             for (p, origin) in [block.pos.x, block.pos.y, block.pos.z]

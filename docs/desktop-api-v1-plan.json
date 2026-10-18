@@ -6,7 +6,8 @@
     "conversation": "new_mcs · 继承上下文（已修复）",
     "openapi": "https://www.mcschematic.top/api/v1/openapi.json?audience=developer",
     "websiteSource": "D:/git/new_mcs",
-    "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea"
+    "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea",
+    "parserSafety": "docs/desktop-parser-safety.json"
   },
   "baseline": {
     "status": "pushed_before_edits",
@@ -42,7 +43,7 @@
       ],
       "pendingVerification": [
         "真实 Tauri IPC 在隔离应用目录完成 API 下载到本地入库；相同导入核心的真实 SQLite/文件事务已覆盖，尚不能替代完整 IPC 验证",
-        "补充网络中断、下载重定向和账户权限的传输层故障用例"
+        "下载重定向链和账户权限的传输层故障用例仍待补充；真实本地 HTTP 正文截断与限额/permit 释放已测试"
       ]
     },
     {
@@ -76,14 +77,15 @@
     },
     {
       "id": "conversion_and_materials",
-      "status": "shared_conversion_and_materials_verified_toolbox_consumers_pending",
+      "status": "shared_conversion_materials_and_bounded_parsing_verified_toolbox_pending",
       "inspectionFindings": [
         "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
         "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
         "已实现共享原生编码器、兼容变更预览、同时应用的自定义替换和合法目标验证；编辑器导出已接入",
         "已补入网站的 1.21.3/4/5/6/8/9/11 方块表与 DataVersion，UI 不再显示没有兼容表的转换目标",
         "toolsConvert 六个入口已接入统一导出面板，旧 convert 命令已移除；地图画、模型转换和批量工具仍待接入",
-        "encode_uploaded_schematic 已改用共享后台解析及单一 SQLite 事务；新文件 no-clobber 原子落盘，提交失败仅清理本次创建的文件"
+        "encode_uploaded_schematic 已改用共享后台解析及单一 SQLite 事务；新文件 no-clobber 原子落盘，提交失败仅清理本次创建的文件",
+        "网站大稀疏解析/有界预检已接入全部格式；fastnbt 精确升级到 2.6.2，其余锁定依赖不变"
       ],
       "requirements": [
         "格式转换默认保留来源 DataVersion，Java 游戏版本转换独立可选",
@@ -105,13 +107,18 @@
         "转换缓存拒绝写入原蓝图所在格式槽；Litematica 格式版本共用文件槽也受保护；复制使用 no-clobber 原子写入",
         "回迁网站 1166 项简繁中文材料名，保留未知/模组命名空间和原 ID；CSV 使用同名规则、BOM、CRLF、引号转义及公式防护，附组数/余数",
         "共享导入核心保留原始字节，事务内更新元信息/材料/历史/计数，保留已有用户分类与标签；历史记录含真实 ID/时间，更新会写入正确的 lm_version",
-        "导入拒绝未知扩展名；没有实际 Java 版本标记时不再按格式臆测游戏版本（旧版更新仍保留明确选过的有效 UI 版本）"
+        "导入拒绝未知扩展名；没有实际 Java 版本标记时不再按格式臆测游戏版本（旧版更新仍保留明确选过的有效 UI 版本）",
+        "六格式源文件解析分离输入、解压、源体积、保留记录、文本及交互预览预算；Java gzip 两遍有界流不保留整份解压缓存，BE/原始 Java/SNBT 同样结构预检",
+        "旧版读取不再复制 Blocks/Data/AddBlocks 或为空气逐格分配；Litematica/Sponge 借用状态数组，BE 逐位置合并主/水层，BG 状态按调色板缓存",
+        "本地/API/导出再导入借用原字节；API 下载及本地前置检查统一 256 MiB 输入、1 GiB 解压；保留原始文件，预览预算超限不禁用材料和受支持转换",
+        "文本预览检查展开与预计 SNBT 输出大小，避免压缩小文件转成巨型 WebView 文本；SNBT 保存预检防止坏结构覆盖",
+        "API GET 并发许可覆盖整个正文读取，并验证完成/超限/取消/真实 HTTP 正文截断时释放"
       ],
       "pending": [
         "地图画、模型转换和批量工具的共享格式/游戏版本导出",
-        "有界 NBT 解码和大稀疏蓝图对齐网站实现",
         "断电/进程强杀不等同普通异常：文件已落盘、SQLite 尚未提交的极短窗口可能留下孤立文件；当前保守拒绝覆盖，不宣称跨文件系统 ACID",
-        "原生界面与 IPC、系统保存对话框以及游戏内复杂实体核验"
+        "原生界面与 IPC、系统保存对话框以及游戏内复杂实体核验",
+        "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录"
       ]
     },
     {
@@ -133,13 +140,16 @@
         "在线蓝图库虚拟列表、浅响应数据和搜索防抖",
         "地图画展开状态纳入渲染缓存依赖，处理器改为浅响应式",
         "图标不内联入入口 JS，通用图标查询不拉入 3D 资源加载器",
-        "材料表默认不加载 ECharts；图表按需加载，标签切换或 KeepAlive 停用释放画布，回来恢复；修复渐进列表 sentinel 重挂载观察"
+        "材料表默认不加载 ECharts；图表按需加载，标签切换或 KeepAlive 停用释放画布，回来恢复；修复渐进列表 sentinel 重挂载观察",
+        "原生字符串/数据/预览三个读取命令移入 spawn_blocking，读并发限制为一；提前释放 DB 连接，解析不占异步运行时线程",
+        "本地上传预检大小、捕获队列、防重复提交和清除旧计时器；逐个成功后更新列表，修复更新被计为新增的问题"
       ],
       "pending": [
         "非 3D 蓝图预览工具（地图画、模型工具等）的缓存激活/停用与后台任务治理",
         "首次进入重工具页面的前台帧时间检查",
         "编辑和生成任务下的导航延迟、资源释放及峰值内存回归",
-        "新增文案与现有多语言设置对齐"
+        "新增文案与现有多语言设置对齐",
+        "本地 File 仍走数字数组 IPC，需要用原生路径/二进制传输进一步减少大文件前端分配；跨编辑/转换/导入调度和取消仍待完善"
       ]
     },
     {
@@ -178,7 +188,16 @@
         "浏览器材料表显示石头/铜箱/模组原ID；实际下载CSV包含BOM、中文名称、组数、余数及对=1+1的文本防护",
         "浏览器材料列表 ECharts 请求0/画布0，切图表后库请求1/画布2，切离画布0，返回画布2；1000px窗口无横向溢出",
         "最终 cargo check --offline 库与桌面入口通过；仍有未使用项和接口可见性等警告，未宣称零警告",
-        "浏览器模拟2秒保存延迟：程序切离并卸载弹窗后能够重新打开，未卡在busy；请求仍是原先id42/version0的BE转换，targetDataVersion=null、overrides=[]"
+        "浏览器模拟2秒保存延迟：程序切离并卸载弹窗后能够重新打开，未卡在busy；请求仍是原先id42/version0的BE转换，targetDataVersion=null、overrides=[]",
+        "有界解析批次：Rust 库全量 141 通过、2 默认忽略；Node API/几何/材料/上传逻辑 21 通过，pnpm build（vue-tsc+Vite）通过",
+        "显式大稀疏专项通过：合成1000×400×1000、4亿源位置，Blocks/Data共800000000字节，压缩7465096字节；保留400万石头、坐标正确且共享Arc。调试构建含生成耗时48785ms，未测进程峰值内存",
+        "默认忽略的真实公开 API 下载/解析测试在新 fastnbt 和 BG 有界读取后单独执行通过；未上传文件、未写用户库，不等于完整 Tauri IPC 入库",
+        "六格式九子格式组合覆盖空气压缩、尺寸、共享状态、保留记录超限；旧版高位ID、metadata及两种AddBlocks仍通过",
+        "NBT 检查覆盖字节/深度/列表/标签/预计分配、数组宽度/累计字节、负长度、截断、CRC、串联gzip及尾随数据；BE小端和SNBT也有回归",
+        "文本预览的17MiB展开数组被拒绝转大文本，源文件字节未改变且原生读取可用；恶意深SNBT不覆盖旧文件；导入事务/BE水层/JE版本既有测试均通过",
+        "本地上传4项逻辑测试覆盖读文件前拒绝超限、部分成功计数、更新不加数量、旧定时器清除、捕获队列及防重复提交",
+        "未改动页面布局或声称本批验证了3D大文件交互；完整原生UI/IPC、重负载帧时间仍在待验收清单",
+        "本批仍有未使用项/可见性等 Rust 警告与 Vite 大 chunk 提示，未宣称零警告；C盘约8.67GiB、D盘约41.58GiB，无需清缓存"
       ],
       "remaining": [
         "后续转换及导出能力的坐标/属性/实体往返测试",
@@ -193,7 +212,7 @@
   "checkpoint": {
     "status": "validated_source_checkpoint",
     "branch": "desktop-api-v1-20261018",
-    "scope": "本批：原转换弹窗接入共享版本配置、转换缓存及原文件保护、网站材料名/CSV/图表懒加载、API及本地导入事务；整体Goal仍未完成",
+    "scope": "本批：六格式有界解析、网站大稀疏读取、BE双层流式合并、文本预览预算、后台读取和上传边界；整体Goal仍未完成",
     "excluded": [
       "src-tauri/schematic/out2.litematic",
       ".playwright-cli/",
@@ -201,6 +220,6 @@
       "output/",
       "pelican-bicycle.html"
     ],
-    "baseCommit": "26e70666cdd69aefbe3cab58af36d2377520c0e6"
+    "baseCommit": "b5e13637e1ebddd7e01c282ed6f2c7b22bdcefc5"
   }
 }

@@ -138,6 +138,17 @@ pub(crate) fn build_preview_in_frame(
 }
 
 static IMPORT_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+static READ_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+
+pub(crate) fn validate_preview_size(size: crate::utils::schematic_data::Size) -> Result<()> {
+    let limits = crate::utils::parse_limits::ParseLimits {
+        max_volume: 50_000_000,
+        ..Default::default()
+    };
+    limits.validate_dimensions(size.width, size.height, size.length)
+        .map_err(|_| anyhow::anyhow!("蓝图超出交互预览体积预算（50,000,000 位置）；仍可查看材料和转换，或先拆分成较小蓝图"))?;
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn encode_uploaded_schematic(
@@ -175,60 +186,82 @@ pub async fn encode_uploaded_schematic(
 }
 
 #[tauri::command]
-pub async fn get_schematic_str(
-    db: State<'_, DatabaseState>,
-    file_manager: State<'_, FileManager>,
-    id: i64,
-) -> Result<String, String> {
-    async move {
-        let mut conn = db.0.get()?;
-        let schematic = find_schematic(&mut conn, id)?;
+pub async fn get_schematic_str(app: tauri::AppHandle, id: i64) -> Result<String, String> {
+    let _permit = READ_WORKER
+        .acquire()
+        .await
+        .map_err(|_| "blueprint reader is unavailable")?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<String> {
+        use tauri::Manager;
+        let db = app.state::<DatabaseState>();
+        let conn = db.0.get()?;
+        let schematic = find_schematic(&conn, id)?;
+        drop(conn);
         let version = schematic.version;
         let sub_version = schematic.sub_type;
         let v_type = schematic.schematic_type;
-        let str = file_manager.read_schematic_str(id, version, sub_version, v_type)?;
-        Ok(str)
-    }
+        Ok(app
+            .state::<FileManager>()
+            .read_schematic_str(id, version, sub_version, v_type)?)
+    })
     .await
-    .map_err(|e: anyhow::Error| e.to_string())
+    .map_err(|_| "blueprint reader failed".to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_schematic_data(
-    db: State<'_, DatabaseState>,
-    file_manager: State<'_, FileManager>,
-    id: i64,
-) -> Result<SchematicData, String> {
-    async move {
-        let mut conn = db.0.get()?;
-        let schematic = find_schematic(&mut conn, id)?;
+pub async fn get_schematic_data(app: tauri::AppHandle, id: i64) -> Result<SchematicData, String> {
+    let _permit = READ_WORKER
+        .acquire()
+        .await
+        .map_err(|_| "blueprint reader is unavailable")?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<SchematicData> {
+        use tauri::Manager;
+        let db = app.state::<DatabaseState>();
+        let conn = db.0.get()?;
+        let schematic = find_schematic(&conn, id)?;
+        drop(conn);
         let version = schematic.version;
         let sub_version = schematic.sub_type;
         let v_type = schematic.schematic_type;
-        let data = file_manager.get_schematic_data(id, version, sub_version, v_type)?;
-        Ok(data)
-    }
+        Ok(app
+            .state::<FileManager>()
+            .get_schematic_data(id, version, sub_version, v_type)?)
+    })
     .await
-    .map_err(|e: anyhow::Error| e.to_string())
+    .map_err(|_| "blueprint reader failed".to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_schematic_preview_data(
-    db: State<'_, DatabaseState>,
-    file_manager: State<'_, FileManager>,
+    app: tauri::AppHandle,
     id: i64,
 ) -> Result<SchematicPreviewData, String> {
-    async move {
-        let mut conn = db.0.get()?;
-        let schematic = find_schematic(&mut conn, id)?;
+    let _permit = READ_WORKER
+        .acquire()
+        .await
+        .map_err(|_| "blueprint reader is unavailable")?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<SchematicPreviewData> {
+        use tauri::Manager;
+        let db = app.state::<DatabaseState>();
+        let conn = db.0.get()?;
+        let schematic = find_schematic(&conn, id)?;
+        drop(conn);
         let version = schematic.version;
         let sub_version = schematic.sub_type;
         let v_type = schematic.schematic_type;
-        let data = file_manager.get_schematic_data(id, version, sub_version, v_type)?;
-        Ok(build_schematic_preview_data(data))
-    }
+        Ok({
+            let data =
+                app.state::<FileManager>()
+                    .get_schematic_data(id, version, sub_version, v_type)?;
+            validate_preview_size(data.size)?;
+            build_schematic_preview_data(data)
+        })
+    })
     .await
-    .map_err(|e: anyhow::Error| e.to_string())
+    .map_err(|_| "blueprint reader failed".to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

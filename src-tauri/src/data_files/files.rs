@@ -1,5 +1,4 @@
 use crate::be_schematic::be_schematic::BESchematic;
-use crate::be_schematic::le_reader::read_nbt_le::load_nbt_le;
 use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
 use crate::building_gadges::bg_schematic::BgSchematic;
 use crate::create::create_schematic::CreateSchematic;
@@ -8,6 +7,8 @@ use crate::mcedit::mcedit_schematic::McEditSchematic;
 use crate::modules::modules_data::convert_data::{
     ConversionOutput, ConvertData, SchematicType, Target,
 };
+use crate::utils::nbt_scan::read_gzip_java_nbt;
+use crate::utils::parse_limits::{ParseLimits, read_source_file};
 use crate::utils::schematic_data::SchematicData;
 use crate::word_edit::we_schematic::WeSchematic;
 use anyhow::Result;
@@ -15,13 +16,12 @@ use anyhow::{Context, anyhow};
 use fastnbt::Value;
 use fastnbt::Value::Compound;
 use flate2::Compression;
-use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{Cursor, Seek, SeekFrom, Write};
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tempfile::NamedTempFile;
@@ -345,6 +345,7 @@ impl FileManager {
         let final_path = schematic_dir.join(final_filename);
         let out_path = final_path.clone();
 
+        crate::utils::snbt_scan::scan_snbt(data, &ParseLimits::default())?;
         let value: Value = fastsnbt::from_str(data)?;
         let bytes = nbt_bytes(&value, v_type)?;
 
@@ -383,6 +384,7 @@ impl FileManager {
 
         let final_path = schematic_dir.join(final_filename);
         let out_path = final_path.clone();
+        crate::utils::snbt_scan::scan_snbt(data, &ParseLimits::default())?;
         let value: HashMap<String, Value> = fastsnbt::from_str(data)?;
         let file = File::create(final_path)?;
         save_nbt_le(file, "Schematic", &value)?;
@@ -498,67 +500,44 @@ impl FileManager {
 
         let file_path = schematic_dir.join(filename);
 
-        let data = fs::read(&file_path)
-            .with_context(|| format!("Unable to read schematic file: {}", file_path.display()))?;
-        match v_type {
-            1 => {
-                if data.len() > 8 * 1024 * 1024 {
-                    return Ok(String::new());
-                }
-                let cursor = Cursor::new(data);
-                let mut decoder = GzDecoder::new(cursor);
-
-                let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-                let ser = fastsnbt::to_string(&nbt)?;
-                Ok(ser)
-            }
-            2 => {
-                if data.len() > 1 * 512 * 1024 {
-                    return Ok(String::new());
-                }
-                let cursor = Cursor::new(data);
-                let mut decoder = GzDecoder::new(cursor);
-
-                let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-                let ser = fastsnbt::to_string(&nbt)?;
-                Ok(ser)
-            }
-            3 => {
-                if data.len() > 8 * 1024 * 1024 {
-                    return Ok(String::new());
-                }
-                let cursor = Cursor::new(data);
-                let mut decoder = GzDecoder::new(cursor);
-
-                let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-                let ser = fastsnbt::to_string(&nbt)?;
-                Ok(ser)
-            }
-            4 => {
-                if data.len() > 8 * 1024 * 1024 {
-                    return Ok(String::new());
-                }
-                let json_str = String::from_utf8(data)?;
-                Ok(json_str)
-            }
+        let input_limit = if v_type == 2 {
+            512 * 1024
+        } else {
+            8 * 1024 * 1024
+        };
+        if fs::metadata(&file_path)?.len() > input_limit as u64 {
+            return Ok(String::new());
+        }
+        let data = read_source_file(&file_path)?;
+        if data.len() > input_limit {
+            return Ok(String::new());
+        }
+        if v_type == 4 {
+            return Ok(String::from_utf8(data)?);
+        }
+        let limits = ParseLimits {
+            max_input_bytes: input_limit,
+            max_decompressed_bytes: 16 * 1024 * 1024,
+            max_nbt_allocation_bytes: 64 * 1024 * 1024,
+            ..ParseLimits::default()
+        };
+        let parsed: Result<Value, crate::utils::schematic_data::SchematicError> = match v_type {
+            1 | 2 | 3 => read_gzip_java_nbt(&data, &limits),
             5 => {
-                if data.len() > 8 * 1024 * 1024 {
-                    return Ok(String::new());
-                }
-                let nbt = load_nbt_le(&data[..])?;
-                let value = Compound(nbt);
-                let ser = fastsnbt::to_string(&value)?;
-                Ok(ser)
+                crate::be_schematic::le_reader::read_nbt_le::load_nbt_le_with_limits(&data, &limits)
+                    .map(Compound)
             }
             6 => {
-                if data.len() > 8 * 1024 * 1024 {
-                    return Ok(String::new());
-                }
-                let schematic = McEditSchematic::new_from_bytes(data)?;
-                let ser = fastsnbt::to_string(&schematic.nbt)?;
-                Ok(ser)
+                McEditSchematic::new_from_bytes_with_limits(&data, &limits).map(|source| source.nbt)
             }
-            _ => Err(anyhow!("UNK: {}", v_type)),
+            _ => return Err(anyhow!("UNK: {}", v_type)),
+        };
+        match parsed {
+            Ok(value) => Ok(crate::utils::nbt_text::bounded_snbt(&value)?),
+            Err(crate::utils::schematic_data::SchematicError::LimitExceeded(_)) => {
+                Ok(String::new())
+            }
+            Err(error) => Err(error.into()),
         }
     }
 
@@ -770,20 +749,20 @@ impl FileManager {
         );
 
         let file_path = schematic_dir.join(filename);
-        let data = fs::read(&file_path)
+        let data = read_source_file(&file_path)
             .with_context(|| format!("Unable to read blueprint file: {}", file_path.display()))?;
         match v_type {
             1 => {
                 let schematic = CreateSchematic::new_from_bytes(data)?;
                 Ok((
-                    schematic.get_blocks_pos()?,
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
                     schematic.get_data_version().ok(),
                 ))
             }
             2 => {
                 let schematic = LmSchematic::new_from_bytes(data)?;
                 Ok((
-                    schematic.get_blocks_pos()?,
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
                     schematic.get_data_version().ok(),
                 ))
             }
@@ -791,17 +770,23 @@ impl FileManager {
                 let schematic = WeSchematic::new_from_bytes(data)?;
                 let subtype = schematic.get_type()?;
                 Ok((
-                    schematic.get_blocks_pos()?,
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
                     schematic.get_data_version(subtype).ok(),
                 ))
             }
             4 => {
                 let schematic = BgSchematic::new_from_data(data)?;
-                Ok((schematic.get_blocks_pos()?, None))
+                Ok((
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
+                    None,
+                ))
             }
             5 => {
                 let schematic = BESchematic::new_from_bytes(data)?;
-                Ok((schematic.get_blocks_pos()?, None))
+                Ok((
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
+                    None,
+                ))
             }
             6 => {
                 let schematic = McEditSchematic::new_from_bytes(data)?;
@@ -810,7 +795,10 @@ impl FileManager {
                         crate::utils::minecraft_data::versions_data::VersionData::new()
                             .game_version_id(name)
                     });
-                Ok((schematic.get_blocks_pos()?, data_version))
+                Ok((
+                    schematic.get_blocks_pos_with_limits(&ParseLimits::default())?,
+                    data_version,
+                ))
             }
             _ => Err(anyhow!("UNK: {}", v_type)),
         }
@@ -837,7 +825,7 @@ impl FileManager {
         );
 
         let file_path = schematic_dir.join(filename);
-        let data = fs::read(&file_path)
+        let data = read_source_file(&file_path)
             .with_context(|| format!("Unable to read blueprint file: {}", file_path.display()))?;
         match v_type {
             1 => {
@@ -899,6 +887,56 @@ mod exact_version_tests {
             game_version: Some("1.20.2".into()),
             format_version: 6,
         }
+    }
+
+    #[test]
+    fn text_preview_refuses_expanded_arrays_without_changing_the_source() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
+        let nbt = Value::Compound(HashMap::from([(
+            "data".into(),
+            Value::ByteArray(fastnbt::ByteArray::new(vec![0; 17 * 1024 * 1024])),
+        )]));
+        let raw = fastnbt::to_bytes(&nbt).unwrap();
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&raw).unwrap();
+        let encoded = encoder.finish().unwrap();
+        assert!(encoded.len() < 512 * 1024);
+        for (id, format, ext) in [
+            (1, 1, "nbt"),
+            (2, 2, "litematic"),
+            (3, 3, "schem"),
+            (4, 6, "schematic"),
+        ] {
+            let path = manager
+                .save_schematic_data(id, encoded.clone(), 0, -1, format, ext.into())
+                .unwrap();
+            assert!(
+                manager
+                    .read_schematic_str(id, 0, -1, format)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(fs::read(&path).unwrap(), encoded);
+            // The small text-editor budget does not ban normal source parsing.
+            assert!(manager.get_schematic_value(id, 0, -1, format).is_ok());
+        }
+    }
+
+    #[test]
+    fn malformed_snbt_does_not_overwrite_existing_file() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
+        let source = manager
+            .save_schematic_data(1, b"original".to_vec(), 0, -1, 2, "litematic".into())
+            .unwrap();
+        let deep = format!("{}0{}", "{a:".repeat(130), "}".repeat(130));
+        assert!(manager.save_snbt_value(1, &deep, 0, -1, 2, true).is_err());
+        assert_eq!(fs::read(source).unwrap(), b"original");
     }
     #[test]
     fn conversion_cache_cannot_replace_original_even_for_other_litematica_versions() {

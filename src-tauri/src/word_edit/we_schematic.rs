@@ -1,16 +1,15 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockStatePosList};
 use crate::utils::entities::EntitiesList;
 use crate::utils::extend_value::NbtExt;
+use crate::utils::nbt_scan::read_gzip_java_nbt;
+use crate::utils::parse_limits::{ParseLimits, read_source_file};
 use crate::utils::schematic_data::{SchematicData, SchematicError, Size};
 use crate::utils::tile_entities::TileEntitiesList;
 use crate::word_edit::var_int_iterator::VarIntIterator;
 use crate::word_edit::we_schematic_data::{WeSchematicData, WeSize};
 use fastnbt::Value::Compound;
 use fastnbt::{ByteArray, Value};
-use flate2::read::GzDecoder;
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
-use std::io::{BufReader, Cursor};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -20,32 +19,20 @@ pub struct WeSchematic {
 
 impl WeSchematic {
     pub fn new(file_path: &str) -> Result<Self, SchematicError> {
-        let file = File::open(file_path)?;
-        let reader = BufReader::new(file);
-        let decoder = GzDecoder::new(reader);
-
-        let nbt: Value = fastnbt::from_reader(decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+        Self::new_from_bytes(read_source_file(file_path)?)
     }
 
-    pub fn new_from_bytes(data: Vec<u8>) -> Result<Self, SchematicError> {
-        let cursor = Cursor::new(data);
-        let mut decoder = GzDecoder::new(cursor);
-
-        let nbt: Value = fastnbt::from_reader(&mut decoder)?;
-
-        if let Compound(_) = &nbt {
-            Ok(Self { nbt })
-        } else {
-            Err(SchematicError::InvalidFormat("Root is not a Compound"))
-        }
+    pub fn new_from_bytes(data: impl AsRef<[u8]>) -> Result<Self, SchematicError> {
+        Self::new_from_bytes_with_limits(data.as_ref(), &ParseLimits::default())
     }
 
+    pub fn new_from_bytes_with_limits(
+        data: &[u8],
+        limits: &ParseLimits,
+    ) -> Result<Self, SchematicError> {
+        let nbt = read_gzip_java_nbt(data, limits)?;
+        Ok(Self { nbt })
+    }
     pub fn get_type(&self) -> Result<i32, SchematicError> {
         let Compound(root) = &self.nbt else {
             return Err(SchematicError::InvalidFormat("Root is not a Compound"));
@@ -304,12 +291,26 @@ impl WeSchematic {
         })
     }
     pub fn get_blocks_pos(&self) -> Result<SchematicData, SchematicError> {
+        self.get_blocks_pos_with_limits(&ParseLimits {
+            retain_air_blocks: true,
+            ..ParseLimits::default()
+        })
+    }
+
+    pub fn get_blocks_pos_with_limits(
+        &self,
+        limits: &ParseLimits,
+    ) -> Result<SchematicData, SchematicError> {
         let mut block_list = BlockStatePosList::default();
         let type_version = self.get_type()?;
-        let data = self.get_we_data(type_version)?;
         let tile_entities = self.get_block_entities(type_version)?;
+        limits.check(
+            "palette entries",
+            self.get_palette(type_version)?.len(),
+            limits.max_palette_entries,
+        )?;
         let palette = self.parse_palette(type_version)?;
-        let block_data_i8 = data.block_data;
+        let block_data_i8 = self.get_block_data(type_version)?;
         let size = self.get_size(type_version)?;
         let width = size.width;
         let height = size.height;
@@ -319,14 +320,9 @@ impl WeSchematic {
                 "WorldEdit dimensions must be positive",
             ));
         }
-        let expected_volume = (i64::from(width))
-            .checked_mul(i64::from(height))
-            .and_then(|value| value.checked_mul(i64::from(length)))
-            .and_then(|value| usize::try_from(value).ok())
-            .ok_or(SchematicError::InvalidFormat(
-                "WorldEdit dimensions overflow",
-            ))?;
-        let iter = VarIntIterator::new(&block_data_i8);
+        let expected_volume = limits.validate_dimensions(width, height, length)?;
+        let mut source_count = 0;
+        let iter = VarIntIterator::new(block_data_i8);
         for (i, value) in iter.enumerate() {
             if i >= expected_volume {
                 return Err(SchematicError::InvalidFormat(
@@ -345,9 +341,10 @@ impl WeSchematic {
             let block_data = palette
                 .get(&unsigned_state_id)
                 .ok_or(SchematicError::InvalidFormat("miss unsigned_state_id"))?;
-            block_list.add_by_pos(x, y, z, block_data.clone());
+            source_count += 1;
+            limits.push_block(&mut block_list, x, y, z, block_data)?;
         }
-        if block_list.elements.len() != expected_volume {
+        if source_count != expected_volume {
             return Err(SchematicError::InvalidFormat(
                 "WorldEdit block data is shorter than declared volume",
             ));
