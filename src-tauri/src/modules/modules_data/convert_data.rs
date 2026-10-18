@@ -11,6 +11,15 @@ pub struct Target {
     pub has: bool,
     pub size: String,
     pub version: i32,
+    #[serde(default)]
+    pub output: Option<ConversionOutput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversionOutput {
+    pub data_version: Option<i32>,
+    pub game_version: Option<String>,
+    pub format_version: i32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertData {

@@ -32,7 +32,7 @@ use database::db_apis::user_api::{
 };
 use modules::be_clear_air::{be_clear_air, be_has_air};
 use modules::convert::{
-    convert, convert_lm, get_je_blocks, get_map_arts, get_schematic_convert_data,
+    convert_lm, get_je_blocks, get_map_arts, get_schematic_convert_data,
 };
 use modules::history::get_history;
 use modules::map_art::{create_map_art, create_map_art_from_pixels};
@@ -84,7 +84,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             close_splashscreen,
             get_config,
-            convert,
             convert_lm,
             be_has_air,
             be_clear_air,

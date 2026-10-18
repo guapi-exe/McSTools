@@ -4,8 +4,9 @@ import {exportError, getExportFormats, planExport, saveExport,
   type ExportSource, type ExportFormat, type ExportOptions, type ExportPlan, type ExportResult} from '../../modules/blueprint_export'
 import {fetchJeBlocks, jeBlocks} from '../../modules/je_blocks'
 import {fetchUserData} from '../../modules/user_data'
+import {copySchematic} from '../../modules/copy_file'
 
-const props = defineProps<{source: ExportSource; initialFormat?: number; initialSubtype?: number; fixedFormat?: boolean; inactive?: boolean}>()
+const props = defineProps<{source: ExportSource; initialFormat?: number; initialSubtype?: number; fixedFormat?: boolean; inactive?: boolean; showCache?: boolean}>()
 const emit = defineEmits<{saved: [result: ExportResult]; busy: [busy: boolean]}>()
 const formats = shallowRef<ExportFormat[]>([])
 const formatId = ref(props.initialFormat ?? 2)
@@ -64,19 +65,31 @@ async function refresh() {
   } catch (reason) { if (!disposed && generation === run) error.value = exportError(reason) }
   finally { if (generation === run) loading.value = false }
 }
-async function save(destination: 'file' | 'library') {
+async function save(destination: ExportResult['destination']) {
   if (!ready.value) return
+  if (destination === 'converted' && !plan.value?.canSaveCache) return
   saving.value = true; error.value = ''; success.value = ''
+  let savedCache = false
   try {
     const result = await saveExport(props.source, options.value, destination)
     if (result.canceled) return
+    savedCache = destination === 'converted'
     if (destination === 'library') void fetchUserData()
     if (!disposed) {
-      success.value = `${destination === 'library' ? '已新增到蓝图库' : '已另存'}：${result.filename}（${(result.bytes / 1024).toFixed(1)} KiB）`
+      success.value = `${destination === 'library' ? '已新增到蓝图库' : destination === 'converted' ? '已更新转换文件' : '已另存'}：${result.filename}（${(result.bytes / 1024).toFixed(1)} KiB）`
       emit('saved', result)
     }
   } catch (reason) { if (!disposed) error.value = exportError(reason) }
-  finally { saving.value = false }
+  finally { saving.value = false; if (savedCache && !disposed) void refresh() }
+}
+async function exportCached() {
+  const source = props.source
+  if (!plan.value?.cached || source.kind !== 'library' || saving.value || props.inactive) return
+  saving.value = true
+  try {
+    await copySchematic(source.id, [3, 4].includes(formatId.value) ? subtypeId.value : -1,
+      source.version, formatId.value, `converted_${source.id}_${plan.value.cached.output?.game_version ?? 'existing'}`)
+  } finally { saving.value = false }
 }
 async function initialize() {
   error.value = ''
@@ -91,7 +104,12 @@ async function initialize() {
   } catch (reason) { if (!disposed) error.value = exportError(reason) }
 }
 onMounted(initialize)
-onBeforeUnmount(() => { disposed = true; ++generation; clearTimeout(timer) })
+onBeforeUnmount(() => {
+  disposed = true; ++generation; clearTimeout(timer)
+  // A native save may finish after navigation. Do not leave the cached parent
+  // permanently busy after this component's watcher has been stopped.
+  emit('busy', false)
+})
 </script>
 
 <template>
@@ -107,7 +125,7 @@ onBeforeUnmount(() => { disposed = true; ++generation; clearTimeout(timer) })
     <v-progress-linear v-if="loading" indeterminate color="primary" class="my-3"/>
     <div v-if="plan" class="export-summary">
       <v-chip size="small">尺寸 {{ plan.size.width }} × {{ plan.size.height }} × {{ plan.size.length }}</v-chip>
-      <v-chip size="small">源 DataVersion：{{ plan.sourceDataVersion ?? '未知' }}</v-chip>
+      <v-chip size="small">源版本标识：{{ plan.sourceDataVersion ?? '未知' }}</v-chip>
       <v-chip v-if="formatId !== 5 && formatId !== 4" size="small">输出：{{ plan.outputDataVersion ?? '未指定' }}</v-chip>
     </div>
     <template v-if="plan?.compatibility">
@@ -133,7 +151,16 @@ onBeforeUnmount(() => { disposed = true; ++generation; clearTimeout(timer) })
       <v-btn variant="text" size="small" :disabled="saving" @click="formats.length ? refresh() : initialize()">重试</v-btn>
     </v-alert>
     <v-alert v-if="success" type="success" density="compact" variant="tonal" class="my-3" role="status">{{ success }}</v-alert>
+    <p v-if="showCache && plan" class="export-note">
+      <template v-if="!plan.canSaveCache">此格式位置是原蓝图，不能覆盖；可以另存副本或新增到蓝图库。</template>
+      <template v-else-if="plan.cached">已有转换文件：{{ (Number(plan.cached.size) / 1024).toFixed(1) }} KiB，
+        游戏版本 {{ plan.cached.output?.game_version ?? '未记录' }}。更新会替换此转换文件，不改动原蓝图。
+      </template>
+      <template v-else>可生成并保留此格式的转换文件，之后从当前蓝图的格式卡片导出。</template>
+    </p>
     <div class="export-actions">
+      <v-btn v-if="showCache && plan?.cached && plan.canSaveCache" variant="outlined" :disabled="saving || inactive" @click="exportCached">导出已有文件（不应用当前设置）</v-btn>
+      <v-btn v-if="showCache" color="primary" :disabled="!ready || !plan?.canSaveCache" :loading="saving" @click="save('converted')">生成 / 更新转换文件</v-btn>
       <v-btn color="primary" prepend-icon="mdi-content-save-outline" :disabled="!ready" :loading="saving" @click="save('file')">另存副本文件</v-btn>
       <v-btn variant="tonal" prepend-icon="mdi-folder-plus-outline" :disabled="!ready" @click="save('library')">新增到蓝图库</v-btn>
     </div>

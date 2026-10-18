@@ -176,12 +176,8 @@ pub fn new_schematic(
     Ok(rowid)
 }
 
-pub fn find_schematic(
-    mut conn: &mut PooledConnection<SqliteConnectionManager>,
-    id: i64,
-) -> Result<Schematic> {
-    let tx = conn.transaction()?;
-    let schematic = tx.query_row(
+pub fn find_schematic(conn: &rusqlite::Connection, id: i64) -> Result<Schematic> {
+    let schematic = conn.query_row(
         "SELECT * FROM schematics WHERE id = ? AND is_deleted = FALSE",
         [id],
         |row| {
@@ -206,7 +202,6 @@ pub fn find_schematic(
             })
         },
     );
-    tx.commit()?;
     Ok(schematic?)
 }
 
@@ -307,7 +302,12 @@ pub fn get_schematics(
     let total: i64 = conn
         .query_row(
             &format!("SELECT COUNT(*) FROM schematics {where_clause}"),
-            rusqlite::params![search_pattern, classification_pattern, type_param, version_param],
+            rusqlite::params![
+                search_pattern,
+                classification_pattern,
+                type_param,
+                version_param
+            ],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -315,13 +315,18 @@ pub fn get_schematics(
     let sql = format!(
         r#"SELECT * FROM schematics {where_clause} ORDER BY {sort_column} {sort_direction} LIMIT ?5 OFFSET ?6"#
     );
-    let mut stmt = conn
-        .prepare(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let schematics = stmt
         .query_map(
-            rusqlite::params![search_pattern, classification_pattern, type_param, version_param, page_size, offset],
+            rusqlite::params![
+                search_pattern,
+                classification_pattern,
+                type_param,
+                version_param,
+                page_size,
+                offset
+            ],
             |row| {
                 Ok(Schematic {
                     id: row.get("id")?,
@@ -401,7 +406,9 @@ pub fn count_schematics(
         .map_err(|e| e.to_string())?;
 
     let count: i64 = stmt
-        .query_row(rusqlite::params![filter_pattern, search_pattern], |row| row.get(0))
+        .query_row(rusqlite::params![filter_pattern, search_pattern], |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())?;
 
     Ok(count)

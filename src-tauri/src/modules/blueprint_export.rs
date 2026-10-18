@@ -4,11 +4,12 @@ use crate::data_files::files::FileManager;
 use crate::database::{db_apis::schematics_api::find_schematic, db_control::DatabaseState};
 use crate::modules::{
     blueprint_editor::{BlueprintEditorState, export_snapshot},
+    modules_data::convert_data::{ConversionOutput, Target},
     schematic::encode_uploaded_schematic,
 };
 use crate::utils::{
     blueprint_export::{self, ExportFormat, ExportOptions},
-    minecraft_data::{je_blocks_data::BlocksData, versions_data::VersionData},
+    minecraft_data::versions_data::VersionData,
     schematic_data::{SchematicData, Size},
     schematic_editing::EditRegion,
     version_conversion::VersionConversionPlan,
@@ -33,13 +34,15 @@ pub enum ExportSource {
     },
     Library {
         id: i64,
+        version: i32,
     },
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportDestination {
     File,
     Library,
+    Converted,
 }
 
 #[derive(Serialize)]
@@ -50,6 +53,8 @@ pub struct ExportPlan {
     size: Size,
     compatibility: Option<VersionConversionPlan>,
     warnings: Vec<String>,
+    can_save_cache: bool,
+    cached: Option<Target>,
 }
 #[derive(Serialize)]
 pub struct ExportResult {
@@ -59,35 +64,79 @@ pub struct ExportResult {
     destination: &'static str,
 }
 
-fn source_data(
-    app: &AppHandle,
-    source: ExportSource,
-) -> Result<(Arc<SchematicData>, Option<i32>, String)> {
+struct LibrarySource {
+    id: i64,
+    version: i32,
+    format: i32,
+    subtype: i32,
+}
+struct ParsedSource {
+    data: Arc<SchematicData>,
+    data_version: Option<i32>,
+    name: String,
+    library: Option<LibrarySource>,
+}
+impl ParsedSource {
+    fn can_cache(&self, options: &ExportOptions) -> bool {
+        self.library.as_ref().is_some_and(|source| {
+            (source.format, source.subtype)
+                != (options.format, blueprint_export::cache_subtype(options))
+        })
+    }
+}
+
+fn source_data(app: &AppHandle, source: ExportSource) -> Result<ParsedSource> {
     match source {
         ExportSource::Editor {
             session_id,
             revision,
             scope,
             region,
-        } => export_snapshot(
-            &app.state::<BlueprintEditorState>(),
-            session_id,
-            revision,
-            &scope,
-            region,
-        ),
-        ExportSource::Library { id } => {
+        } => {
+            let (data, data_version, name) = export_snapshot(
+                &app.state::<BlueprintEditorState>(),
+                session_id,
+                revision,
+                &scope,
+                region,
+            )?;
+            Ok(ParsedSource {
+                data,
+                data_version,
+                name,
+                library: None,
+            })
+        }
+        ExportSource::Library {
+            id,
+            version: expected_version,
+        } => {
             let db = app.state::<DatabaseState>();
             let mut conn = db.0.get()?;
             let source = find_schematic(&mut conn, id)?;
             drop(conn);
+            anyhow::ensure!(!source.is_deleted, "source blueprint has been deleted");
+            anyhow::ensure!(
+                source.version == expected_version,
+                "stale source version; reopen the export dialog"
+            );
             let (data, version) = app.state::<FileManager>().get_schematic_with_version(
                 id,
                 source.version,
                 source.sub_type,
                 source.schematic_type,
             )?;
-            Ok((Arc::new(data), version, source.name))
+            Ok(ParsedSource {
+                data: Arc::new(data),
+                data_version: version,
+                name: source.name,
+                library: Some(LibrarySource {
+                    id,
+                    version: source.version,
+                    format: source.schematic_type,
+                    subtype: source.sub_type,
+                }),
+            })
         }
     }
 }
@@ -108,7 +157,15 @@ pub async fn plan_blueprint_export(
         .await
         .map_err(|_| "export worker is unavailable")?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ExportPlan> {
-        let (data, source_version, _) = source_data(&app, source)?;
+        let parsed = source_data(&app, source)?;
+        let data = &parsed.data;
+        let source_version = parsed.data_version;
+        let can_save_cache = parsed.can_cache(&options);
+        let cached = if let Some(source) = &parsed.library {
+            let conversions = app.state::<FileManager>().get_convert_data(source.id, source.version, source.subtype, source.format)?;
+            crate::modules::modules_data::convert_data::SchematicType::from_code(options.format)
+                .and_then(|kind| conversions.schematics.get(&kind)?.get(&blueprint_export::cache_subtype(&options)).cloned())
+        } else { None };
         let output_data_version = blueprint_export::validate(&options, source_version)?;
         let compatibility = blueprint_export::plan(&data, &options, source_version)?;
         let mut warnings = Vec::new();
@@ -126,7 +183,7 @@ pub async fn plan_blueprint_export(
             warnings.push("BE 使用独立含水层及状态映射，不应用 Java 游戏版本转换；跨版本实体 NBT 请在游戏中复核。".into());
         }
         Ok(ExportPlan { source_data_version: source_version, output_data_version,
-            size: data.size, compatibility, warnings })
+            size: data.size, compatibility, warnings, can_save_cache, cached })
     }).await.map_err(|_| "export preview worker failed".to_string())?.map_err(|e| e.to_string())
 }
 
@@ -158,12 +215,21 @@ pub async fn save_blueprint_export(
         .map_err(|_| "export worker is unavailable")?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ExportResult> {
         // Immutable capture prevents a later edit from changing the chosen export.
-        let (data, version, name) = source_data(&app, source)?;
+        let parsed = source_data(&app, source)?;
+        let data = &parsed.data;
+        let version = parsed.data_version;
+        let name = &parsed.name;
+        if matches!(destination, ExportDestination::Converted) {
+            anyhow::ensure!(
+                parsed.can_cache(&options),
+                "conversion would overwrite the source; use save copy instead"
+            );
+        }
         blueprint_export::validate(&options, version)?;
         let extension = blueprint_export::extension(options.format)?;
         let filename = copy_filename(&name, extension);
         let path = match destination {
-            ExportDestination::Library => None,
+            ExportDestination::Library | ExportDestination::Converted => None,
             ExportDestination::File => {
                 let choice = app
                     .dialog()
@@ -208,12 +274,45 @@ pub async fn save_blueprint_export(
                 bytes,
                 destination: "file",
             })
+        } else if matches!(destination, ExportDestination::Converted) {
+            let source = parsed
+                .library
+                .as_ref()
+                .context("conversion cache requires a library source")?;
+            let output_version = blueprint_export::validate(&options, version)?;
+            let versions = app.state::<VersionData>();
+            let game_version = output_version.and_then(|id| {
+                versions
+                    .get_name(id)
+                    .map(|name| name.to_string())
+                    .or_else(|| {
+                        crate::mcedit::legacy_map::legacy_version_for_data_version(id)
+                            .map(str::to_string)
+                    })
+            });
+            let output = ConversionOutput {
+                data_version: output_version,
+                game_version,
+                format_version: options.subtype,
+            };
+            let path = app.state::<FileManager>().save_conversion_data(
+                source.id,
+                source.version,
+                source.format,
+                source.subtype,
+                &options,
+                &encoded,
+                output,
+            )?;
+            Ok(ExportResult {
+                canceled: false,
+                filename: path.file_name().map(|s| s.to_string_lossy().into_owned()),
+                bytes,
+                destination: "converted",
+            })
         } else {
             tauri::async_runtime::block_on(encode_uploaded_schematic(
-                app.state::<DatabaseState>(),
-                app.state::<FileManager>(),
-                app.state::<VersionData>(),
-                app.state::<BlocksData>(),
+                app.clone(),
                 filename.clone(),
                 encoded,
                 false,

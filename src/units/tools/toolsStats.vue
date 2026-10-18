@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from "vue";
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted, onActivated, onDeactivated } from "vue";
 import type { RequirementStatistics } from "../../modules/requirements.ts";
-import * as echarts from 'echarts';
+import type {ECharts} from 'echarts';
 import { useI18n } from 'vue-i18n';
-const { t: $t } = useI18n();
+const { t: $t, locale } = useI18n();
+import {materialName} from '../../modules/materials/block_names'
 import {exportRequirementsStatsToCsv} from "../../modules/exportRequirements.ts";
-import {schematicData} from "../../modules/tools_data.ts";
+import {schematicData, activeTools} from "../../modules/tools_data.ts";
 import {getIconUrl} from "../../modules/others.ts";
 
 const props = defineProps<{
@@ -13,11 +14,21 @@ const props = defineProps<{
 }>();
 
 const viewMode = ref<'list' | 'chart'>('list');
-let chartInstance: echarts.ECharts | null = null;
-let chartInstance2: echarts.ECharts | null = null;
+let chartInstance: ECharts | null = null;
+let chartInstance2: ECharts | null = null;
+let chartGeneration = 0;
+const chartError = ref('');
+const active = ref(true);
+const chartVisible = computed(() => active.value && activeTools.value === 'stats' && viewMode.value === 'chart');
+function disposeCharts() {
+  ++chartGeneration;
+  chartInstance?.dispose(); chartInstance2?.dispose();
+  chartInstance = null; chartInstance2 = null;
+}
 
 const sortedItems = computed(() => {
-  return props.data?.items?.slice().sort((a, b) => b.count - a.count) || [];
+  return (props.data?.items ?? []).map(item => ({...item, zh_cn: materialName(item.id, locale.value)}))
+    .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
 });
 
 // Incremental rendering: large blueprints can list hundreds of materials, and
@@ -48,9 +59,24 @@ onMounted(() => {
   });
   if (listSentinel.value) sentinelObserver.observe(listSentinel.value);
 });
+watch(listSentinel, (next, previous) => {
+  if (previous) sentinelObserver?.unobserve(previous);
+  if (next && active.value && activeTools.value === 'stats') sentinelObserver?.observe(next);
+});
+watch([active, activeTools], () => {
+  sentinelObserver?.disconnect();
+  if (listSentinel.value && active.value && activeTools.value === 'stats') sentinelObserver?.observe(listSentinel.value);
+});
 
 const initOrUpdateChart = async () => {
+  const generation = ++chartGeneration;
+  chartError.value = '';
+  // The default material list does not need the large chart library.
+  let echarts: typeof import('echarts');
+  try { echarts = await import('echarts'); }
+  catch (error) { if (generation === chartGeneration) chartError.value = String(error); return; }
   await nextTick();
+  if (generation !== chartGeneration || !chartVisible.value) return;
   const chartDom = document.getElementById('chart-container');
   const chartDom2 = document.getElementById('chart-container2');
   if (chartDom) {
@@ -63,9 +89,10 @@ const initOrUpdateChart = async () => {
 
     const option = {
       tooltip: {
+        renderMode: 'richText',
         trigger: 'item',
     formatter: ({ data }: any) =>
-      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
+      `${data.name}\n${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       legend: {
         type: 'scroll',
@@ -110,9 +137,10 @@ const initOrUpdateChart = async () => {
 
     const option = {
       tooltip: {
+        renderMode: 'richText',
         trigger: 'item',
     formatter: ({ data }: any) =>
-      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
+      `${data.name}\n${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       dataset: [
         {
@@ -164,30 +192,18 @@ onMounted(() => {
 });
 
 const exportRequirement = async() => {
-  await exportRequirementsStatsToCsv(schematicData.value.name, sortedItems.value)
+  exportRequirementsStatsToCsv(schematicData.value?.name ?? 'blueprint', sortedItems.value, undefined, locale.value)
 }
-watch(viewMode, (newVal) => {
-  if (newVal === 'chart') {
-    nextTick(() => {
-      if (props.data?.items?.length) {
-        initOrUpdateChart();
-      }
-    });
-  }
+watch([chartVisible, sortedItems], () => {
+  if (chartVisible.value && sortedItems.value.length) void initOrUpdateChart();
+  else disposeCharts();
 });
-
-watch(() => props.data, (newVal) => {
-  if (viewMode.value === 'chart' && newVal?.items?.length) {
-    initOrUpdateChart();
-  }
-}, { deep: true });
+onActivated(() => { active.value = true; });
+onDeactivated(() => { active.value = false; disposeCharts(); });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize);
-  chartInstance?.dispose();
-  chartInstance2?.dispose();
-  chartInstance = null;
-  chartInstance2 = null;
+  disposeCharts();
   sentinelObserver?.disconnect();
   sentinelObserver = null;
 });
@@ -331,6 +347,7 @@ onBeforeUnmount(() => {
     </div>
   </div>
   <div v-else class="chart-container pa-4">
+    <v-alert v-if="chartError" type="error" variant="tonal">{{ chartError }}</v-alert>
     <div
         v-if="sortedItems.length"
         id="chart-container"

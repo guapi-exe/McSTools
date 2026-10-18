@@ -5,7 +5,9 @@ use crate::building_gadges::bg_schematic::BgSchematic;
 use crate::create::create_schematic::CreateSchematic;
 use crate::litematica::lm_schematic::LmSchematic;
 use crate::mcedit::mcedit_schematic::McEditSchematic;
-use crate::modules::modules_data::convert_data::{ConvertData, SchematicType, Target};
+use crate::modules::modules_data::convert_data::{
+    ConversionOutput, ConvertData, SchematicType, Target,
+};
 use crate::utils::schematic_data::SchematicData;
 use crate::word_edit::we_schematic::WeSchematic;
 use anyhow::Result;
@@ -36,7 +38,93 @@ pub struct FileManager {
     data_dir: PathBuf,
 }
 
+/// Owns only a newly created, no-clobber import file until SQLite commits.
+/// Failed transactions/panics remove this file, never a previous version.
+pub(crate) struct UncommittedImportFile {
+    path: PathBuf,
+    pending: bool,
+}
+impl UncommittedImportFile {
+    pub fn keep(mut self) {
+        self.pending = false;
+    }
+    pub fn discard(mut self) -> Result<()> {
+        fs::remove_file(&self.path).context("could not remove the uncommitted import file")?;
+        self.pending = false;
+        Ok(())
+    }
+}
+impl Drop for UncommittedImportFile {
+    fn drop(&mut self) {
+        if self.pending {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ConversionMetadata {
+    output: ConversionOutput,
+    size: u64,
+    modified_nanos: u64,
+}
+
+fn modified_nanos(metadata: &fs::Metadata) -> Option<u64> {
+    metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos()
+        .try_into()
+        .ok()
+}
+
+fn cached_output(path: &Path, metadata: &fs::Metadata) -> Option<ConversionOutput> {
+    let info_path = path.with_extension(format!("{}.output.json", path.extension()?.to_str()?));
+    if fs::metadata(&info_path).ok()?.len() > 4096 {
+        return None;
+    }
+    let info: ConversionMetadata = serde_json::from_slice(&fs::read(info_path).ok()?).ok()?;
+    (info.size == metadata.len() && Some(info.modified_nanos) == modified_nanos(metadata))
+        .then_some(info.output)
+}
+
 impl FileManager {
+    #[cfg(test)]
+    pub(crate) fn for_test(data_dir: PathBuf) -> Self {
+        Self { data_dir }
+    }
+
+    pub(crate) fn create_import_file(
+        &self,
+        id: i64,
+        version: i32,
+        subtype: i32,
+        format: i32,
+        bytes: &[u8],
+    ) -> Result<UncommittedImportFile> {
+        let extension = crate::utils::blueprint_export::extension(format)?;
+        let directory = self.schematic_dir(id)?;
+        let path = directory.join(format!(
+            "schematic_{version}.{subtype}.{format}.{extension}"
+        ));
+        anyhow::ensure!(
+            !path.exists(),
+            "import destination already exists; existing data was not replaced"
+        );
+        let mut file = tempfile::Builder::new()
+            .prefix(".mcstools-import-")
+            .tempfile_in(directory)?;
+        file.write_all(bytes)?;
+        file.as_file().sync_all()?;
+        file.persist_noclobber(&path)
+            .context("could not install import file without overwriting")?;
+        Ok(UncommittedImportFile {
+            path,
+            pending: true,
+        })
+    }
     pub fn new(app: &AppHandle) -> Result<FileManager> {
         let data_dir = app
             .path()
@@ -508,8 +596,21 @@ impl FileManager {
             fs::create_dir_all(parent)?;
         }
 
-        fs::copy(&file_path, &dest_path)
-            .map_err(|e| anyhow::anyhow!("File copying failed: {}", e))?;
+        // A save/copy must never truncate the original (including aliases) or
+        // another existing file. Commit a complete temporary copy atomically.
+        anyhow::ensure!(
+            !dest_path.exists(),
+            "copy destination already exists; select a new filename"
+        );
+        let mut source = File::open(&file_path)?;
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".mcstools-copy-")
+            .tempfile_in(dest_path.parent().context("invalid destination folder")?)?;
+        io::copy(&mut source, &mut temporary)?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist_noclobber(&dest_path)
+            .context("copy destination already exists or is not writable")?;
 
         Ok(true)
     }
@@ -558,6 +659,7 @@ impl FileManager {
                             has: true,
                             size: metadata.len().to_string(),
                             version,
+                            output: cached_output(&path, &metadata),
                         },
                     );
                 }
@@ -578,6 +680,59 @@ impl FileManager {
         Ok(convert_data)
     }
 
+    /// Replace only a derived conversion slot, never the source file slot.
+    /// The data file is committed atomically so failed encoding/writes leave
+    /// the previous conversion intact. Metadata is advisory and fingerprinted
+    /// by file size/time, so obsolete labels are ignored on later reads.
+    pub fn save_conversion_data(
+        &self,
+        id: i64,
+        version: i32,
+        source_format: i32,
+        source_subtype: i32,
+        options: &crate::utils::blueprint_export::ExportOptions,
+        data: &[u8],
+        output: ConversionOutput,
+    ) -> Result<PathBuf> {
+        let subtype = crate::utils::blueprint_export::cache_subtype(options);
+        anyhow::ensure!(
+            (source_format, source_subtype) != (options.format, subtype),
+            "conversion would overwrite the source; use save copy instead"
+        );
+        let ext = crate::utils::blueprint_export::extension(options.format)?;
+        let directory = self.schematic_dir(id)?;
+        let path = directory.join(format!(
+            "schematic_{version}.{subtype}.{}.{ext}",
+            options.format
+        ));
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".convert-")
+            .tempfile_in(&directory)?;
+        temporary.write_all(data)?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist(&path)
+            .context("failed to save conversion file")?;
+        let metadata = fs::metadata(&path)?;
+        if let Some(modified_nanos) = modified_nanos(&metadata) {
+            let info = ConversionMetadata {
+                output,
+                size: metadata.len(),
+                modified_nanos,
+            };
+            let bytes = serde_json::to_vec(&info)?;
+            let mut temporary = tempfile::Builder::new()
+                .prefix(".convert-info-")
+                .tempfile_in(&directory)?;
+            temporary.write_all(&bytes)?;
+            temporary.as_file().sync_all()?;
+            temporary
+                .persist(path.with_extension(format!("{ext}.output.json")))
+                .context("conversion file saved, but its version label could not be saved")?;
+        }
+        Ok(path)
+    }
+
     pub fn get_schematic_data(
         &self,
         id: i64,
@@ -585,7 +740,9 @@ impl FileManager {
         sub_version: i32,
         v_type: i32,
     ) -> Result<SchematicData> {
-        Ok(self.get_schematic_with_version(id, version, sub_version, v_type)?.0)
+        Ok(self
+            .get_schematic_with_version(id, version, sub_version, v_type)?
+            .0)
     }
 
     /// Parse once and retain the exact source DataVersion. The library's
@@ -618,16 +775,25 @@ impl FileManager {
         match v_type {
             1 => {
                 let schematic = CreateSchematic::new_from_bytes(data)?;
-                Ok((schematic.get_blocks_pos()?, schematic.get_data_version().ok()))
+                Ok((
+                    schematic.get_blocks_pos()?,
+                    schematic.get_data_version().ok(),
+                ))
             }
             2 => {
                 let schematic = LmSchematic::new_from_bytes(data)?;
-                Ok((schematic.get_blocks_pos()?, schematic.get_data_version().ok()))
+                Ok((
+                    schematic.get_blocks_pos()?,
+                    schematic.get_data_version().ok(),
+                ))
             }
             3 => {
                 let schematic = WeSchematic::new_from_bytes(data)?;
                 let subtype = schematic.get_type()?;
-                Ok((schematic.get_blocks_pos()?, schematic.get_data_version(subtype).ok()))
+                Ok((
+                    schematic.get_blocks_pos()?,
+                    schematic.get_data_version(subtype).ok(),
+                ))
             }
             4 => {
                 let schematic = BgSchematic::new_from_data(data)?;
@@ -640,7 +806,10 @@ impl FileManager {
             6 => {
                 let schematic = McEditSchematic::new_from_bytes(data)?;
                 let data_version = crate::mcedit::legacy_map::declared_game_version(&schematic.nbt)
-                    .and_then(|name| crate::utils::minecraft_data::versions_data::VersionData::new().game_version_id(name));
+                    .and_then(|name| {
+                        crate::utils::minecraft_data::versions_data::VersionData::new()
+                            .game_version_id(name)
+                    });
                 Ok((schematic.get_blocks_pos()?, data_version))
             }
             _ => Err(anyhow!("UNK: {}", v_type)),
@@ -712,26 +881,177 @@ fn nbt_bytes(data: &Value, v_type: i32) -> Result<Vec<u8>> {
 mod exact_version_tests {
     use super::*;
     use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockStatePosList};
-    use crate::utils::blueprint_export::{encode, ExportOptions};
+    use crate::utils::blueprint_export::{ExportOptions, encode};
     use crate::utils::schematic_data::Size;
     use std::sync::Arc;
+    fn cache_options(format: i32, subtype: i32) -> ExportOptions {
+        ExportOptions {
+            format,
+            subtype,
+            target_data_version: None,
+            overrides: Vec::new(),
+            include_air: false,
+        }
+    }
+    fn output() -> ConversionOutput {
+        ConversionOutput {
+            data_version: Some(3578),
+            game_version: Some("1.20.2".into()),
+            format_version: 6,
+        }
+    }
+    #[test]
+    fn conversion_cache_cannot_replace_original_even_for_other_litematica_versions() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
+        let original = manager
+            .save_schematic_data(1, b"original".to_vec(), 0, -1, 2, "litematic".into())
+            .unwrap();
+        for subtype in 3..=7 {
+            let result = manager.save_conversion_data(
+                1,
+                0,
+                2,
+                -1,
+                &cache_options(2, subtype),
+                b"replacement",
+                output(),
+            );
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("overwrite the source")
+            );
+            assert_eq!(fs::read(&original).unwrap(), b"original");
+        }
+    }
+    #[test]
+    fn conversion_cache_replaces_only_derived_slot_and_records_actual_output() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
+        let original = manager
+            .save_schematic_data(1, b"original".to_vec(), 3, 0, 3, "schem".into())
+            .unwrap();
+        let options = cache_options(3, 1);
+        let path = manager
+            .save_conversion_data(1, 3, 3, 0, &options, b"first", output())
+            .unwrap();
+        let changed = ConversionOutput {
+            data_version: Some(1343),
+            game_version: Some("1.12.2".into()),
+            format_version: 1,
+        };
+        manager
+            .save_conversion_data(1, 3, 3, 0, &options, b"second complete file", changed)
+            .unwrap();
+        assert_eq!(fs::read(&original).unwrap(), b"original");
+        assert_eq!(fs::read(&path).unwrap(), b"second complete file");
+        let data = manager.get_convert_data(1, 3, 0, 3).unwrap();
+        let stored = &data.schematics[&SchematicType::We][&1];
+        assert_eq!(stored.size, "20");
+        assert_eq!(stored.output.as_ref().unwrap().data_version, Some(1343));
+        assert_eq!(
+            stored.output.as_ref().unwrap().game_version.as_deref(),
+            Some("1.12.2")
+        );
+        assert!(data.schematics[&SchematicType::We][&0].output.is_none());
+        // An older writer/manual edit must not keep the previous target label.
+        fs::write(&path, b"other").unwrap();
+        assert!(
+            manager.get_convert_data(1, 3, 0, 3).unwrap().schematics[&SchematicType::We][&1]
+                .output
+                .is_none()
+        );
+        manager
+            .save_conversion_data(1, 3, 3, 0, &options, b"same length", output())
+            .unwrap();
+        let file = File::options().write(true).open(&path).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(100))
+            .unwrap();
+        assert!(cached_output(&path, &file.metadata().unwrap()).is_none());
+    }
+    #[test]
+    fn copy_preserves_existing_destination_and_original() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
+        let original = manager
+            .save_schematic_data(1, b"original".to_vec(), 0, -1, 2, "litematic".into())
+            .unwrap();
+        assert!(
+            manager
+                .copy_file(1, 0, -1, 2, original.to_string_lossy().into_owned())
+                .is_err()
+        );
+        assert_eq!(fs::read(&original).unwrap(), b"original");
+        let destination = temporary.path().join("copy.litematic");
+        manager
+            .copy_file(1, 0, -1, 2, destination.to_string_lossy().into_owned())
+            .unwrap();
+        fs::write(&destination, b"do not replace").unwrap();
+        assert!(
+            manager
+                .copy_file(1, 0, -1, 2, destination.to_string_lossy().into_owned())
+                .is_err()
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"do not replace");
+    }
     #[test]
     fn file_manager_returns_exact_versions_without_using_ui_labels() {
         let temporary = tempfile::tempdir().unwrap();
-        let manager = FileManager { data_dir: temporary.path().to_owned() };
+        let manager = FileManager {
+            data_dir: temporary.path().to_owned(),
+        };
         let mut blocks = BlockStatePosList::default();
-        blocks.add_by_pos(0, 0, 0, Arc::new(BlockData { id: BlockId { name: "minecraft:stone".into() }, properties: Default::default() }));
-        let data = SchematicData::new(blocks, Default::default(), Default::default(), Size { width: 2, height: 2, length: 2 });
+        blocks.add_by_pos(
+            0,
+            0,
+            0,
+            Arc::new(BlockData {
+                id: BlockId {
+                    name: "minecraft:stone".into(),
+                },
+                properties: Default::default(),
+            }),
+        );
+        let data = SchematicData::new(
+            blocks,
+            Default::default(),
+            Default::default(),
+            Size {
+                width: 2,
+                height: 2,
+                length: 2,
+            },
+        );
         for (format, subtype, target, expected, ext) in [
-            (1, -1, None, 3578, "nbt"), (2, 6, None, 3578, "litematic"),
-            (3, 0, None, 3578, "schem"), (3, 1, None, 3578, "schem"),
+            (1, -1, None, 3578, "nbt"),
+            (2, 6, None, 3578, "litematic"),
+            (3, 0, None, 3578, "schem"),
+            (3, 1, None, 3578, "schem"),
             (6, -1, Some(5), 5, "schematic"),
         ] {
-            let options = ExportOptions { format, subtype, target_data_version: target, overrides: Vec::new(), include_air: false };
+            let options = ExportOptions {
+                format,
+                subtype,
+                target_data_version: target,
+                overrides: Vec::new(),
+                include_air: false,
+            };
             let bytes = encode(&data, &options, Some(3578)).unwrap();
             let stored_subtype = if format == 2 { -1 } else { subtype };
-            manager.save_schematic_data(1, bytes, 0, stored_subtype, format, ext.into()).unwrap();
-            let (parsed, version) = manager.get_schematic_with_version(1, 0, stored_subtype, format).unwrap();
+            manager
+                .save_schematic_data(1, bytes, 0, stored_subtype, format, ext.into())
+                .unwrap();
+            let (parsed, version) = manager
+                .get_schematic_with_version(1, 0, stored_subtype, format)
+                .unwrap();
             assert_eq!(version, Some(expected));
             assert_eq!(parsed.size, data.size);
         }

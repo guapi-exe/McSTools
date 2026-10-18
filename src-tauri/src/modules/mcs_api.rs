@@ -1,10 +1,6 @@
 //! Read-only bridge to the developer API. Credentials never enter a URL,
 //! persisted settings, or an HTTP redirect to another origin.
-use crate::data_files::files::FileManager;
-use crate::database::db_control::DatabaseState;
 use crate::modules::schematic::encode_uploaded_schematic;
-use crate::utils::minecraft_data::je_blocks_data::BlocksData;
-use crate::utils::minecraft_data::versions_data::VersionData;
 use base64::Engine;
 use reqwest::{Client, Response, Url, header};
 use serde::Serialize;
@@ -12,7 +8,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 const API_ORIGIN: &str = "https://www.mcschematic.top";
 const MAX_JSON_BYTES: usize = 8 * 1024 * 1024;
@@ -438,24 +434,11 @@ pub async fn import_mcs_blueprint(
     if bytes == 0 {
         return Err(McsApiError::new("EMPTY_FILE", "下载的蓝图文件为空"));
     }
-    let import_name = filename.clone();
     // Parsing, compression and SQLite updates must not occupy the UI thread
     // or serialize millions of byte values through the WebView.
-    tauri::async_runtime::spawn_blocking(move || {
-        tauri::async_runtime::block_on(encode_uploaded_schematic(
-            app.state::<DatabaseState>(),
-            app.state::<FileManager>(),
-            app.state::<VersionData>(),
-            app.state::<BlocksData>(),
-            import_name,
-            data,
-            false,
-            -1,
-        ))
-    })
-    .await
-    .map_err(|_| McsApiError::new("IMPORT", "蓝图解析任务异常结束"))?
-    .map_err(|message| McsApiError::new("IMPORT", &format!("本地解析失败：{message}")))?;
+    encode_uploaded_schematic(app, filename.clone(), data, false, -1)
+        .await
+        .map_err(|message| McsApiError::new("IMPORT", &format!("本地解析失败：{message}")))?;
     Ok(McsImportResult { filename, bytes })
 }
 

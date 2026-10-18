@@ -6,6 +6,7 @@ interface Target {
     has: boolean;
     size: string;
     version: number;
+    output?: {data_version: number | null; game_version: string | null; format_version: number} | null;
 }
 
 export interface ConvertData {

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use std::path::PathBuf;
 use rusqlite::Connection;
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 type SqlitePool = Pool<SqliteConnectionManager>;
@@ -44,6 +44,14 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
         .context("创建连接池失败")?;
 
     let conn = pool.get()?;
+    initialize_schema(&conn)?;
+    drop(conn);
+    Ok(DatabaseState(pool))
+}
+
+// The same schema is used by isolated import integration tests; no real app
+// directory or user database needs to be opened by those tests.
+pub(crate) fn initialize_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS schematics (
@@ -136,30 +144,25 @@ pub fn init_db(app_handle: &AppHandle) -> Result<DatabaseState> {
     )?;
     add_column_if_missing_schematics(&conn)?;
     add_column_if_missing_user(&conn)?;
-    Ok(DatabaseState(pool))
+    Ok(())
 }
 
 fn add_column_if_missing_schematics(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(schematics)")?;
-    let columns: Vec<String> = stmt.query_map([], |row| row.get(1))?
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get(1))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
 
     if !columns.contains(&"schematic_tags".to_string()) {
-        conn.execute_batch(
-            "ALTER TABLE schematics ADD COLUMN schematic_tags TEXT DEFAULT '{}';"
-        )?;
+        conn.execute_batch("ALTER TABLE schematics ADD COLUMN schematic_tags TEXT DEFAULT '{}';")?;
     }
 
     if !columns.contains(&"lm_version".to_string()) {
-        conn.execute_batch(
-            "ALTER TABLE schematics ADD COLUMN lm_version INTEGER DEFAULT 0;"
-        )?;
+        conn.execute_batch("ALTER TABLE schematics ADD COLUMN lm_version INTEGER DEFAULT 0;")?;
     }
 
     if !columns.contains(&"classification".to_string()) {
-        conn.execute_batch(
-            "ALTER TABLE schematics ADD COLUMN classification TEXT DEFAULT '';"
-        )?;
+        conn.execute_batch("ALTER TABLE schematics ADD COLUMN classification TEXT DEFAULT '';")?;
     }
 
     Ok(())
@@ -167,13 +170,12 @@ fn add_column_if_missing_schematics(conn: &Connection) -> Result<()> {
 
 fn add_column_if_missing_user(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(user_data)")?;
-    let columns: Vec<String> = stmt.query_map([], |row| row.get(1))?
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get(1))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
 
     if !columns.contains(&"classification".to_string()) {
-        conn.execute_batch(
-            "ALTER TABLE user_data ADD COLUMN classification TEXT DEFAULT '';"
-        )?;
+        conn.execute_batch("ALTER TABLE user_data ADD COLUMN classification TEXT DEFAULT '';")?;
     }
 
     Ok(())
@@ -185,7 +187,7 @@ pub fn drop_all_tables_in_transaction(conn: &Connection) -> Result<()> {
         "user_data",
         "schematics_history",
         "schematic_data",
-        "schematics"
+        "schematics",
     ];
 
     for table in tables.iter() {
@@ -197,7 +199,7 @@ pub fn drop_all_tables_in_transaction(conn: &Connection) -> Result<()> {
         "idx_schematics_history",
         "idx_requirements_schematic",
         "idx_logs_search",
-        "idx_schematic_search"
+        "idx_schematic_search",
     ];
 
     for index in indexes.iter() {

@@ -17,7 +17,7 @@
   recount(original);
   const fixture = window.__EDITOR_FIXTURE__ = {commands: [], current: structuredClone(original), history: [], pending: null,
     revision: 0, modified: false, failNextStage: false, failNextCommit: false, stageDelay: 0,
-    exports: [], sourceDataVersion: 3578, failNextSave: false, cancelNextSave: false, exportPlanDelay: 0,
+    exports: [], conversions: {}, copies: [], sourceDataVersion: 3578, failNextSave: false, cancelNextSave: false, exportPlanDelay: 0, saveDelay: 0,
     source: {id: 42, name: '编辑回归夹具', description: '隔离测试，无真实文件', sizes: '12,5,10', schematic_type: 2, sub_type: -1,
       version: 0, game_version: '1.20.1', lm_version: 6, user: '', schematic_tags: '', classification: '', created_at: '', updated_at: '', version_list: ''}};
   const info = () => ({session_id: 1, source_id: 42, revision: fixture.revision, game_version: '1.20.1',
@@ -33,6 +33,7 @@
         {id: 3, name: 'WorldEdit', extension: 'schem', subtypes: [{id: 0, name: 'Sponge v2', versions: modern}, {id: 1, name: 'Sponge v3', versions: modern}]},
         {id: 6, name: 'MCEdit', extension: 'schematic', subtypes: [{id: -1, name: 'MCEdit / Alpha', versions: [{id: 5, name: '1.7.10'}, {id: 1343, name: '1.12.2'}]}]},
         {id: 1, name: 'Create / Vanilla', extension: 'nbt', subtypes: [{id: -1, name: 'Java Structure', versions: modern}]},
+        {id: 4, name: 'Building Gadgets', extension: 'json', subtypes: [0, 1, 2].map(id => ({id, name: `v${id + 1}`, versions: modern}))},
         {id: 5, name: 'Bedrock', extension: 'mcstructure', subtypes: [{id: -1, name: 'BE Structure', versions: []}]},
       ];
     }
@@ -49,14 +50,26 @@
       const changes = o.targetDataVersion === 5 ? [{sourceId: 'minecraft:oak_planks', replacementId: 'minecraft:stone',
         count: 160, idChanged: true, propertiesChanged: false, error: null}] : [];
       return {sourceDataVersion: fixture.sourceDataVersion, outputDataVersion: o.format === 5 ? null : o.targetDataVersion ?? fixture.sourceDataVersion,
-        size, warnings: [], compatibility: o.targetDataVersion ? {target: {name: o.targetDataVersion === 5 ? '1.7.10' : '1.20.1', id: o.targetDataVersion},
+        size, canSaveCache: args.source.kind === 'library' && o.format !== 2,
+        cached: fixture.conversions[`${o.format}:${[3, 4].includes(o.format) ? o.subtype : -1}`] ?? null,
+        warnings: [], compatibility: o.targetDataVersion ? {target: {name: o.targetDataVersion === 5 ? '1.7.10' : '1.20.1', id: o.targetDataVersion},
           changes, targetBlocks: ['minecraft:stone', 'minecraft:gold_block'], moddedBlockCount: 0} : null};
     }
     if (command === 'save_blueprint_export') {
-      fixture.exports.push(structuredClone(args));
+      // Match Tauri's JSON boundary: Vue refs may contain reactive proxies,
+      // which JSON serializes but structuredClone deliberately rejects.
+      fixture.exports.push(JSON.parse(JSON.stringify(args)));
+      if (fixture.saveDelay) await new Promise(resolve => setTimeout(resolve, fixture.saveDelay));
       if (fixture.failNextSave) { fixture.failNextSave = false; throw 'copy destination already exists; select a new filename'; }
       if (fixture.cancelNextSave) { fixture.cancelNextSave = false; return {canceled: true, filename: null, bytes: 0, destination: args.destination}; }
-      return {canceled: false, filename: 'fixture_copy.' + ({2: 'litematic', 3: 'schem', 6: 'schematic', 1: 'nbt', 5: 'mcstructure'}[args.options.format]),
+      if (args.destination === 'converted') {
+        if (args.options.format === 2) throw 'conversion would overwrite the source; use save copy instead';
+        const o = args.options;
+        fixture.conversions[`${o.format}:${[3, 4].includes(o.format) ? o.subtype : -1}`] = {has: true, size: '1234', version: 0,
+          output: {data_version: o.format === 5 ? null : o.targetDataVersion ?? fixture.sourceDataVersion,
+            game_version: o.format === 5 ? null : o.targetDataVersion === 5 ? '1.7.10' : '1.20.2', format_version: o.subtype}};
+      }
+      return {canceled: false, filename: 'fixture_copy.' + ({2: 'litematic', 3: 'schem', 6: 'schematic', 1: 'nbt', 4: 'json', 5: 'mcstructure'}[args.options.format]),
         bytes: 1234, destination: args.destination};
     }
     if (command === 'plugin:path|resolve_directory') return '/src-tauri/' + (args.path || '');
@@ -64,6 +77,17 @@
     if (command === 'plugin:fs|read_dir') return [{name: 'minecraft', isDirectory: true, isFile: false, isSymlink: false}];
     if (command === 'plugin:fs|read_file' || command === 'plugin:fs|read_text_file') return Array.from(new Uint8Array(await (await fetch(args.path)).arrayBuffer()));
     if (command === 'get_schematic') return fixture.source;
+    if (command === 'get_schematic_convert_data') {
+      const schematics = {Litematic: {'-1': {has: true, size: '1000', version: 0, output: null}}};
+      const names = {1: 'Create', 2: 'Litematic', 3: 'We', 4: 'Bg', 5: 'Be', 6: 'McEdit'};
+      for (const [key, value] of Object.entries(fixture.conversions)) {
+        const [format, subtype] = key.split(':');
+        (schematics[names[format]] ??= {})[subtype] = value;
+      }
+      return {schematic_type: 'Litematic', schematic_type_id: 2, sub_type: -1, version: 0, size: '1000', schematics};
+    }
+    if (command === 'plugin:dialog|save') return 'C:/isolated-fixture/export.schematic';
+    if (command === 'copy_schematic') { fixture.copies.push(args); return true; }
     if (command === 'get_schematic_preview_data') return structuredClone(original);
     if (command === 'get_je_blocks') return [{block_id: 'minecraft:stone', zh_cn: '石头'}, {block_id: 'minecraft:oak_planks', zh_cn: '橡木木板'}, {block_id: 'minecraft:gold_block', zh_cn: '金块'}];
     if (command === 'open_blueprint_editor') return {info: info(), preview: fixture.current, candidate_id: null};

@@ -6,6 +6,17 @@
   "hashEncoding": "UTF-8 JSON with LF line endings",
   "upstreamProject": "https://github.com/PrismarineJS/minecraft-data",
   "upstreamAttribution": "PrismarineJS minecraft-data, as documented by the existing Java block registry source header.",
+  "materialNames": {
+    "sourceFile": "apps/web/app/data/vanilla-block-ids.generated.ts",
+    "destinationFile": "src/modules/materials/vanilla-block-names.generated.ts",
+    "sourceRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "locales": ["zh-CN", "zh-TW"],
+    "blocksPerLocale": 1166,
+    "extractedExports": ["vanillaBlockNames", "vanillaBlockTraditionalNames"],
+    "sha256Utf8LfExportsWithFinalNewline": "c36150ca4a427077a5d8e12a6b2ecf4216682877cffb82800af8b2b162b15b68",
+    "attribution": "Website-generated 1.21.11 names; its source header attributes the base Chinese labels to local McSTools with newer families added by new_mcs.",
+    "verification": "Extracted name exports match the website byte-for-byte after LF normalization; source files were clean at the recorded revision."
+  },
   "tables": [
     {
       "version": "1.21.3",

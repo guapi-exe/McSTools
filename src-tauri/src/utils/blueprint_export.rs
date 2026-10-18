@@ -32,6 +32,14 @@ pub struct ExportOptions {
     pub include_air: bool,
 }
 
+pub fn cache_subtype(options: &ExportOptions) -> i32 {
+    if matches!(options.format, 3 | 4) {
+        options.subtype
+    } else {
+        -1
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportFormat {
