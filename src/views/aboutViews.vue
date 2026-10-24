@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {navigationGuard} from "../modules/navigation.ts";
 import fav from  "../static/img/fav512.png"
-import {opacity} from "../modules/theme.ts";
 import {onBeforeRouteLeave} from "vue-router";
 import {appData} from "../modules/app_data.ts";
 import tauri from "../static/img/tauri.png"
@@ -17,15 +16,15 @@ onBeforeRouteLeave(navigationGuard)
 
 </script>
 
-<template class="page-wrapper">
-  <v-row no-gutters class="mb-4 animate-row" :class="{ 'animate-row-out': isLeaving }">
+<template>
+  <div class="page-view">
+  <v-row no-gutters class="mb-4 animate-row">
     <v-col class="mb-4" cols="12">
       <v-card
           class="mx-auto"
-          elevation="4"
-          :style="{ '--surface-alpha': opacity }"
+          elevation="2"
           >
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-2 text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon icon="mdi-information-outline" class="mr-2"></v-icon>
             <span class="text-h6">{{ t('about.title') }}</span>
@@ -105,7 +104,7 @@ onBeforeRouteLeave(navigationGuard)
                           density="default"
                           variant="outlined"
                           prepend-icon="mdi-web"
-                          @click="openLink('https://www.mcschematic.top/home/')"
+                          @click="openLink('https://www.mcschematic.top/')"
                       >
                         {{ t('about.actions.website') }}
                       </v-btn>
@@ -158,7 +157,7 @@ onBeforeRouteLeave(navigationGuard)
                             variant="outlined"
                             prepend-icon="mdi-web"
                             class="px-6"
-                        @click="openLink('https://www.mcschematic.top/home/')"
+                        @click="openLink('https://www.mcschematic.top/')"
                         >
                         {{ t('about.schematicSite.visit') }}
                         </v-btn>
@@ -275,7 +274,7 @@ onBeforeRouteLeave(navigationGuard)
       </v-card>
     </v-col>
   </v-row>
-
+  </div>
 </template>
 
 <style scoped>

@@ -10,9 +10,14 @@
     z-index: 2;
 }
 
-.page-wrapper {
+.page-view {
     min-height: 100%;
     box-sizing: border-box;
+    /* Centered reading width so ultra-wide screens do not stretch cards
+       edge to edge; the fixed full-screen page escapes this box anyway. */
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 24px;
 }
 
 .scroll-container {
@@ -23,8 +28,6 @@
     -ms-overflow-style: none;
     height: 100vh;
     overflow-x: hidden;
-    perspective: 1px;
-    transform-style: preserve-3d;
 }
 .update-notes {
     white-space: pre-wrap;

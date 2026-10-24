@@ -25,6 +25,26 @@ export const update_schematic_name = async (
     }
 }
 
+export const update_schematic_game_version = async (
+    id: number,
+    gameVersion: string,
+): Promise<boolean> => {
+    try {
+        return await invoke<boolean>(
+            'update_schematic_game_version_tauri',
+            {
+                id,
+                gameVersion,
+            },
+        )
+    } catch (error) {
+        toast.error(`发生了一个错误:${error}`, {
+            timeout: 3000,
+        });
+        throw new Error(`更新游戏版本失败: ${error}`);
+    }
+}
+
 export const update_user_classification = async (
     classification: string,
 ): Promise<boolean> => {

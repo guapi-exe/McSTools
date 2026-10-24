@@ -1,22 +1,22 @@
 use crate::building_gadges::template_json_representation::{
-    rel_pos_to_int, B1_BYTE_MASK, B2_BYTE_MASK, B3_BYTE_MASK,
+    B1_BYTE_MASK, B2_BYTE_MASK, B3_BYTE_MASK, rel_pos_to_int,
 };
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos};
 use crate::utils::schematic_data::{SchematicData, SchematicError};
+use anyhow::Result;
 use base64::Engine;
 use fastnbt::Value::Compound;
-use fastnbt::{to_bytes, Value};
+use fastnbt::{Value, to_bytes};
 use fastsnbt::to_string;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
-use serde_json::{json};
+use serde_json::json;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::Write;
-use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 use std::sync::Arc;
-use anyhow::Result;
+use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 
 #[derive(Debug)]
 pub struct ToBgSchematic {
@@ -185,8 +185,9 @@ impl ToBgSchematic {
     pub fn get_block_id_list(&self) -> Vec<i32> {
         let total_blocks = (self.length * self.width * self.height) as usize;
         let air_index = self.air_index as i32;
-        let atomic_block_list: Vec<AtomicI32> =
-            (0..total_blocks).map(|_| AtomicI32::new(air_index)).collect();
+        let atomic_block_list: Vec<AtomicI32> = (0..total_blocks)
+            .map(|_| AtomicI32::new(air_index))
+            .collect();
         let atomic_block_list = Arc::new(atomic_block_list);
 
         self.blocks.par_iter().for_each(|block| {

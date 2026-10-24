@@ -1,20 +1,39 @@
-use crate::utils::block_state_pos_list::{
-    BlockData, BlockId, BlockPos, BlockStatePos,
-};
+use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos};
+use crate::utils::entities::EntitiesList;
 use crate::utils::schematic_data::{SchematicData, SchematicError};
+use crate::utils::tile_entities::TileEntitiesList;
+use anyhow::Result;
 use chrono::Utc;
 use fastnbt::Value;
 use fastnbt::Value::Compound;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
-use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
-use anyhow::Result;
-use crate::utils::tile_entities::TileEntitiesList;
-use crate::utils::entities::{EntitiesList};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+pub(crate) fn normalized_entity_payload(root: &HashMap<String, Value>) -> HashMap<String, Value> {
+    let mut result = match root.get("Data") {
+        Some(Compound(data))
+            if root
+                .keys()
+                .all(|key| matches!(key.as_str(), "Id" | "Pos" | "Data")) =>
+        {
+            data.clone()
+        }
+        _ => root.clone(),
+    };
+    if let Some(Value::String(id)) = root
+        .get("id")
+        .or_else(|| root.get("Id"))
+        .or_else(|| root.get("identifier"))
+    {
+        result.insert("id".into(), Value::String(id.clone()));
+    }
+    result.remove("Id");
+    result
+}
 
 #[derive(Debug)]
 pub struct ToLmSchematic {
@@ -34,108 +53,33 @@ pub struct ToLmSchematic {
 impl ToLmSchematic {
     pub fn new(schematic: &SchematicData) -> Result<Self, SchematicError> {
         let mut block_list = schematic.blocks.clone();
-
-        let min = {
-            let elements = &block_list.elements;
-            if elements.is_empty() {
-                return Err(SchematicError::InvalidFormat("Block list cannot be empty"));
-            }
-
-            let global_min = elements
-                .par_iter()
-                .with_min_len(1_000_000)
-                .fold(
-                    || BlockPos {
-                        x: i32::MAX,
-                        y: i32::MAX,
-                        z: i32::MAX,
-                    },
-                    |mut acc, bp| {
-                        acc.x = std::cmp::min(acc.x, bp.pos.x);
-                        acc.y = std::cmp::min(acc.y, bp.pos.y);
-                        acc.z = std::cmp::min(acc.z, bp.pos.z);
-                        acc
-                    },
-                )
-                .reduce(
-                    || BlockPos {
-                        x: i32::MAX,
-                        y: i32::MAX,
-                        z: i32::MAX,
-                    },
-                    |mut rel, tem| {
-                        rel.x = std::cmp::min(rel.x, tem.x);
-                        rel.y = std::cmp::min(rel.y, tem.y);
-                        rel.z = std::cmp::min(rel.z, tem.z);
-                        rel
-                    },
-                );
-
-            BlockPos {
-                x: global_min.x.saturating_sub(1),
-                y: global_min.y,
-                z: global_min.z.saturating_sub(1),
-            }
-        };
-        let size = schematic.size;
-        let max = BlockPos {
-            x: min.x + size.width + 1,
-            y: min.y + size.height,
-            z: min.z + size.length + 1,
-        };
-
-        let air = Arc::new(BlockData {
-            id: BlockId {
-                name: Arc::from("minecraft:air"),
-            },
-            properties: BTreeMap::new(),
-        });
-        let capacity = ((max.y - min.y) as usize)
-            * (((max.z - min.z) * 2) + ((max.x - min.x) * 2) + 4) as usize;
-
-        block_list.reserve_front(capacity);
-
-        let positions: Vec<_> = (min.y..max.y)
-            .into_par_iter()
-            .flat_map(|y| {
-                let mut positions = Vec::with_capacity(
-                    (max.z - min.z) as usize * 2 + (max.x - min.x) as usize * 2 + 4,
-                );
-
-                for z in min.z..max.z {
-                    positions.push((min.x - 1, y, z));
-                    positions.push((max.x + 1, y, z));
-                }
-
-                for x in min.x..max.x {
-                    positions.push((x, y, min.z - 1));
-                    positions.push((x, y, max.z + 1));
-                }
-
-                positions.push((min.x - 1, y, min.z - 1));
-                positions.push((min.x - 1, y, max.z + 1));
-                positions.push((max.x + 1, y, min.z - 1));
-                positions.push((max.x + 1, y, max.z + 1));
-
-                positions
-            })
-            .collect();
-        let air_blocks: VecDeque<_> = positions
-            .into_par_iter()
-            .map(|(x, y, z)| BlockStatePos::new(BlockPos { x, y, z }, Arc::clone(&air)))
-            .collect();
-
-        block_list.bulk_prepend(air_blocks);
-        let width = max.x - min.x + 1;
-        let height = max.y - min.y;
-        let length = max.z - min.z + 1;
+        let (min, max, size) =
+            crate::utils::conversion_bounds::conversion_bounds(&block_list, schematic.size)?;
+        let width = size.width;
+        let height = size.height;
+        let length = size.length;
+        // Missing sparse cells are air, not the first solid palette entry.
+        // An air sentinel also permits an explicitly empty declared frame.
+        block_list.add_to_first(
+            min.x,
+            min.y,
+            min.z,
+            &Arc::new(BlockData {
+                id: BlockId {
+                    name: Arc::from("minecraft:air"),
+                },
+                properties: BTreeMap::new(),
+            }),
+        );
         let (unique_block_states, block_state_to_index) = {
             let mut index_map = HashMap::new();
             let mut unique = Vec::new();
 
             for block_pos in block_list.elements.iter() {
                 let block_data = &block_pos.block;
-                if let std::collections::hash_map::Entry::Vacant(e) = index_map.entry(block_data.clone()) {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    index_map.entry(block_data.clone())
+                {
                     let index = unique.len();
                     unique.push(block_data.clone());
                     e.insert(index);
@@ -154,8 +98,34 @@ impl ToLmSchematic {
         let bits_unclamped = 32u32.saturating_sub(leading_zeros);
         let bits = (bits_unclamped as f64).max(2.0) as i32;
         let blocks = block_list.elements;
-        let tile_entities = schematic.tile_entities_list.clone();
-        let entities = schematic.entities_list.clone();
+        let mut tile_entities = schematic.tile_entities_list.clone();
+        for tile in &mut tile_entities.elements {
+            for (coordinate, origin, bound) in [
+                (tile.pos.x, min.x, width),
+                (tile.pos.y, min.y, height),
+                (tile.pos.z, min.z, length),
+            ] {
+                if coordinate
+                    .checked_sub(origin)
+                    .filter(|n| *n >= 0 && *n < bound)
+                    .is_none()
+                {
+                    return Err(SchematicError::InvalidFormat(
+                        "Litematica block entity is outside export bounds",
+                    ));
+                }
+            }
+            let (id, mut data) = crate::utils::java_entities::java_entity_data(
+                &tile.nbt,
+                tile_entities.original_type,
+            )?;
+            data.insert("id".into(), Value::String(id));
+            tile.nbt = Compound(data);
+        }
+        let entities = crate::utils::java_entities::local_java_entities(
+            &schematic.entities_list,
+            [min.x, min.y, min.z],
+        )?;
         //println!("{:?}", blocks);
         Ok(Self {
             blocks,
@@ -173,37 +143,40 @@ impl ToLmSchematic {
     }
     pub fn get_block_id_list(&self) -> Vec<i32> {
         let total_blocks = (self.length * self.width * self.height) as usize;
+        // Overlapping Litematica regions are legal. Resolve duplicate
+        // coordinates in source order so output does not depend on Rayon
+        // scheduling (the previous atomic stores were last-writer-wins but
+        // not deterministic).
+        let mut block_ids = vec![0i32; total_blocks];
+        for block in &self.blocks {
+            let dx = i64::from(block.pos.x) - i64::from(self.start_pos.x);
+            let dy = i64::from(block.pos.y) - i64::from(self.start_pos.y);
+            let dz = i64::from(block.pos.z) - i64::from(self.start_pos.z);
+            let id = dy * i64::from(self.width) * i64::from(self.length)
+                + dz * i64::from(self.width)
+                + dx;
 
-        let atomic_block_list: Vec<AtomicI32> =
-            (0..total_blocks).map(|_| AtomicI32::new(0)).collect();
-        let atomic_block_list = Arc::new(atomic_block_list);
-
-        self.blocks.par_iter().for_each(|block| {
-            let dx = block.pos.x - self.start_pos.x;
-            let dy = block.pos.y - self.start_pos.y;
-            let dz = block.pos.z - self.start_pos.z;
-
-            let id = (dy * self.width * self.length) + (dz * self.width) + dx;
-
-            if id >= 0 && (id as usize) < atomic_block_list.len() {
-                let state_id = self
+            if id >= 0
+                && usize::try_from(id)
+                    .ok()
+                    .is_some_and(|index| index < total_blocks)
+            {
+                block_ids[id as usize] = self
                     .block_state_to_index
                     .get(&block.block)
-                    .map(|v| *v as i32)
+                    .copied()
+                    .and_then(|state| i32::try_from(state).ok())
                     .unwrap_or(0);
-
-                atomic_block_list[id as usize].store(state_id, Ordering::Relaxed);
             }
-        });
+        }
 
-        Arc::try_unwrap(atomic_block_list)
-            .unwrap()
-            .into_iter()
-            .map(|atomic| atomic.into_inner())
-            .collect()
+        block_ids
     }
     pub fn encode_block_states(&self) -> Vec<u64> {
         let state_ids = self.get_block_id_list();
+        self.pack_block_states(&state_ids)
+    }
+    fn pack_block_states(&self, state_ids: &[i32]) -> Vec<u64> {
         let bits = self.bits as usize;
         let total_bits = state_ids.len() * bits;
         let longs_needed = (total_bits + 63) / 64;
@@ -249,19 +222,18 @@ impl ToLmSchematic {
             .collect()
     }
     fn build_tile_entities_list(&self) -> Vec<Value> {
-        if self.tile_entities.original_type != 2 {
-            return vec![];
-        }
-        self.tile_entities.elements
+        self.tile_entities
+            .elements
             .iter()
             .map(|te| {
-                let nx = te.pos.x + 1;
-                let ny = te.pos.y;
-                let nz = te.pos.z + 1;
+                let nx = te.pos.x - self.start_pos.x;
+                let ny = te.pos.y - self.start_pos.y;
+                let nz = te.pos.z - self.start_pos.z;
 
                 match &te.nbt {
                     Compound(map) => {
-                        let mut new_map = map.clone();
+                        let mut new_map = normalized_entity_payload(map);
+                        new_map.remove("Pos");
                         new_map.insert("x".to_string(), Value::Int(nx));
                         new_map.insert("y".to_string(), Value::Int(ny));
                         new_map.insert("z".to_string(), Value::Int(nz));
@@ -280,11 +252,11 @@ impl ToLmSchematic {
             .collect()
     }
     fn build_entities_list(&self) -> Vec<Value> {
-        if self.entities.original_type != 2 {
-            return vec![];
-        }
-
-        self.entities.elements.iter().map(|e| e.nbt.clone()).collect()
+        self.entities
+            .elements
+            .iter()
+            .map(|entity| entity.nbt.clone())
+            .collect()
     }
     pub fn lm_palette(&self) -> Value {
         let mut palette = Vec::new();
@@ -307,8 +279,11 @@ impl ToLmSchematic {
         Value::List(palette)
     }
     pub fn lm_metadata(&self) -> Value {
+        self.metadata_for_states(&self.get_block_id_list())
+    }
+    fn metadata_for_states(&self, state_ids: &[i32]) -> Value {
         let mut metadata = HashMap::new();
-        let timestamp_sec = Utc::now().timestamp();
+        let timestamp_ms = Utc::now().timestamp_millis();
         let mut enclosing_size = HashMap::new();
         enclosing_size.insert("x".to_string(), Value::Int(self.width));
         enclosing_size.insert("y".to_string(), Value::Int(self.height));
@@ -320,23 +295,42 @@ impl ToLmSchematic {
             Value::String("来自MCSTOOLS转换".to_string()),
         );
         metadata.insert("RegionCount".to_string(), Value::Int(1));
-        metadata.insert("Name".to_string(), Value::String("null".to_string()));
+        metadata.insert("Name".to_string(), Value::String(String::new()));
         metadata.insert(
             "Author".to_string(),
             Value::String("www.mcschematic.top".to_string()),
         );
-        metadata.insert("TotalVolume".to_string(), Value::Int(0));
-        metadata.insert("TotalBlocks".to_string(), Value::Int(0));
-        metadata.insert("TimeModified".to_string(), Value::Long(timestamp_sec));
-        metadata.insert("TimeCreated".to_string(), Value::Long(timestamp_sec));
+        let non_air: Vec<bool> = self
+            .unique_block_states
+            .iter()
+            .map(|state| {
+                !matches!(
+                    state.id.name.as_ref(),
+                    "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
+                )
+            })
+            .collect();
+        // Count the resolved grid, not sparse records: overlapping positions
+        // and explicit air must agree with what is actually packed below.
+        let occupied = state_ids.iter().filter(|&&id| non_air[id as usize]).count();
+        metadata.insert(
+            "TotalVolume".to_string(),
+            Value::Int(state_ids.len() as i32),
+        );
+        metadata.insert("TotalBlocks".to_string(), Value::Int(occupied as i32));
+        metadata.insert("TimeModified".to_string(), Value::Long(timestamp_ms));
+        metadata.insert("TimeCreated".to_string(), Value::Long(timestamp_ms));
 
         Compound(metadata)
     }
     pub fn lm_regions(&self) -> Value {
+        self.regions_for_states(&self.get_block_id_list())
+    }
+    fn regions_for_states(&self, state_ids: &[i32]) -> Value {
         let mut regions = HashMap::new();
         let mut region: HashMap<String, Value> = HashMap::new();
 
-        let encoded = self.encode_block_states();
+        let encoded = self.pack_block_states(state_ids);
         let long_array: Vec<i64> = encoded.iter().map(|&v| v as i64).collect();
         region.insert(
             "BlockStates".to_string(),
@@ -356,21 +350,87 @@ impl ToLmSchematic {
         region.insert("Size".to_string(), Compound(size));
 
         region.insert("BlockStatePalette".to_string(), self.lm_palette());
-        region.insert("TileEntities".to_string(), Value::List(self.build_tile_entities_list()));
+        region.insert(
+            "TileEntities".to_string(),
+            Value::List(self.build_tile_entities_list()),
+        );
         //region.insert("TileEntities".to_string(), Value::List(vec![]));
-        region.insert("Entities".to_string(), Value::List(self.build_entities_list()));
+        region.insert(
+            "Entities".to_string(),
+            Value::List(self.build_entities_list()),
+        );
         regions.insert("null".to_string(), Compound(region));
         Compound(regions)
     }
     pub fn lm_schematic(&self, version: i32) -> Value {
+        self.lm_schematic_for_data_version(version, 3465)
+    }
+
+    pub fn lm_schematic_for_data_version(&self, version: i32, data_version: i32) -> Value {
+        let state_ids = self.get_block_id_list();
         let mut nbt = HashMap::new();
-        nbt.insert("MinecraftDataVersion".to_string(), Value::Int(3465));
+        nbt.insert("MinecraftDataVersion".to_string(), Value::Int(data_version));
         nbt.insert("Version".to_string(), Value::Int(version));
-        let metadata = self.lm_metadata();
+        let metadata = self.metadata_for_states(&state_ids);
         nbt.insert("Metadata".to_string(), metadata);
-        let regions = self.lm_regions();
+        let regions = self.regions_for_states(&state_ids);
         nbt.insert("Regions".to_string(), regions);
         nbt.insert("SubVersion".to_string(), Value::Int(1));
         Compound(nbt)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::schematic_data::Size;
+
+    #[test]
+    fn metadata_counts_resolved_non_air_and_uses_millisecond_timestamps() {
+        let mut data = SchematicData::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Size {
+                width: 4,
+                height: 2,
+                length: 2,
+            },
+        );
+        for (x, name) in [
+            (0, "minecraft:stone"),
+            (0, "minecraft:dirt"),
+            (1, "minecraft:stone"),
+            (1, "minecraft:air"),
+            (2, "minecraft:cave_air"),
+            (3, "minecraft:void_air"),
+        ] {
+            data.blocks.add_by_pos(
+                x,
+                0,
+                0,
+                Arc::new(BlockData {
+                    id: BlockId { name: name.into() },
+                    properties: BTreeMap::new(),
+                }),
+            );
+        }
+        let before = Utc::now().timestamp_millis();
+        let encoded = ToLmSchematic::new(&data)
+            .unwrap()
+            .lm_schematic_for_data_version(6, 3955);
+        let Compound(root) = encoded else {
+            panic!("root")
+        };
+        let Compound(metadata) = &root["Metadata"] else {
+            panic!("metadata")
+        };
+        assert_eq!(metadata["TotalVolume"], Value::Int(16));
+        assert_eq!(metadata["TotalBlocks"], Value::Int(1));
+        let Value::Long(created) = metadata["TimeCreated"] else {
+            panic!("timestamp")
+        };
+        assert!(created >= before && created <= Utc::now().timestamp_millis());
+        assert_eq!(metadata["TimeCreated"], metadata["TimeModified"]);
     }
 }

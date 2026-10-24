@@ -1,26 +1,34 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::fs::File;
-use crate::building_gadges::bg_schematic::BgSchematic;
 use crate::be_schematic::be_schematic::BESchematic;
+use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
 use crate::be_schematic::to_be_schematic::ToBESchematic;
+use crate::building_gadges::bg_schematic::BgSchematic;
 use crate::create::create_schematic::CreateSchematic;
 use crate::litematica::lm_schematic::LmSchematic;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
 use crate::utils::schematic_data::SchematicError;
 use crate::word_edit::we_schematic::WeSchematic;
-use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, thread, time::Duration};
+use std::fs::File;
 use std::time::Instant;
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    thread,
+    time::Duration,
+};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use utils::extend_write::to_writer_gzip;
 use utils::requirements::get_requirements;
-use crate::be_schematic::le_reader::write_nbt_le::save_nbt_le;
 
+pub mod be_schematic;
 pub mod building_gadges;
 pub mod create;
-pub mod be_schematic;
 pub mod litematica;
+pub mod mcedit;
 pub mod utils;
 pub mod word_edit;
 fn main() {
@@ -31,8 +39,7 @@ fn test_be_schematic() -> Result<(), SchematicError> {
     let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
 
-    let schematic2 =
-        BESchematic::new("./schematic/test.mcstructure")?;
+    let schematic2 = BESchematic::new("./schematic/test.mcstructure")?;
     let schem2 = schematic2.get_blocks_pos()?;
     //print!("{:?}", schem2);
     let to = ToBESchematic::new(&schem2)?;
@@ -151,15 +158,14 @@ fn be_schematic_write() -> Result<(), SchematicError> {
     let peak_watcher = start_memory_peak_watcher();
     let start_time = Instant::now();
 
-    let schematic2 =
-        BESchematic::new("./schematic/out6.mcstructure")?;
+    let schematic2 = BESchematic::new("./schematic/out6.mcstructure")?;
     let schem2 = schematic2.get_blocks_pos()?;
     //print!("{:?}", schem2);
     let to = ToBESchematic::new(&schem2)?;
     println!("{:?},{:?},{:?}", to.height, to.length, to.width);
     //let requirements = get_requirements(&schem2.blocks)?;
     //print!("{:?}", requirements);
-    let root = to.to_be_value();
+    let root = to.to_be_value()?;
     let output_path = "./schematic/out8.mcstructure";
     let file = File::create(output_path)?;
     save_nbt_le(file, "Schematic", &root)?;
@@ -170,7 +176,6 @@ fn be_schematic_write() -> Result<(), SchematicError> {
     println!("内存峰值: {} MB", peak_mem_kb / 1024);
     Ok(())
 }
-
 
 fn start_memory_peak_watcher() -> Arc<AtomicU64> {
     let peak = Arc::new(AtomicU64::new(0));

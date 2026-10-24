@@ -1,13 +1,12 @@
 import {RawData, SubData} from "./map_art_data.ts";
 import {
     clamp,
-    colorDistance,
     createMapArtFromPixels,
     ColorMatchOptions,
     DitherMode,
     DitherOptions,
-    hexToRgb,
-    loadBlockImages
+    loadBlockImages,
+    MapArtColorEntry
 } from "./image_utils.ts";
 import {BlockStatePosList} from "./build_schematic.ts";
 
@@ -62,7 +61,6 @@ export class MapArtProcessor {
 
     updateBlocksData(blocks: string[] = []) {
         this.selectedIds = new Set(blocks)
-        this._buildIndexes()
     }
     updateMapData(newData: RawData[]) {
         this.mapData = newData
@@ -204,9 +202,10 @@ export class MapArtProcessor {
         const shouldDither = useDithering
             && effectiveDitherMode !== 'none'
             && pixelCount <= this.MAX_INPUT_PIXELS
+        const adjustedData = this.adjustPixels(data, applyOptions)
         const processedData = shouldDither
-            ? await this.applyDithering(data, width, height, false, colorTable, applyOptions, effectiveDitherOptions)
-            : data
+            ? await this.applyDithering(adjustedData, width, height, false, colorTable, applyOptions, effectiveDitherOptions)
+            : adjustedData
 
         const blockCount = width * height
         const maxCanvasPixels = renderOptions?.maxCanvasPixels ?? this.MAX_PREVIEW_CANVAS_PIXELS
@@ -398,18 +397,33 @@ export class MapArtProcessor {
         return result
     }
 
-    private createColorLookupTable(): Array<{ r: number; g: number; b: number; blockId: string }> {
-        const table: Array<{ r: number; g: number; b: number; blockId: string }> = []
-
-        const colorMap = this.getSelectedColorMap()
-        for (const [hex, blockIds] of colorMap) {
-            const rgb = hexToRgb(hex)
-            if (rgb && blockIds.length > 0) {
-                table.push({ r: rgb.r, g: rgb.g, b: rgb.b, blockId: blockIds[0] })
-            }
-        }
-
-        return table
+    private createColorLookupTable(): Array<{
+        r: number
+        g: number
+        b: number
+        blockId: string
+        low?: number[]
+        normal?: number[]
+        high?: number[]
+    }> {
+        // Keep every selected block as a candidate. Grouping by average color
+        // discarded useful variants (logs, concrete, glazed blocks, ...), and
+        // made the result depend on category iteration order.
+        return this.getSelectedBlocks()
+            .map((block) => {
+                const average = block.average_rgb
+                if (!average || average.length < 3) return undefined
+                return {
+                    r: average[0],
+                    g: average[1],
+                    b: average[2],
+                    blockId: block.id,
+                    low: block.low_rgb,
+                    normal: block.normal_rgb,
+                    high: block.high_rgb,
+                }
+            })
+            .filter((entry): entry is NonNullable<typeof entry> => !!entry)
     }
 
     processSchematic(
@@ -417,7 +431,7 @@ export class MapArtProcessor {
             data: Uint8ClampedArray
             width: number
             height: number
-            colorTable: Array<{ r: number; g: number; b: number; blockId: string }>
+            colorTable: MapArtColorEntry[]
             schematic_type: number,
             sub_type: number,
             threeD: boolean,
@@ -428,6 +442,7 @@ export class MapArtProcessor {
             flipX?: boolean,
             flipY?: boolean
             replaceAir: boolean
+            colorOptions?: ColorMatchOptions
         }
     ) {
         let {
@@ -438,14 +453,20 @@ export class MapArtProcessor {
             flipX = false,
             flipY = false
         } = context;
+        const colorOptions = context.colorOptions || this.defaultColorOptions
         let maxZ = -Infinity
         let minZ = Infinity
-        let lastZ = base.z;
+        const depthBase = axios.toLowerCase() === 'x'
+            ? base.x
+            : axios.toLowerCase() === 'y'
+                ? base.y
+                : base.z
+        let lastZ = depthBase;
         const nearestCache = new Map<number, { blockId: string; zOffset: number }>()
         for (let rawX = 0; rawX < width; rawX++) {
             for (let rawY = 0; rawY < height; rawY++) {
                 let i = rawY * width + rawX
-                if (rawY == 0) lastZ = base.z;
+                if (rawY == 0) lastZ = depthBase;
                 let imageX = rawX, imageY = rawY;
                 switch(axios.toLowerCase()) {
                     case 'x':
@@ -486,54 +507,47 @@ export class MapArtProcessor {
                 const g = context.data[index + 1]
                 const b = context.data[index + 2]
 
-                let minDistance = Infinity;
-                let closestBlockId = '';
                 if (context.data[index + 3] === 0 && context.replaceAir) {
-                    context.blockList.addBlockByPos(x3d, y3d, z3d, 'air');
+                    const airPosition = this.positionAtDepth(
+                        axios,
+                        x3d,
+                        y3d,
+                        z3d,
+                        lastZ,
+                    )
+                    context.blockList.addBlockByPos(
+                        airPosition.x,
+                        airPosition.y,
+                        airPosition.z,
+                        'air'
+                    );
                     continue;
                 }
-                const threeDLayers = [
-                    { brightness: 255, zOffset: 1 },
-                    { brightness: 180, zOffset: -1 },
-                    { brightness: 220, zOffset: 0 }
-
-                ];
-                let tempZ = 0
+                if (context.data[index + 3] === 0) {
+                    // Keep transparent pixels sparse when explicit air is
+                    // disabled; matching their RGB bytes would select a dark
+                    // palette block and produce halos around image edges.
+                    continue;
+                }
                 const cacheKey = this.createCacheKey(r, g, b, context.threeD)
                 const cached = nearestCache.get(cacheKey)
-                if (cached) {
-                    closestBlockId = cached.blockId
-                    tempZ = cached.zOffset
-                } else if(context.threeD){
-                    for (const layer of threeDLayers) {
-                        const factor = layer.brightness / 255
-                        for (const entry of context.colorTable) {
-                            const adjustedR = Math.round(entry.r * factor)
-                            const adjustedG = Math.round(entry.g * factor)
-                            const adjustedB = Math.round(entry.b * factor)
-                            const distance = colorDistance(r, g, b, adjustedR, adjustedG, adjustedB)
-                            if (distance < minDistance) {
-                                minDistance = distance
-                                closestBlockId = entry.blockId
-                                tempZ = layer.zOffset
-                            }
-                        }
-                    }
+                const nearest = cached || this.findNearestColor(
+                    r,
+                    g,
+                    b,
+                    context.threeD,
+                    context.colorTable,
+                    colorOptions,
+                )
+                const closestBlockId = nearest.blockId
+                const tempZ = nearest.zOffset
+                if (!cached) {
                     nearestCache.set(cacheKey, { blockId: closestBlockId, zOffset: tempZ })
-                }else {
-                    for (const entry of context.colorTable) {
-                        const distance = colorDistance(r, g, b, entry.r, entry.g, entry.b)
-                        if (distance < minDistance) {
-                            minDistance = distance
-                            closestBlockId = entry.blockId
-                        }
-                    }
-                    nearestCache.set(cacheKey, { blockId: closestBlockId, zOffset: 0 })
                 }
-                lastZ = lastZ + tempZ;
+                lastZ += tempZ;
                 if(context.threeD){
-                    if (lastZ >= context.maxZ) lastZ = 0;
-                    if (lastZ <= -context.maxZ) lastZ = 0;
+                    const depthLimit = Math.max(1, Math.abs(context.maxZ))
+                    lastZ = Math.max(-depthLimit, Math.min(depthLimit, lastZ));
                 }
                 if (lastZ < minZ){
                     minZ = lastZ
@@ -543,17 +557,13 @@ export class MapArtProcessor {
                 }
 
                 if (closestBlockId) {
-                    switch(axios.toLowerCase()) {
-                        case 'x':
-                            context.blockList.addBlockByPos(lastZ, y3d, z3d, closestBlockId);
-                            break;
-                        case 'y':
-                            context.blockList.addBlockByPos(x3d, lastZ, z3d, closestBlockId);
-                            break;
-                        case 'z':
-                            context.blockList.addBlockByPos(x3d, y3d, lastZ, closestBlockId);
-                            break;
-                    }
+                    const position = this.positionAtDepth(axios, x3d, y3d, z3d, lastZ)
+                    context.blockList.addBlockByPos(
+                        position.x,
+                        position.y,
+                        position.z,
+                        closestBlockId
+                    )
                 }
             }
 
@@ -569,7 +579,7 @@ export class MapArtProcessor {
             height: number
             blockSize: number
             ctx: CanvasRenderingContext2D
-            colorTable: Array<{ r: number; g: number; b: number; blockId: string }>
+            colorTable: MapArtColorEntry[]
             blockImages: Map<string, HTMLImageElement>
             replaceAir: boolean
             nearestCache: Map<number, string>
@@ -585,14 +595,26 @@ export class MapArtProcessor {
             const g = context.data[index + 1]
             const b = context.data[index + 2]
 
+            if (context.data[index + 3] === 0) {
+                if (context.replaceAir) {
+                    context.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    context.ctx.fillRect(
+                        x * context.blockSize,
+                        y * context.blockSize,
+                        context.blockSize,
+                        context.blockSize
+                    );
+                }
+                // Leave transparent pixels empty when explicit air is off.
+                continue
+            }
 
-            let minDistance = Infinity
-            let closestBlockId = ''
             const cacheKey = this.createCacheKey(r, g, b, false)
             const cached = context.nearestCache.get(cacheKey)
-            if (cached !== undefined) {
-                closestBlockId = cached
-            } else {
+            let closestBlockId = cached
+            if (closestBlockId === undefined) {
+                let minDistance = Infinity
+                let bestId = ''
                 for (const entry of context.colorTable) {
                     const distance = this.colorDistanceByMode(
                         context.colorOptions.matchMode,
@@ -603,33 +625,31 @@ export class MapArtProcessor {
                         entry.g,
                         entry.b
                     )
-                    if (distance < minDistance) {
+                    if (this.isBetterColorCandidate(
+                        distance,
+                        minDistance,
+                        0,
+                        0,
+                        entry.blockId,
+                        bestId,
+                    )) {
                         minDistance = distance
-                        closestBlockId = entry.blockId
+                        bestId = entry.blockId
                     }
                 }
+                closestBlockId = bestId
                 context.nearestCache.set(cacheKey, closestBlockId)
             }
-            if (context.data[index + 3] == 0 && context.replaceAir) {
-                context.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                context.ctx.fillRect(
-                    x * context.blockSize,
-                    y * context.blockSize,
-                    context.blockSize,
-                    context.blockSize
-                );
-            }else {
-                if (closestBlockId) {
-                    const img = context.blockImages.get(closestBlockId)
-                    if (img) {
-                        context.ctx.drawImage(
-                            img,
-                            x * context.blockSize,
-                            y * context.blockSize,
-                            context.blockSize,
-                            context.blockSize
-                        )
-                    }
+            if (closestBlockId) {
+                const img = context.blockImages.get(closestBlockId)
+                if (img) {
+                    context.ctx.drawImage(
+                        img,
+                        x * context.blockSize,
+                        y * context.blockSize,
+                        context.blockSize,
+                        context.blockSize
+                    )
                 }
             }
 
@@ -640,16 +660,46 @@ export class MapArtProcessor {
         return ((threeD ? 1 : 0) << 24) | (r << 16) | (g << 8) | b
     }
 
+    private positionAtDepth(
+        axios: 'x' | 'y' | 'z' | string,
+        x: number,
+        y: number,
+        z: number,
+        depth: number,
+    ): { x: number; y: number; z: number } {
+        switch (axios.toLowerCase()) {
+            case 'x': return { x: depth, y, z }
+            case 'z': return { x, y, z: depth }
+            case 'y':
+            default: return { x, y: depth, z }
+        }
+    }
+
+    private adjustPixels(
+        data: Uint8ClampedArray,
+        colorOptions: ColorMatchOptions
+    ): Uint8ClampedArray {
+        const buffer = new Uint8ClampedArray(data)
+        for (let i = 0; i < buffer.length; i += 4) {
+            if (buffer[i + 3] === 0) continue
+            const adjusted = this.adjustColor(buffer[i], buffer[i + 1], buffer[i + 2], colorOptions)
+            buffer[i] = adjusted.r
+            buffer[i + 1] = adjusted.g
+            buffer[i + 2] = adjusted.b
+        }
+        return buffer
+    }
+
     private async applyDithering(
         data: Uint8ClampedArray,
         width: number,
         height: number,
         threeD: boolean = false,
-        colorTable: Array<{ r: number; g: number; b: number; blockId: string }>,
+        colorTable: MapArtColorEntry[],
         colorOptions: ColorMatchOptions,
         ditherOptions: DitherOptions
     ): Promise<Uint8ClampedArray> {
-        const buffer = data
+        const buffer = new Uint8ClampedArray(data)
         const nearestCache = new Map<number, { r: number; g: number; b: number; blockId: string }>()
         const mode: DitherMode = ditherOptions.mode || 'floyd'
         const adaptive = Math.min(1, Math.max(0, ditherOptions.adaptiveThreshold ?? 0.35))
@@ -664,8 +714,11 @@ export class MapArtProcessor {
             return buffer
         }
 
+        const edgeReference = new Uint8ClampedArray(buffer)
         for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
+            const reverse = y % 2 === 1
+            for (let step = 0; step < width; step++) {
+                const x = reverse ? width - 1 - step : step
                 const idx = (y * width + x) * 4
                 if (buffer[idx + 3] === 0) {
                     continue
@@ -674,19 +727,22 @@ export class MapArtProcessor {
                 const oldR = buffer[idx]
                 const oldG = buffer[idx + 1]
                 const oldB = buffer[idx + 2]
-                const adjusted = this.adjustColor(oldR, oldG, oldB, colorOptions)
 
-                let sampleR = adjusted.r
-                let sampleG = adjusted.g
-                let sampleB = adjusted.b
+                let sampleR = oldR
+                let sampleG = oldG
+                let sampleB = oldB
 
                 if (mode === 'ordered') {
                     const threshold = bayer4[y % 4][x % 4] / 16 - 0.5
-                    const edge = this.computeEdgeStrength(buffer, x, y, width, height)
+                    const edge = this.computeEdgeStrength(edgeReference, x, y, width, height)
                     const amp = 24 * (1 - adaptive * (1 - edge))
                     sampleR = clamp(sampleR + threshold * amp)
                     sampleG = clamp(sampleG + threshold * amp)
                     sampleB = clamp(sampleB + threshold * amp)
+                    buffer[idx] = sampleR
+                    buffer[idx + 1] = sampleG
+                    buffer[idx + 2] = sampleB
+                    continue
                 }
 
                 const cacheKey = this.createCacheKey(sampleR, sampleG, sampleB, threeD)
@@ -700,34 +756,32 @@ export class MapArtProcessor {
                 buffer[idx + 1] = nearest.g
                 buffer[idx + 2] = nearest.b
 
-                if (mode === 'ordered') {
-                    continue
-                }
-
                 const errR = oldR - nearest.r
                 const errG = oldG - nearest.g
                 const errB = oldB - nearest.b
-                const edge = this.computeEdgeStrength(buffer, x, y, width, height)
+                const edge = this.computeEdgeStrength(edgeReference, x, y, width, height)
                 const adaptiveScale = Math.max(0.2, 1 - adaptive * (1 - edge) * 0.8)
 
                 if (mode === 'atkinson') {
-                    this.diffuseError(buffer, x + 1, y, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
-                    this.diffuseError(buffer, x + 2, y, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
-                    this.diffuseError(buffer, x - 1, y + 1, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
+                    const direction = reverse ? -1 : 1
+                    this.diffuseError(buffer, x + direction, y, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
+                    this.diffuseError(buffer, x + direction * 2, y, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
+                    this.diffuseError(buffer, x - direction, y + 1, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
                     this.diffuseError(buffer, x, y + 1, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
-                    this.diffuseError(buffer, x + 1, y + 1, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
+                    this.diffuseError(buffer, x + direction, y + 1, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
                     this.diffuseError(buffer, x, y + 2, width, height, errR, errG, errB, 1 / 8, adaptiveScale)
                 } else {
-                    if (x < width - 1) {
-                        this.diffuseError(buffer, x + 1, y, width, height, errR, errG, errB, 7 / 16, adaptiveScale)
+                    const direction = reverse ? -1 : 1
+                    if (x + direction >= 0 && x + direction < width) {
+                        this.diffuseError(buffer, x + direction, y, width, height, errR, errG, errB, 7 / 16, adaptiveScale)
                     }
                     if (y < height - 1) {
-                        if (x > 0) {
-                            this.diffuseError(buffer, x - 1, y + 1, width, height, errR, errG, errB, 3 / 16, adaptiveScale)
+                        if (x - direction >= 0 && x - direction < width) {
+                            this.diffuseError(buffer, x - direction, y + 1, width, height, errR, errG, errB, 3 / 16, adaptiveScale)
                         }
                         this.diffuseError(buffer, x, y + 1, width, height, errR, errG, errB, 5 / 16, adaptiveScale)
-                        if (x < width - 1) {
-                            this.diffuseError(buffer, x + 1, y + 1, width, height, errR, errG, errB, 1 / 16, adaptiveScale)
+                        if (x + direction >= 0 && x + direction < width) {
+                            this.diffuseError(buffer, x + direction, y + 1, width, height, errR, errG, errB, 1 / 16, adaptiveScale)
                         }
                     }
                 }
@@ -799,36 +853,39 @@ export class MapArtProcessor {
         g: number,
         b: number,
         threeD: boolean = false,
-        colorTable: Array<{ r: number; g: number; b: number; blockId: string }>,
+        colorTable: MapArtColorEntry[],
         colorOptions: ColorMatchOptions
-    ): { r: number; g: number; b: number; blockId: string } {
+    ): { r: number; g: number; b: number; blockId: string; zOffset: number } {
         let minDistance = Infinity
         let nearestEntry: { r: number; g: number; b: number } = { r: 0, g: 0, b: 0 }
         let blockId = ''
+        let bestOffset = 0
         const threeDLayers = [
-            { brightness: 255 },
-            { brightness: 180 },
-            { brightness: 220 }
-
+            { zOffset: 1 },
+            { zOffset: 0 },
+            { zOffset: -1 }
         ];
         if (threeD){
             threeDLayers.forEach(layer => {
-                const factor = layer.brightness / 255
                 for (const entry of colorTable) {
-                    const adjustedColor = {
-                        r: Math.round(entry.r * factor),
-                        g: Math.round(entry.g * factor),
-                        b: Math.round(entry.b * factor)
-                    }
+                    const adjustedColor = this.layerColor(entry, layer.zOffset)
                     const distance = this.colorDistance(
                         colorOptions.matchMode,
                         r, g, b,
                         adjustedColor.r, adjustedColor.g, adjustedColor.b
                     )
-                    if (distance < minDistance) {
+                    if (this.isBetterColorCandidate(
+                        distance,
+                        minDistance,
+                        layer.zOffset,
+                        bestOffset,
+                        entry.blockId,
+                        blockId
+                    )) {
                         minDistance = distance
                         nearestEntry = adjustedColor
                         blockId = entry.blockId
+                        bestOffset = layer.zOffset
                     }
                 }
             })
@@ -839,7 +896,14 @@ export class MapArtProcessor {
                     r, g, b,
                     entry.r, entry.g, entry.b
                 )
-                if (distance < minDistance) {
+                if (this.isBetterColorCandidate(
+                    distance,
+                    minDistance,
+                    0,
+                    bestOffset,
+                    entry.blockId,
+                    blockId
+                )) {
                     minDistance = distance
                     nearestEntry = {
                         r: entry.r,
@@ -855,7 +919,42 @@ export class MapArtProcessor {
             r: nearestEntry.r,
             g: nearestEntry.g,
             b: nearestEntry.b,
-            blockId: blockId
+            blockId: blockId,
+            zOffset: bestOffset,
+        }
+    }
+
+    private isBetterColorCandidate(
+        distance: number,
+        bestDistance: number,
+        offset: number,
+        bestOffset: number,
+        candidateId: string,
+        bestId: string
+    ): boolean {
+        const epsilon = 1e-9
+        if (distance < bestDistance - epsilon) return true
+        if (Math.abs(distance - bestDistance) > epsilon) return false
+        const candidateDepth = Math.abs(offset)
+        const bestDepth = Math.abs(bestOffset)
+        return candidateDepth < bestDepth
+            || (candidateDepth === bestDepth && candidateId < (bestId || '~'))
+    }
+
+    private layerColor(
+        entry: MapArtColorEntry,
+        zOffset: number
+    ): { r: number; g: number; b: number } {
+        const explicit =
+            zOffset < 0 ? entry.low : zOffset > 0 ? entry.high : entry.normal
+        if (explicit && explicit.length >= 3) {
+            return { r: explicit[0], g: explicit[1], b: explicit[2] }
+        }
+        const factor = (zOffset < 0 ? 180 : zOffset > 0 ? 255 : 220) / 255
+        return {
+            r: Math.round(entry.r * factor),
+            g: Math.round(entry.g * factor),
+            b: Math.round(entry.b * factor)
         }
     }
 
@@ -893,7 +992,7 @@ export class MapArtProcessor {
     }
 
     private colorDistance(
-        mode: 'rgb' | 'weighted' | 'redmean',
+        mode: 'rgb' | 'weighted' | 'redmean' | 'oklab',
         r1: number, g1: number, b1: number,
         r2: number, g2: number, b2: number
     ): number {
@@ -907,15 +1006,43 @@ export class MapArtProcessor {
             const rmean = (r1 + r2) / 2
             return (2 + rmean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rmean) / 256) * db * db
         }
+        if (mode === 'oklab') {
+            const first = this.toOklab(r1, g1, b1)
+            const second = this.toOklab(r2, g2, b2)
+            const dl = first[0] - second[0]
+            const da = first[1] - second[1]
+            const db = first[2] - second[2]
+            return dl * dl + da * da + db * db
+        }
         return dr * dr + dg * dg + db * db
     }
 
     private colorDistanceByMode(
-        mode: 'rgb' | 'weighted' | 'redmean',
+        mode: 'rgb' | 'weighted' | 'redmean' | 'oklab',
         r1: number, g1: number, b1: number,
         r2: number, g2: number, b2: number
     ): number {
         return this.colorDistance(mode, r1, g1, b1, r2, g2, b2)
+    }
+
+    private toOklab(r: number, g: number, b: number): [number, number, number] {
+        const linear = (value: number) => {
+            const normalized = value / 255
+            return normalized <= 0.04045
+                ? normalized / 12.92
+                : Math.pow((normalized + 0.055) / 1.055, 2.4)
+        }
+        const red = linear(r)
+        const green = linear(g)
+        const blue = linear(b)
+        const l = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue)
+        const m = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue)
+        const s = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue)
+        return [
+            0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        ]
     }
 
     private async yieldToMainThread() {

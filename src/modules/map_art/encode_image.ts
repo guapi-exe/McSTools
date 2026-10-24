@@ -29,6 +29,7 @@ export const encode_image = async (file: File | undefined): Promise<ProcessedIma
         };
 
         img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
             reject(new Error('图片加载失败'));
         };
 

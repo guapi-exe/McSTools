@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {navigationGuard} from "../modules/navigation.ts";
 import {onBeforeRouteLeave} from "vue-router";
-import {opacity} from "../modules/theme.ts";
 import {openLink, toast} from "../modules/others.ts";
 import { useI18n } from 'vue-i18n';
 
@@ -12,17 +11,17 @@ const qqln = async () => {
 onBeforeRouteLeave(navigationGuard)
 </script>
 
-<template class="page-wrapper full-screen-page">
+<template>
+  <div class="page-view">
   <v-row no-gutters
          class="mb-4 animate-row"
-         :class="{ 'animate-row-out': isLeaving }"
   >
     <v-col class="mb-4" cols="12">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4" hover>
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-3 text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2" hover>
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon icon="mdi-message-alert-outline" class="mr-2"></v-icon>
-            <span class="text-h5">{{ t('report.title') }}</span>
+            <span class="text-h6">{{ t('report.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
         <v-card-text>
@@ -39,11 +38,11 @@ onBeforeRouteLeave(navigationGuard)
 
     </v-col>
     <v-col cols="12">
-      <v-card :style="{ '--surface-alpha': opacity }">
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-2 text-medium-emphasis" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card>
+        <v-toolbar density="compact" class="bg-surface-container pa-3 text-medium-emphasis">
           <v-toolbar-title>
             <v-icon icon="mdi-compass-outline" class="mr-2"></v-icon>
-            <span class="text-h7">{{ t('report.subtitle') }}</span>
+            <span class="text-subtitle-1">{{ t('report.subtitle') }}</span>
           </v-toolbar-title>
         </v-toolbar>
         <v-card-text>
@@ -64,12 +63,12 @@ onBeforeRouteLeave(navigationGuard)
 
                       <v-toolbar-title class="content-wrapper">
                         <v-icon icon="mdi-github" class="mr-2"></v-icon>
-                        <span class="text-h7">{{ t('report.channels.github.title') }}</span>
+                        <span class="text-subtitle-1">{{ t('report.channels.github.title') }}</span>
                       </v-toolbar-title>
                     </v-toolbar>
 
                     <v-card-text>
-                      <span class="text-h8">{{ t('report.channels.github.desc') }}</span>
+                      <span class="text-body-2">{{ t('report.channels.github.desc') }}</span>
                     </v-card-text>
                   </v-card>
                 </template>
@@ -91,12 +90,12 @@ onBeforeRouteLeave(navigationGuard)
 
                       <v-toolbar-title class="content-wrapper">
                         <v-icon icon="mdi-qqchat" class="mr-2"></v-icon>
-                        <span class="text-h7">{{ t('report.channels.qqGroup.title') }}</span>
+                        <span class="text-subtitle-1">{{ t('report.channels.qqGroup.title') }}</span>
                       </v-toolbar-title>
                     </v-toolbar>
 
                     <v-card-text>
-                      <span class="text-h8">{{ t('report.channels.qqGroup.desc') }}</span>
+                      <span class="text-body-2">{{ t('report.channels.qqGroup.desc') }}</span>
                     </v-card-text>
                   </v-card>
                 </template>
@@ -118,12 +117,12 @@ onBeforeRouteLeave(navigationGuard)
 
                       <v-toolbar-title class="content-wrapper">
                         <v-icon icon="mdi-message-processing-outline" class="mr-2"></v-icon>
-                        <span class="text-h7">{{ t('report.channels.qqChannel.title') }}</span>
+                        <span class="text-subtitle-1">{{ t('report.channels.qqChannel.title') }}</span>
                       </v-toolbar-title>
                     </v-toolbar>
 
                     <v-card-text>
-                      <span class="text-h8">{{ t('report.channels.qqChannel.desc') }}</span>
+                      <span class="text-body-2">{{ t('report.channels.qqChannel.desc') }}</span>
                     </v-card-text>
                   </v-card>
                 </template>
@@ -134,6 +133,7 @@ onBeforeRouteLeave(navigationGuard)
       </v-card>
     </v-col>
   </v-row>
+  </div>
 </template>
 
 <style scoped>

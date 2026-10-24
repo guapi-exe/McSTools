@@ -34,6 +34,23 @@ export default {
     clickToExpandFilter: 'フィルター条件を展開',
     keywordFilter: 'キーワードフィルター',
     inputBlueprintNameOrDesc: '設計図名または説明を入力',
+    filter: {
+      type: '設計図タイプ',
+      allTypes: 'すべてのタイプ',
+      gameVersion: 'ゲームバージョン',
+      allVersions: 'すべてのバージョン',
+    },
+    toolbar: {
+      total: '全 {count} 件',
+      perPage: '表示件数',
+      jumpTo: '移動',
+      pageUnit: 'ページ',
+      go: '移動',
+      sortNewest: '新しい順',
+      sortOldest: '古い順',
+      sortUpdated: '最近の更新',
+      sortName: '名前順',
+    },
     allBlueprints: 'すべての設計図',
     createCategory: 'カテゴリ作成',
     createNewCategory: '新しいカテゴリを作成',
@@ -96,6 +113,8 @@ export default {
     extType: '拡張子タイプ',
     originSize: '元サイズ',
     version: 'バージョン',
+      javaTargetVersion: 'Java 対象バージョン',
+      legacyTargetVersion: '旧版対象バージョン',
     subVersion: 'サブバージョン',
     weSubVersion0: '0: WE最新フォーマット',
     weSubVersion1: '1: WE 1.16-',
@@ -127,6 +146,8 @@ export default {
     bgDesc: '1.12+建築ヘルパー3種バリアント対応',
     beTitle: 'MC BE',
     beDesc: 'Minecraft BE 1.18+構造ブロックフォーマット対応',
+      mcEditTitle: 'WorldEdit旧版',
+      mcEditDesc: 'Minecraft 1.12以下の MCEdit .schematic 旧形式対応',
     toLitematic: '投影設計図へ変換',
     toCreate: 'バニラ構造へ変換',
     toWE: 'WorldEditへ変換',
@@ -139,6 +160,7 @@ export default {
     startConfirm: '開始確認',
     exportConfirm: 'エクスポート確認',
     convertToTargetVersion: '目標バージョンに変換',
+    targetOutputVersion: '出力バージョン',
     hasSubVersion: 'サブバージョンが存在します'
   },
   toolsReplace: {
@@ -194,6 +216,7 @@ export default {
     type: 'タイプ',
     size: 'サイズ',
     lmVersion: '投影フォーマットバージョン',
+    gameVersion: 'ゲームバージョン',
     status: '状態',
     deleted: '削除済み',
     normal: '正常',
@@ -210,6 +233,10 @@ export default {
     noSchematic: '設計図未選択',
     editLmVersion: '投影バージョン編集',
     editLmVersionHint: '建築投影・バージョン管理',
+    editGameVersion: 'ゲームバージョンを編集',
+    editGameVersionHint: 'ブロック状態 ID が変更されたリリースのみ表示し、設計図の DataVersion も更新します。',
+    confirmGameVersion: '対象ゲームバージョンを確認してください。旧式 .schematic はメタデータのみ更新します。',
+    gameVersionUpdated: 'ゲームバージョンを更新しました',
     airBlocks: '空気ブロック',
     clearable: '削除可能',
     clearAirBlocks: '空気ブロックを削除',
@@ -256,6 +283,7 @@ export default {
     count: '数量',
     percentage: '割合',
     noMaterialData: '材料データなし',
+    moreRemaining: 'スクロールで残り {count} 件を読み込む',
     noChartData: 'チャート表示可能なデータなし'
   },
   toolsThreeD: {
@@ -375,6 +403,10 @@ export default {
     darkMode: 'ダークモード',
     lightMode: 'ライトモード',
     title: '設定',
+    tabs: {
+      base: '基本設定',
+      resource: 'リソース管理'
+    },
     update: {
       title: '更新設定',
       autoUpdate: '自動更新を有効にする',
@@ -597,7 +629,8 @@ export default {
     tabs: {
       mapArt: 'マップアート',
       ModelToSchem: 'モデルを設計図へ',
-      redstoneMusic: 'レッドストーンミュージック'
+      redstoneMusic: 'レッドストーンミュージック',
+      batchConvert: '一括変換'
     },
     modelToSCHEM: {
       tip: 'マップアートのブロック・色対応表に基づき、現在選択中の設計図モデルを投影してマップアート設計図として出力します。',
@@ -649,6 +682,7 @@ export default {
         orange: 'ビビッドオレンジ',
         yellow: 'パイナップルイエロー',
         brown: 'オークブラウン',
+        whiteDark: 'ホワイトナイト',
         greyDark: 'ダークモード'
       }
     },

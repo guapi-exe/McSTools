@@ -1,0 +1,194 @@
+{
+  "status": "implemented_native_functional_performance_and_localization_verified",
+  "nativeIntegration": "docs/desktop-native-integration.json",
+  "source": {
+    "repository": "new_mcs",
+    "revision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "files": [
+      "apps/web/app/utils/tools/map-art.ts",
+      "apps/web/app/utils/tools/color.ts",
+      "apps/web/app/utils/tools/types.ts",
+      "apps/web/app/data/tool-block-families.generated.ts",
+      "apps/web/app/components/tools/ToolPalettePicker.vue",
+      "apps/web/app/components/tools/ToolBlueprintExport.vue",
+      "apps/web/app/utils/tools/voxelize.ts",
+      "apps/web/app/utils/tools/model-loader.ts",
+      "apps/web/app/pages/tools/sculpture.vue",
+      "apps/web/app/components/tools/ToolModelPreview.client.vue",
+      "apps/web/app/utils/batch-convert.ts",
+      "apps/web/app/components/tools/BlueprintBatchConverter.client.vue",
+      "apps/web/app/pages/tools/batch-convert.vue"
+    ],
+    "localReferenceWasCleanForCopiedFiles": true,
+    "websiteChanged": false
+  },
+  "desktopAdaptations": [
+    "保持原有Vue/Vuetify侧栏/主题",
+    "使用桌面实测blocks_art.json调色板，所有320个ID均在1.21.1注册表验证",
+    "PNG纹理使用同一像素索引并可取消；界面主预览为地图色阶",
+    "舍入后再次限制像素预算；支撑不增加空白高度，支撑柱填到y=0，垂直轴不生成横向脚手架柱",
+    "按需虚拟选择器和可终止Worker，失败/取消不提交迟到结果",
+    "模型回迁封闭空腔填充、固定方块/材质色、三轴任意角和90度预设、四种色差算法及共享版本导出",
+    "模型采样与可见表面构建均为可终止Worker；提前验证4000万采样预算，固定方块模式不分配RGB累加数组，不匹配纹理颜色",
+    "统一源模型/方块预览区，仅1个按需绘制的WebGL渲染器；缓存停用释放上下文、渲染目标与控制器，保留CPU源模型和已完成结果",
+    "源模型旋转采用ZYX Euler以匹配采样器的X→Y→Z操作；只对PBR源材质创建环境贴图，方块预览不创建PMREM",
+    "OBJ多MTL/材质组，GLTF外部BIN和纹理、UV通道、实例、默认骨骼及形变坐标；只读取本地附件，纹理缺失/损坏不静默降级",
+    "模型文件/GLTF声明分配/节点层级/实例三角面预检；纹理采样限制32MiB，预览24万外露面上限不截断生成或导出结果",
+    "网站批量 WASM 会话改为原生有界解析/共享编码器；文件和结果留在 native，Vue 只持有元数据，导入不写蓝图库、不修改源文件",
+    "共用 BlueprintFormatFields 与权威格式目录；批量默认按源文件分别保留真实 DataVersion，完成结果锁定配置；BE 不套 Java 转换",
+    "ZIP32 stored/deflate 输入，校验 CRC 与声明/实际大小；只保留蓝图，路径永不解包到磁盘，UTF-8/UTF-16 有界文件名及大小写去重；输出 ZIP 直接流写 tempfile 后 no-clobber 提交",
+    "串行队列、逐项状态/失败重试/停止/搜索筛选/结果勾选/单份或 ZIP 保存；切页和切工具页签保留队列，清理结果明确确认",
+    "固定行高窗口避开 Vuetify 3.8.1 隐藏尺寸 0 污染：1000 条返回页只渲染 9 行；停止 IPC 未确认前不能开始新任务，避免迟到取消误伤"
+  ],
+  "limits": {
+    "imageFileBytes": 67108864,
+    "decodedSourcePixels": 67108864,
+    "maximumEdge": 2048,
+    "mapPixels": 1048576,
+    "structureVolume": 8000000,
+    "retainedNativeBlocksAcrossStoredSnapshots": 4000000,
+    "nativeSnapshotSlots": 2,
+    "nativeMetadataBytes": 1048576,
+    "nativePaletteEntries": 4096,
+    "textureCanvasPixels": 16777216,
+    "textureCanvasEdge": 8192,
+    "model": {
+      "primaryBytes": 33554432,
+      "allFilesBytes": 67108864,
+      "fileCount": 128,
+      "trianglesIncludingInstances": 200000,
+      "resolution": [
+        8,
+        128
+      ],
+      "barycentricSamples": 40000000,
+      "gltfDeclaredAccessorBytes": 134217728,
+      "gltfDeclaredBufferBytes": 67108864,
+      "gltfNodeDepth": 128,
+      "sampledTextures": 32,
+      "sampledTextureEdge": 1024,
+      "sampledTextureBytesTotal": 33554432,
+      "previewExposedFaces": 240000
+    },
+    "batch": {
+      "files": 1000,
+      "inputBytes": 268435456,
+      "zipCompressedBytes": 134217728,
+      "outputBytes": 536870912,
+      "zipDirectoryRecords": 16384,
+      "rawMetadataBytes": 4096,
+      "archiveDisplayNameBytes": 1024,
+      "virtualRowHeight": 106,
+      "virtualViewportHeight": 530,
+      "maximumRenderedRows": 9
+    },
+    "note": "不是进程RSS保证。图片像素数在浏览器读取尺寸后检查，模型源纹理先由Three/浏览器解码，再缩小取色；不能保证恶意编码图片零分配。模型格式解析仍在主线程，采样和外露面构建在Worker。原生快照释放后被已开始导出持有的Arc会存活至该操作结束。批量解析沿用 parser-safety 预算；取消在解析/编码边界检查，不承诺正在解析的大文件立即退出。"
+  },
+  "sourceVersion": {
+    "dataVersion": 3955,
+    "registry": "1.21.1",
+    "reason": "与网站生成器canonical source一致；不从用户上传图片猜测版本。MCEdit仍必须明确选旧版目标。"
+  },
+  "protocol": {
+    "command": "stage_generated_blueprint",
+    "body": "raw binary: u32 LE metadata length, UTF-8 JSON(protocol/name/size/palette), dense YZX u16 LE",
+    "release": "release_generated_blueprint(generationId)",
+    "exportSource": "{kind: generated, generation_id}",
+    "writes": "仅shared save_blueprint_export执行另存/入库；准备快照不写盘"
+  },
+  "validation": {
+    "native": "157 passed, 2 ignored; generated snapshots 4 + batch/archive 12 tests",
+    "frontend": "44 Node tests (18 toolbox + 5 batch queue), vue-tsc + Vite build",
+    "browser": "Playwright CLI: real Vue/worker/canvas/palette/PNG, scripts/testing/toolbox-ipc-fixture.js mocks native bridge",
+    "performance": {
+      "scenario": "1024x1024,320 blocks,relief,foreground navigation",
+      "samples": 60,
+      "maxFrameMs": 30.2,
+      "blankFrames": 0,
+      "targetVisibleMs": 66.2,
+      "workerTerminateMs": 23.3,
+      "caveat": "Local diagnostic sample, not benchmark or native WebView guarantee"
+    },
+    "screenshots": [
+      "output/playwright/api-v1/toolbox-export-legacy-1000.png",
+      "output/playwright/api-v1/toolbox-palette-colors-1000.png",
+      "output/playwright/api-v1/model-export-legacy-1000.png",
+      "output/playwright/api-v1/model-cube-preview-1000.png",
+      "output/playwright/api-v1/model-gltf-source-1000.png",
+      "output/playwright/api-v1/batch-results-1000.png",
+      "output/playwright/api-v1/batch-virtual-1000.png",
+      "output/playwright/api-v1/batch-legacy-detail-1000.png",
+      "output/playwright/api-v1/batch-shared-fields-regression-1000.png"
+    ],
+    "batch": {
+      "native": "九种来源格式/子格式组合到同一版本 Litematica；精确3578保留、旧版5元数据；错误隔离、配置锁定、取消/迟到会话、原始IPC、原子输入/输出预算、无覆盖原子文件/ZIP往返；ZIP stored/deflate/CRC/流式descriptor/截断/伪造大小/路径/长Unicode重名",
+      "browser": "scripts/testing/toolbox-ipc-fixture.js + batch-ipc-fixture.js；真实Vue界面但原生桥模拟，不宣称端到端系统保存验证。失败隔离/仅失败重试/结果选择/单份及ZIP另存/拒绝覆盖/初始化重试/清空确认/页签恢复/搜索/拖入/取消都已检查",
+      "version": "默认不猜来源；现代源MCEdit需显式旧版，选1.7.10发targetDataVersion5；BE参数null且overrides空；共享控件在真实地图画生成后做同样回归，关闭释放快照",
+      "virtualization": "发现旧实现返回1000行，固定行高后返回9行、滚底7行；1000px无横向溢出",
+      "navigation": {
+        "scenario": "1000 queued metadata records, one 800ms simulated native conversion, warmed foreground browser",
+        "framesEach": 60,
+        "maxFrameMs": [
+          24.2,
+          24.2
+        ],
+        "blankFrames": [
+          0,
+          0
+        ],
+        "startedPerRound": [
+          1,
+          1
+        ],
+        "successAfterCancel": [
+          0,
+          0
+        ],
+        "caveat": "单机浏览器诊断，不是原生计算、WebView或60fps保证；修复前观察到121.1ms长帧"
+      },
+      "stopAcknowledgement": "1200ms延迟停止回包时下一轮保持禁用；确认后恢复执行成功，未误取消新任务",
+      "musicInspection": "redStoneMusic.vue仍是提示占位，没有需要治理的音频/定时器/Worker；网站工具目录也未提供音乐工具"
+    },
+    "model": {
+      "pureTests": "封闭8³空壳296/实心512、开放模型不填内腔、旋转次序和比例、纹理repeat/mirror/clamp/flipY、固定色不污染匹配候选、采样提前拒绝、表面法线/隐藏面、读入取消和格式预算",
+      "loader": "scripts/testing/model-loader-checks.js: 13 browser cases covering OBJ, ASCII/binary STL, grouped MTL/PNG, GLTF BIN/PNG/UV1, instances, skin+morph, GLB and rejected attachments",
+      "protocol": "真实UI/Worker: 8³实心512石头，二进制快照1124字节；旧版未指定目标禁止保存，选择1.7.10后format6/subtype-1/targetDataVersion5；关闭释放快照。仍是模拟原生IPC，不是系统保存对话框验收",
+      "lifecycle": "离开后旧context.isContextLost=true、旧canvas.isConnected=false、DOM画布0；回来新画布/context恢复且结果512保留；压力取消无迟到结果，下一次浏览器检查Worker数0",
+      "layout": "1000×760，导出卡片left120/right880/width760，页面无横向溢出；源GLTF材质预览glError=0；截图均已视觉检查",
+      "navigation": {
+        "scenario": "128 resolution, 120 large triangles, color matching; warmed foreground UI; no concurrent build",
+        "rounds": 3,
+        "framesEach": 60,
+        "maxFrameMs": [
+          42.4,
+          36.3,
+          36.5
+        ],
+        "targetVisibleAfterClickMs": [
+          36,
+          30.6,
+          29.8
+        ],
+        "workerTerminateAfterClickMs": [
+          41.6,
+          34.6,
+          33.1
+        ],
+        "blankFrames": [
+          0,
+          0,
+          0
+        ],
+        "caveat": "单机诊断样本，不是60fps或WebView保证；此前与构建并行的样本出现84.9ms长帧，不纳入空闲条件结果。源格式解析/源纹理解码的长帧与峰值内存仍待原生复核。"
+      }
+    },
+    "final": "Supersedes checkpoint counts above: Node60, Rust168+2ignored; native 1024² map navigation and 128³ filled model/GPU lifecycle, locale persistence and packaged worker checks documented in uiIntegration."
+  },
+  "remaining": [
+    "实际游戏中地图色阶、易碎/重力方块、脚手架支撑核查。",
+    "模型使用默认静态姿态，不运行动画；不承诺Draco/KTX2等未配置解码器的扩展支持；透明材质使用代表色体素化，非离线渲染器。",
+    "跨设备峰值进程RSS/GPU字节未测；已完成真实WebView帧时间与GPU释放，不宣称60fps保证。"
+  ],
+  "excluded": "3D printing",
+  "uiIntegration": "docs/desktop-ui-integration.json"
+}

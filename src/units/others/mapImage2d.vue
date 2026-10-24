@@ -1,96 +1,41 @@
 <script setup lang="ts">
-import {computed, nextTick, onBeforeMount, onMounted, reactive, ref} from "vue";
-import {mapArtData} from "../../modules/map_art/map_art_data.ts"
-import {getBlockImg, toast} from "../../modules/others.ts";
-import {encode_image, image_data, releaseProcessedImage} from "../../modules/map_art/encode_image.ts";
-import {MapArtProcessor} from "../../modules/map_art/image_rebuild.ts";
-import {useI18n} from "vue-i18n";
+import {computed, defineAsyncComponent, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, shallowRef, watch} from 'vue'
+import {materialName} from '../../modules/materials/block_names'
+import {ensureMapArtData, mapArtData} from '../../modules/map_art/map_art_data'
+import {toast} from '../../modules/others'
+import {encode_image, image_data, releaseProcessedImage} from '../../modules/map_art/encode_image'
+import {runMapArt} from '../../modules/toolbox/map-art-client'
+import {fitAspect} from '../../modules/toolbox/map-art'
+import {mapColorCanvas, mapTextureCanvas} from '../../modules/toolbox/map-art-preview'
+import type {MapArtResult, RGB, ToolBlock} from '../../modules/toolbox/types'
+import {useI18n} from 'vue-i18n'
+const ToolPalettePicker = defineAsyncComponent(() => import('./ToolPalettePicker.vue'))
+const GeneratedBlueprintExport = defineAsyncComponent(() => import('./GeneratedBlueprintExport.vue'))
+const {t: $t, locale} = useI18n()
 const exportSettings = reactive({
-  width: 128,
-  height: 128,
-  dithering: true,
-  maxResolution: 4096,
-  schematic_type: 1,
-  sub_type: -1,
-  axios: 'y',
-  targetRotation: 0,
+  width: 128, height: 128, maxResolution: 2048,
+  axios: 'y' as 'x' | 'y' | 'z', targetRotation: 0,
   ditherMode: 'floyd' as 'floyd' | 'atkinson' | 'ordered' | 'none',
-  adaptiveThreshold: 0.35,
-  matchMode: 'weighted' as 'rgb' | 'weighted' | 'redmean',
-  brightness: 1,
-  contrast: 1,
-  saturation: 1,
-  gamma: 1
-});
-const replaceAir = ref(false)
-const schematicType = ref()
-const subType = ref()
-const { t: $t } = useI18n()
-const schematicTypes = ref([
-  {
-    value: 1,
-    label: '香草结构',
-    subtypes: [
-      { value: -1, label: '默认格式' }
-    ]
-  },
-  {
-    value: 2,
-    label: '投影结构',
-    subtypes: [
-      { value: -1, label: '默认格式' }
-    ]
-  },
-  {
-    value: 3,
-    label: '创世神',
-    subtypes: [
-      { value: 0, label: '1.20+' },
-      { value: 1, label: '1.16+' }
-    ]
-  },
-  {
-    value: 4,
-    label: '建筑小帮手',
-    subtypes: [
-      { value: 0, label: '1.20+' },
-      { value: 1, label: '1.16+' },
-      { value: 2, label: '1.12+' }
-    ]
-  },
-  {
-    value: 5,
-    label: 'MC BE',
-    subtypes: [
-      { value: -1, label: '默认格式' },
-    ]
-  }
-])
-const hasImage = ref(false)
+  adaptiveThreshold: .35, matchMode: 'oklab' as 'rgb' | 'weighted' | 'redmean' | 'oklab',
+  brightness: 1, contrast: 1, saturation: 1, gamma: 1,
+  alphaThreshold: 127, backing: false, support: false, supportBlock: 'minecraft:stone',
+})
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
-const resize = ref(1)
-const isProcessing = ref(false)
-const exportLoading = ref(false)
-const exportImageLoading = ref(false)
-const dialog = ref(false)
-const fullscreenDialog = ref(false)
-const selectedBlocks = ref<string[]>([]);
-const expandedCategories = ref<string[]>([])
-const imageBuild = ref<MapArtProcessor>();
-const mapImg = ref<File>();
-const finallyImage = ref<HTMLCanvasElement>()
-const threeD = ref<boolean>()
-const maxZ = ref(60)
-const previewImage = ref<string>("");
-const blocksLoaded = ref(false);
+const resize = ref(1), isProcessing = ref(false), progress = ref(0)
+const exportImageLoading = ref(false), dialog = ref(false), fullscreenDialog = ref(false)
+const selectedBlocks = ref<string[]>([])
+const mapImg = ref<File>(), finallyImage = shallowRef<HTMLCanvasElement>()
+const threeD = ref(false), maxZ = ref(60), blocksLoaded = ref(false)
+const result = shallowRef<MapArtResult>()
+const hasImage = computed(() => !!result.value)
+const stale = ref(false)
+let controller: AbortController | undefined, imageController: AbortController | undefined
+let epoch = 0, uploadEpoch = 0, active = true, disposed = false
 const fullscreenCanvas = ref<HTMLCanvasElement | null>(null)
 const fsScale = ref(1)
 const fsOffset = reactive({ x: 0, y: 0 })
 const fsDragging = ref(false)
 const fsDragStart = reactive({ x: 0, y: 0 })
-const TEXTURE_EXPORT_BLOCK_SIZE = 32
-const TEXTURE_EXPORT_MAX_DIMENSION = 8192
-const TEXTURE_EXPORT_MAX_PIXELS = 8192 * 8192
 const fsCanvasStyle = computed(() => ({
   transform: `translate(${fsOffset.x}px, ${fsOffset.y}px) scale(${fsScale.value})`,
   transformOrigin: 'center center',
@@ -140,298 +85,136 @@ const onFullscreenMouseMove = (event: MouseEvent) => {
 const onFullscreenMouseUp = () => {
   fsDragging.value = false
 }
-const toggleBlock = (blockId: string) => {
-  const index = selectedBlocks.value.indexOf(blockId)
-  if (index === -1) {
-    selectedBlocks.value.push(blockId)
-  } else {
-    selectedBlocks.value.splice(index, 1)
-  }
-}
-const toggleCategory = async (categoryName: string) => {
-  const category = mapArtData.value.find(c => c.name === categoryName)
-  if (!category) return
 
-  const allSelected = category.items.every(item =>
-      selectedBlocks.value.includes(item.id)
-  )
+function cancelWork() {
+  ++epoch; controller?.abort(); imageController?.abort()
+  controller = undefined; imageController = undefined
+  isProcessing.value = false; exportImageLoading.value = false
+}
+watch([exportSettings, selectedBlocks, threeD, maxZ], () => {
+  cancelWork(); stale.value = !!result.value
+}, {deep: true, flush: 'sync'})
 
-  if (allSelected) {
-    selectedBlocks.value = selectedBlocks.value.filter(
-        id => !category.items.some(item => item.id === id)
-    )
-  } else {
-    const newItems = category.items
-        .filter(item => !selectedBlocks.value.includes(item.id))
-        .map(item => item.id)
-    selectedBlocks.value = [...selectedBlocks.value, ...newItems]
-  }
-}
-const currentSubTypes = computed(() => {
-  const mainType = schematicTypes.value.find(
-      t => t.value === exportSettings.schematic_type
-  )
-  return mainType?.subtypes || []
-})
-const onMainTypeChange = (data: any) => {
-  exportSettings.schematic_type = data.value
-  if (currentSubTypes.value.length > 0) {
-    exportSettings.sub_type = currentSubTypes.value[0].value
-    subType.value = data.subtypes[0]
-  }
-}
-const onSubTypeChange = (data: any) => {
-  exportSettings.sub_type = data.value
-}
-const isCategorySelected = (categoryName: string) => {
-  const category = mapArtData.value.find(c => c.name === categoryName)
-  return category?.items.every(item =>
-      selectedBlocks.value.includes(item.id)
-  ) ?? false
-}
-const refreshImage = async () => {
+async function refreshImage() {
+  if (!image_data.value || !blocksLoaded.value || !active) return
+  cancelWork()
+  const run = epoch, source = image_data.value, options = {...exportSettings}
+  const relief = threeD.value, maxHeight = maxZ.value
+  const selected = new Set(selectedBlocks.value)
+  const palette: ToolBlock[] = (mapArtData.value ?? []).flatMap(category => category.items
+    .filter(block => selected.has(block.id)).map(block => ({
+      id: block.id.includes(':') ? block.id : 'minecraft:' + block.id, label: materialName(block.id, locale.value), group: category.name,
+      color: block.average_rgb as unknown as RGB, normal: block.normal_rgb as unknown as RGB,
+      low: block.low_rgb as unknown as RGB, high: block.high_rgb as unknown as RGB,
+    })))
+  const task = new AbortController(); controller = task
+  isProcessing.value = true; progress.value = 0
   try {
-    if (!image_data.value) return
-    isProcessing.value = true
-    hasImage.value = true
-    imageBuild.value.updateBlocksData(selectedBlocks.value)
-    const resultCanvas = await imageBuild.value.generatePixelArt(
-        image_data.value.file,
-        16,
-        {width: exportSettings.width, height:exportSettings.height},
-        exportSettings.dithering,
-        replaceAir.value,
-        exportSettings.targetRotation as 0 | 90 | 180| 270,
-        {
-          matchMode: exportSettings.matchMode,
-          brightness: exportSettings.brightness,
-          contrast: exportSettings.contrast,
-          saturation: exportSettings.saturation,
-          gamma: exportSettings.gamma,
-        },
-        {
-          mode: exportSettings.ditherMode,
-          adaptiveThreshold: exportSettings.adaptiveThreshold,
-        }
-    );
-    finallyImage.value = resultCanvas
-    const ctx = previewCanvas.value.getContext('2d')
-    if (!ctx) return
-
-    previewCanvas.value.width = resultCanvas.width
-    previewCanvas.value.height = resultCanvas.height
-
-    ctx.drawImage(resultCanvas, 0, 0)
-  }catch (error) {
-    toast.error(`像素画预览生成失败:${error}`, {
-      timeout: 3000
-    });
-  } finally {
-    isProcessing.value = false
-  }
-}
-const uploadImage = async(file: File | undefined) => {
-  try {
-    if (!file) return
-    isProcessing.value = true
-    hasImage.value = true
-    if (image_data.value) {
-      releaseProcessedImage(image_data.value)
-    }
-    image_data.value = await encode_image(file);
-    previewImage.value = image_data.value.objectUrl
-    exportSettings.height = Math.round(image_data.value.height)
-    exportSettings.width = Math.round(image_data.value.width)
-    if (exportSettings.height*16 * exportSettings.width*16 >= 16384* 16384) resize.value = 0.5
-    imageBuild.value.updateBlocksData(selectedBlocks.value)
-    await updateSize()
-    const resultCanvas = await imageBuild.value.generatePixelArt(
-        image_data.value.file,
-        16,
-        {width: exportSettings.width, height:exportSettings.height},
-        exportSettings.dithering,
-        replaceAir.value,
-        exportSettings.targetRotation as 0 | 90 | 180| 270,
-        {
-          matchMode: exportSettings.matchMode,
-          brightness: exportSettings.brightness,
-          contrast: exportSettings.contrast,
-          saturation: exportSettings.saturation,
-          gamma: exportSettings.gamma,
-        },
-        {
-          mode: exportSettings.ditherMode,
-          adaptiveThreshold: exportSettings.adaptiveThreshold,
-        }
-    );
-    finallyImage.value = resultCanvas
-    const ctx = previewCanvas.value.getContext('2d')
-    if (!ctx) return
-
-    previewCanvas.value.width = resultCanvas.width
-    previewCanvas.value.height = resultCanvas.height
-
-    ctx.drawImage(resultCanvas, 0, 0)
+    const {width, height} = options
+    if (![width, height].every(n => Number.isInteger(n) && n >= 1 && n <= 2048) || width * height > 1024 * 1024) throw new Error($t('desktop.pixelLimit'))
+    if (!palette.length) throw new Error($t('desktop.chooseBlocks'))
+    const bitmap = await createImageBitmap(source.file, {resizeWidth: width, resizeHeight: height, resizeQuality: 'high'})
+    let rgba: Uint8ClampedArray, w: number, h: number
+    try {
+      if (task.signal.aborted) return
+      const swapped = options.targetRotation === 90 || options.targetRotation === 270
+      w = swapped ? height : width; h = swapped ? width : height
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d', {willReadFrequently: true})
+      if (!ctx) throw new Error($t('desktop.readImage'))
+      ctx.translate(w / 2, h / 2); ctx.rotate(options.targetRotation * Math.PI / 180)
+      ctx.drawImage(bitmap, -width / 2, -height / 2, width, height)
+      rgba = ctx.getImageData(0, 0, w, h).data
+      canvas.width = canvas.height = 0
+    } finally { bitmap.close() }
+    const next = await runMapArt({width: w, height: h, rgba, palette, settings: {
+      match: options.matchMode, brightness: options.brightness, contrast: options.contrast,
+      saturation: options.saturation, gamma: options.gamma, dither: options.ditherMode,
+      adaptive: options.adaptiveThreshold, relief, maxHeight, axis: options.axios,
+      alphaThreshold: options.alphaThreshold, backing: options.backing, support: options.support,
+      supportBlock: options.supportBlock,
+    }}, task.signal, value => { if (run === epoch) progress.value = value })
+    if (run !== epoch || !active || disposed) return
+    const canvas = mapColorCanvas(next)
+    if (finallyImage.value) finallyImage.value.width = finallyImage.value.height = 0
+    finallyImage.value = canvas; result.value = next; stale.value = false
+    await nextTick()
+    if (run !== epoch || !previewCanvas.value) return
+    previewCanvas.value.width = canvas.width; previewCanvas.value.height = canvas.height
+    previewCanvas.value.getContext('2d')?.drawImage(canvas, 0, 0)
   } catch (error) {
-    toast.error(`像素画预览生成失败:${error}`, {
-      timeout: 3000
-    });
-  } finally {
-    isProcessing.value = false
-  }
+    if (run === epoch && active && !task.signal.aborted) toast.error($t('desktop.mapFailed', {error: String(error)}), {timeout: 5000})
+  } finally { if (run === epoch) { isProcessing.value = false; controller = undefined } }
 }
-const updateSize = async() => {
+async function uploadImage(file?: File) {
+  if (!file) { cleanImage(); return }
+  cancelWork(); const run = ++uploadEpoch
+  try {
+    if (file.size > 64 * 1024 * 1024) throw new Error($t('desktop.imageLimit'))
+    const data = await encode_image(file)
+    if (run !== uploadEpoch || !active || disposed) { releaseProcessedImage(data); return }
+    if (data.width * data.height > 64 * 1024 * 1024) { releaseProcessedImage(data); throw new Error($t('desktop.sourcePixelLimit')) }
+    releaseProcessedImage(image_data.value)
+    image_data.value = data; result.value = undefined; resize.value = 1
+    updateSize()
+    await refreshImage()
+  } catch (error) { if (run === uploadEpoch && active) toast.error($t('desktop.imageFailed', {error: String(error)}), {timeout: 4000}) }
+}
+function updateSize() {
   if (!image_data.value) return
-  exportSettings.width = Math.round(image_data.value.width * resize.value);
-  exportSettings.height = Math.round(image_data.value.height * resize.value)
+  const size = fitAspect(image_data.value.width, image_data.value.height, Math.max(1, image_data.value.width * resize.value), 'width')
+  exportSettings.width = size.width; exportSettings.height = size.height
 }
-
-const getTextureExportBlockSize = () => {
-  const width = Math.max(1, Math.round(exportSettings.width))
-  const height = Math.max(1, Math.round(exportSettings.height))
-  const blockCount = width * height
-  const dimensionLimit = Math.floor(TEXTURE_EXPORT_MAX_DIMENSION / Math.max(width, height))
-  const pixelLimit = Math.floor(Math.sqrt(TEXTURE_EXPORT_MAX_PIXELS / blockCount))
-  return Math.max(1, Math.min(TEXTURE_EXPORT_BLOCK_SIZE, dimensionLimit || 1, pixelLimit || 1))
+async function prepareExport() {
+  if (!result.value || stale.value) await refreshImage()
+  if (!result.value || stale.value || !active) throw new Error($t('desktop.mapExpired'))
+  return {structure: result.value.structure, name: image_data.value?.name || 'map-art'}
 }
-
-const downloadCanvasAsPng = async (canvas: HTMLCanvasElement, filename: string) => {
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) throw new Error('无法编码 PNG 图片')
-
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.download = filename
-  link.href = url
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-const safeExportFileName = () => {
-  const baseName = image_data.value?.name || 'map-art'
-  return `${baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')}-block-texture.png`
-}
-
-const exportSchematicData = async() => {
-  exportLoading.value = true
+async function exportImage() {
+  if (exportImageLoading.value) return
+  let task: AbortController | undefined
   try {
-    if (!image_data.value) return
-    let result = await imageBuild.value.exportSchematic(
-        image_data.value.file,
-        image_data.value.name,
-        exportSettings.schematic_type,
-        exportSettings.sub_type,
-        {width: exportSettings.width, height:exportSettings.height},
-        exportSettings.targetRotation as 0 | 90 | 180| 270,
-        exportSettings.dithering,
-        replaceAir.value,
-        threeD.value,
-        maxZ.value,
-        exportSettings.axios as 'x' | 'y' | 'z',
-        {
-          matchMode: exportSettings.matchMode,
-          brightness: exportSettings.brightness,
-          contrast: exportSettings.contrast,
-          saturation: exportSettings.saturation,
-          gamma: exportSettings.gamma,
-        },
-        {
-          mode: exportSettings.ditherMode,
-          adaptiveThreshold: exportSettings.adaptiveThreshold,
-        }
-    )
-    if (result){
-      toast.success(`已成功导出蓝图可前往仓库查看`, {
-        timeout: 3000
-      });
-      dialog.value = false
-    }
-  }catch (err) {
-    toast.error(`导出失败:${err}`, {
-      timeout: 3000
-    });
-  }finally {
-    exportLoading.value = false
-  }
+    await prepareExport()
+    task = new AbortController(); imageController = task
+    const current = result.value, name = image_data.value?.name || 'map-art'
+    exportImageLoading.value = true
+    const canvas = await mapTextureCanvas(current, task.signal)
+    try {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+      if (task.signal.aborted || !active) return
+      if (!blob) throw new Error($t('desktop.encodePng'))
+      const url = URL.createObjectURL(blob), link = document.createElement('a')
+      link.download = name.replace(/[<>:"/\\|?*]/g, '_') + '-block-texture.png'; link.href = url; link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    } finally { canvas.width = canvas.height = 0 }
+  } catch (error) { if (active && (error as Error).name !== 'AbortError') toast.error($t('desktop.imageExportFailed', {error: String(error)})) }
+  finally { if (task && imageController === task) { imageController = undefined; exportImageLoading.value = false } }
 }
-
-const exportImage = async() => {
-  exportImageLoading.value = true
-  try {
-    if (!image_data.value || !imageBuild.value) return
-    imageBuild.value.updateBlocksData(selectedBlocks.value)
-    const blockSize = getTextureExportBlockSize()
-    const canvas = await imageBuild.value.generatePixelArt(
-        image_data.value.file,
-        blockSize,
-        {width: exportSettings.width, height:exportSettings.height},
-        exportSettings.dithering,
-        replaceAir.value,
-        exportSettings.targetRotation as 0 | 90 | 180| 270,
-        {
-          matchMode: exportSettings.matchMode,
-          brightness: exportSettings.brightness,
-          contrast: exportSettings.contrast,
-          saturation: exportSettings.saturation,
-          gamma: exportSettings.gamma,
-        },
-        {
-          mode: exportSettings.ditherMode,
-          adaptiveThreshold: exportSettings.adaptiveThreshold,
-        },
-        {
-          maxCanvasPixels: TEXTURE_EXPORT_MAX_PIXELS,
-          maxDimension: TEXTURE_EXPORT_MAX_DIMENSION,
-          resizeSmoothing: false,
-        }
-    )
-    await downloadCanvasAsPng(canvas, safeExportFileName())
-    if (blockSize < 16) {
-      toast.info(`当前地图画尺寸较大，导出图已自动降为每方块 ${blockSize}px`, {
-        timeout: 3000
-      })
-    }
-  }catch (err) {
-    toast.error(`导出失败:${err}`, {
-      timeout: 3000
-    });
-  }finally {
-    exportImageLoading.value = false
-  }
+function cleanImage() {
+  ++uploadEpoch; cancelWork()
+  releaseProcessedImage(image_data.value); image_data.value = undefined
+  result.value = undefined; stale.value = false
+  if (finallyImage.value) finallyImage.value.width = finallyImage.value.height = 0
+  finallyImage.value = undefined
+  if (previewCanvas.value) previewCanvas.value.width = previewCanvas.value.height = 0
 }
 onMounted(async () => {
-  setTimeout(() => {
-    blocksLoaded.value = true;
-  }, 100);
-  await toggleCategory("wool")
-  imageBuild.value = new MapArtProcessor(mapArtData.value, selectedBlocks.value)
-
+  try {
+    const data = await ensureMapArtData()
+    if (disposed) return
+    if (!selectedBlocks.value.length) selectedBlocks.value = (data.find(category => category.name === 'wool') ?? data[0])?.items.map(item => item.id) ?? []
+    blocksLoaded.value = true
+  } catch (error) { if (!disposed) toast.error($t('desktop.blocksFailed', {error: String(error)})) }
 })
-const cleanImage = async() => {
-  if (image_data.value) {
-    releaseProcessedImage(image_data.value)
-  }
-  image_data.value = undefined;
-  previewImage.value = ""
-  hasImage.value = false;
-  const canvas = previewCanvas.value;
-  if (!canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-}
-onBeforeMount(async() => {
-  await cleanImage()
-  imageBuild.value = undefined
+onActivated(() => { active = true })
+onDeactivated(() => {
+  active = false; ++uploadEpoch; cancelWork(); dialog.value = false; fullscreenDialog.value = false
 })
-
+onBeforeUnmount(() => { disposed = true; active = false; cleanImage() })
 </script>
 
 <template>
-  <v-row no-gutters class="mx-auto v-theme--custom text-primary map-editor-row">
+  <v-row no-gutters class="mx-auto v-theme--custom map-editor-row">
     <v-col cols="12" md="4" class="pa-4 d-flex flex-column text-medium-emphasis config-column">
       <div class="config-scroll">
       <v-row v-if="image_data != undefined">
@@ -565,127 +348,67 @@ onBeforeMount(async() => {
         >
         </v-text-field>
 
-        <v-switch
-            class="ml-4"
-            v-model="exportSettings.dithering"
-            :label="$t('mapImage2d.enableDithering')"
-            color="info"
-            density="compact"
-            :hint="$t('mapImage2d.ditheringHint')"
-            persistent-hint
-        >
-          <template v-slot:append>
-            <v-tooltip location="bottom">
-              <template v-slot:activator="{ props }">
-                <v-icon
-                    v-bind="props"
-                    icon="mdi-information-outline"
-                    size="small"
-                    class="ml-2"
-                ></v-icon>
-              </template>
-              <span>{{$t('mapImage2d.ditheringTooltip')}}</span>
-            </v-tooltip>
-          </template>
-        </v-switch>
-
-        <v-select
-          v-model="exportSettings.ditherMode"
-          :items="[
-            { title: 'Floyd-Steinberg', value: 'floyd' },
-            { title: 'Atkinson', value: 'atkinson' },
-            { title: '有序抖动(Bayer)', value: 'ordered' },
-            { title: '关闭抖动', value: 'none' }
-          ]"
-          label="抖动模式"
-          density="compact"
-          class="mb-2"
-        ></v-select>
-
-        <v-slider
-          v-model="exportSettings.adaptiveThreshold"
-          :min="0"
-          :max="1"
-          :step="0.05"
-          thumb-label
-          label="自适应阈值"
-          color="info"
-          class="mb-2"
-        ></v-slider>
-
-        <v-switch
-            class="ml-4"
-            v-model="replaceAir"
-            :label="$t('mapImage2d.airBlock')"
-            color="info"
-            density="compact"
-            :hint="$t('mapImage2d.airBlockHint')"
-            persistent-hint
-        >
-          <template v-slot:append>
-            <v-tooltip location="bottom">
-              <template v-slot:activator="{ props }">
-                <v-icon
-                    v-bind="props"
-                    icon="mdi-information-outline"
-                    size="small"
-                    class="ml-2"
-                ></v-icon>
-              </template>
-              <span>{{$t('mapImage2d.airBlockTooltip')}}</span>
-            </v-tooltip>
-          </template>
-        </v-switch>
-
+        <v-select v-model="exportSettings.ditherMode" :items="[{title:'Floyd-Steinberg',value:'floyd'},{title:'Atkinson',value:'atkinson'},{title:$t('desktop.ordered'),value:'ordered'},{title:$t('desktop.noDither'),value:'none'}]" :label="$t('desktop.ditherMode')" density="compact"/>
+        <v-slider v-model="exportSettings.adaptiveThreshold" :min="0" :max="1" :step="0.05" :label="$t('desktop.adaptive')" thumb-label/>
+        <v-slider v-model="exportSettings.alphaThreshold" :min="0" :max="255" :step="1" :label="$t('desktop.alphaThreshold')" thumb-label/>
+        <v-switch v-model="threeD" :label="$t('desktop.relief')" color="info" density="compact" hide-details/>
+        <v-number-input v-model="maxZ" :min="1" :max="256" :disabled="!threeD" :label="$t('desktop.maxHeight')" :precision="0" density="compact"/>
+        <v-select v-model="exportSettings.axios" :items="[{title:$t('desktop.horizontal'),value:'y'},{title:$t('desktop.verticalXY'),value:'z'},{title:$t('desktop.verticalZY'),value:'x'}]" :label="$t('desktop.orientation')" density="compact"/>
+        <v-switch v-model="exportSettings.backing" :label="$t('desktop.backing')" color="info" density="compact" hide-details/>
+        <v-select v-model="exportSettings.supportBlock"
+          :items="[{title:$t('desktop.stone'),value:'minecraft:stone'},{title:$t('desktop.glass'),value:'minecraft:glass'},{title:$t('desktop.scaffolding'),value:'minecraft:scaffolding'}]" :label="$t('desktop.supportMaterial')" density="compact"/>
+        <v-switch v-model="exportSettings.support" :label="$t('desktop.supportGround')" :disabled="exportSettings.supportBlock !== 'minecraft:scaffolding' || exportSettings.axios !== 'y'" color="info" density="compact" hide-details/>
+        <p class="text-caption mb-3">{{ $t('desktop.mapNote') }}</p>
         <v-select
           v-model="exportSettings.matchMode"
           :items="[
-            { title: 'RGB欧式', value: 'rgb' },
-            { title: '加权距离', value: 'weighted' },
-            { title: 'Redmean', value: 'redmean' }
+            { title: $t('desktop.rgb'), value: 'rgb' },
+            { title: $t('desktop.weighted'), value: 'weighted' },
+            { title: 'Redmean', value: 'redmean' },
+            { title: $t('desktop.oklab'), value: 'oklab' }
           ]"
-          label="色彩匹配算法"
+          :label="$t('desktop.matchMode')"
           density="compact"
           class="mb-2"
         ></v-select>
 
         <v-slider
           v-model="exportSettings.brightness"
-          :min="0.5"
-          :max="1.5"
+          :min="0.2"
+          :max="2"
           :step="0.05"
           thumb-label
-          label="亮度"
+          :label="$t('desktop.brightness')"
           color="info"
           class="mb-1"
         ></v-slider>
 
         <v-slider
           v-model="exportSettings.contrast"
-          :min="0.5"
-          :max="1.5"
+          :min="0.2"
+          :max="2"
           :step="0.05"
           thumb-label
-          label="对比度"
+          :label="$t('desktop.contrast')"
           color="info"
           class="mb-1"
         ></v-slider>
 
         <v-slider
           v-model="exportSettings.saturation"
-          :min="0.5"
-          :max="1.5"
+          :min="0"
+          :max="2"
           :step="0.05"
           thumb-label
-          label="饱和度"
+          :label="$t('desktop.saturation')"
           color="info"
           class="mb-1"
         ></v-slider>
 
         <v-slider
           v-model="exportSettings.gamma"
-          :min="0.6"
-          :max="1.8"
+          :min="0.2"
+          :max="3"
           :step="0.05"
           thumb-label
           label="Gamma"
@@ -698,13 +421,14 @@ onBeforeMount(async() => {
           block
           color="blue"
           @click="refreshImage"
+          :disabled="!image_data || isProcessing"
       >
         <v-icon left>mdi-refresh</v-icon>
   {{$t('mapImage2d.refresh')}}
       </v-btn>
 
       <v-btn
-          :disabled="!hasImage"
+          :disabled="!image_data || isProcessing"
           variant="outlined"
           block
           color="green"
@@ -714,7 +438,7 @@ onBeforeMount(async() => {
   {{$t('mapImage2d.exportSchematic')}}
       </v-btn>
       <v-btn
-          :disabled="!hasImage"
+          :disabled="!image_data || isProcessing"
           variant="outlined"
           block
           color="green"
@@ -724,102 +448,15 @@ onBeforeMount(async() => {
         <v-icon left>mdi-download</v-icon>
   {{$t('mapImage2d.exportImage')}}
       </v-btn>
-      <v-card v-if="blocksLoaded">
-        <v-toolbar density="compact">
-          <v-toolbar-title>{{$t('mapImage2d.blockSelector')}}</v-toolbar-title>
-        </v-toolbar>
-
-        <v-list>
-          <v-list-group
-              v-for="category in mapArtData"
-              :key="category.name"
-              v-model="expandedCategories"
-              :value="category.name"
-          >
-            <template v-slot:activator="{ props }">
-              <v-list-item
-                  v-bind="props"
-                  :title="category.zh_cn"
-                  class="category-header"
-
-              >
-                <template v-slot:prepend>
-                  <v-checkbox
-                      :model-value="isCategorySelected(category.name)"
-                      color="info"
-                      hide-details
-                      @click="toggleCategory(category.name)"
-                  ></v-checkbox>
-                  <v-icon icon="mdi-cube-scan"></v-icon>
-                </template>
-              </v-list-item>
-            </template>
-
-            <v-list-item
-                v-for="block in category.items"
-                :key="block.id"
-                class="block-item"
-                @click="toggleBlock(block.id)"
-                style="padding-inline-start: 0 !important;"
-            >
-              <template v-slot:prepend>
-                <v-checkbox
-                    :model-value="selectedBlocks.includes(block.id)"
-                    color="info"
-                    hide-details
-                ></v-checkbox>
-              </template>
-              <v-row align="start" no-gutters>
-                <v-col cols="2" class="d-flex justify-center mt-2">
-                  <v-avatar
-                      size="28"
-                      rounded="0"
-                      class="mr-2"
-                      style="border: 1px solid rgba(0,0,0,0.1)"
-                  >
-                    <v-img
-                        :src="getBlockImg(block.id)"
-                        :lazy-src="getBlockImg(block.id)"
-                        :alt="block.id"
-                        style="
-                        width: 100%;
-                        height: 100%;
-                        object-fit: contain;
-                        image-rendering: crisp-edges;
-                      "
-                    />
-                  </v-avatar>
-                </v-col>
-
-                <v-col cols="6">
-                  <div class="text-body-1 font-weight-bold">{{ block.zh_cn }}</div>
-                  <div class="text-caption text-grey">{{ block.id }}</div>
-                </v-col>
-
-                <v-col cols="4">
-                  <v-chip
-                      class="ma-1"
-                      label
-                  >
-                    <v-avatar
-                        :color="block.average_rgb_hex"
-                        size="20"
-                        class="mr-1"
-                    ></v-avatar>
-                    <span>{{ block.average_rgb_hex }}</span>
-                  </v-chip>
-                </v-col>
-              </v-row>
-            </v-list-item>
-          </v-list-group>
-        </v-list>
-      </v-card>
+      <ToolPalettePicker v-if="blocksLoaded" v-model="selectedBlocks"/>
       </div>
 
     </v-col>
 
     <v-col cols="12" md="8" class="pa-4 d-flex flex-column preview-column">
       <div class="preview-scroll">
+        <v-alert v-if="stale" type="warning" density="compact" variant="tonal" class="mb-2">{{ $t('desktop.mapStale') }}</v-alert>
+        <div v-if="result" class="text-caption mb-2">{{ $t('desktop.mapSummary', {size: [result.width, result.height].join(' × '), count: result.structure.blockCount.toLocaleString(), dimensions: result.structure.size.join(' × ')}) }}</div>
       <div class="preview-container elevation-3 rounded-lg">
         <div v-if="isProcessing" class="processing-overlay">
           <v-progress-circular
@@ -827,7 +464,7 @@ onBeforeMount(async() => {
               size="64"
               color="info"
           ></v-progress-circular>
-          <div class="text-caption mt-2">{{$t('mapImage2d.processingImage')}}</div>
+          <div class="text-caption mt-2">{{ $t('mapImage2d.processingImage') }} {{ progress }}%</div><v-btn @click="cancelWork" variant="text">{{ $t('desktop.cancelGeneration') }}</v-btn>
         </div>
 
         <div class="preview-content">
@@ -838,7 +475,7 @@ onBeforeMount(async() => {
               color="info"
               class="fullscreen-btn"
               @click="openFullscreen"
-          >全屏查看</v-btn>
+          >{{ $t('desktop.fullscreen') }}</v-btn>
           <canvas
               ref="previewCanvas"
               class="pixel-canvas"
@@ -867,8 +504,8 @@ onBeforeMount(async() => {
       <v-toolbar density="compact">
         
         <v-spacer></v-spacer>
-        <v-btn variant="text" @click="resetFullscreenView">重置</v-btn>
-        <v-btn variant="text" @click="fullscreenDialog = false">关闭</v-btn>
+        <v-btn variant="text" @click="resetFullscreenView">{{ $t('desktop.reset') }}</v-btn>
+        <v-btn variant="text" @click="fullscreenDialog = false">{{ $t('desktop.close') }}</v-btn>
       </v-toolbar>
       <div
           class="fullscreen-stage"
@@ -886,118 +523,11 @@ onBeforeMount(async() => {
       </div>
     </v-card>
   </v-dialog>
-  <v-dialog
-      v-model="dialog"
-      max-width="500"
-      persistent
-  >
-    <v-card
-        max-width="500"
-        width="500"
-    >
-      <v-card-title class="text-subtitle-1">
-        <v-icon icon="mdi-history" class="mr-2"></v-icon>
-  {{$t('mapImage2d.exportSchematic')}}
-      </v-card-title>
-      <v-card-subtitle class="text-caption text-grey-darken-1">
-  {{$t('mapImage2d.exportToType')}}
-      </v-card-subtitle>
-      <v-card-text>
-        <v-row no-gutters>
-          <v-col cols="12" class="pr-2">
-            <v-combobox
-                v-model="schematicType"
-                :items="schematicTypes"
-                item-title="label"
-                item-value="value"
-                return-object
-                density="compact"
-                :label="$t('mapImage2d.mainType')"
-                @update:modelValue="v => onMainTypeChange(v)"
-            ></v-combobox>
-          </v-col>
-
-          <v-col cols="12" class="pl-2">
-            <v-combobox
-                v-model="subType"
-                :items="currentSubTypes"
-                :disabled="!exportSettings.schematic_type"
-                item-title="label"
-                item-value="value"
-                density="compact"
-                :label="$t('mapImage2d.subType')"
-                @update:modelValue="v => onSubTypeChange(v)"
-            ></v-combobox>
-          </v-col>
-          <v-col cols="12" class="d-flex align-center justify-center gap-2" style="padding: 0 !important;">
-            <span>{{$t('mapImage2d.axisOrientation')}}</span>
-            <v-icon color="blue" icon="mdi-axis-arrow" class="mt-1"></v-icon>
-            <v-btn-toggle
-                v-model="exportSettings.axios"
-                color="info"
-                class="d-flex align-center"
-                mandatory
-            >
-              <v-btn :value="'x'" size="large" class="px-6">
-                <span class="font-weight-bold">X</span>
-              </v-btn>
-              <v-btn :value="'y'" size="large" class="px-6">
-                <span class="font-weight-bold">Y</span>
-              </v-btn>
-              <v-btn :value="'z'" size="large" class="px-6">
-                <span class="font-weight-bold">Z</span>
-              </v-btn>
-            </v-btn-toggle>
-          </v-col>
-          <v-col  cols="12" class="d-flex align-center justify-center gap-2" style="padding: 0 !important;">
-            <v-switch
-                class="ml-4"
-                v-model="threeD"
-                label="导出立体地图画"
-                color="info"
-                density="compact"
-                hint="再地图上表现更加细节"
-                persistent-hint
-            >
-              <template v-slot:append>
-                <v-tooltip location="bottom">
-                  <template v-slot:activator="{ props }">
-                    <v-icon
-                        v-bind="props"
-                        icon="mdi-information-outline"
-                        size="small"
-                        class="ml-2"
-                    ></v-icon>
-                  </template>
-                  <span>建筑难度高并且请勿选取重力方块</span>
-                </v-tooltip>
-              </template>
-            </v-switch>
-          </v-col>
-
-          <v-col  cols="12" class="d-flex align-center justify-center gap-2" style="padding: 0 !important;">
-            <v-number-input :disabled="!threeD" v-model="maxZ" :precision="0" hide-details="auto"></v-number-input>
-            <code class="d-block pt-3">{{$t('mapImage2d.max3dHeight')}}: {{ maxZ }}</code>
-          </v-col>
-        </v-row>
-      </v-card-text>
-      <template v-slot:actions>
-        <v-spacer/>
-  <v-btn @click="dialog = false">{{$t('mapImage2d.cancel')}}</v-btn>
-    <v-btn
-      :disabled="schematicType == null"
-      class="ms-auto"
-      color="info"
-      :loading="exportLoading"
-      @click="exportSchematicData"
-    >{{$t('mapImage2d.confirmExport')}}</v-btn>
-      </template>
-    </v-card>
-  </v-dialog>
+  <GeneratedBlueprintExport v-if="dialog" :prepare="prepareExport" @close="cancelWork(); dialog = false"/>
 </template>
-
 <style scoped>
 .map-editor-row {
+  color: rgb(var(--v-theme-on-surface));
   height: calc(100vh - 64px);
 }
 
@@ -1011,6 +541,19 @@ onBeforeMount(async() => {
 .preview-scroll {
   height: 100%;
   overflow-y: auto;
+}
+
+.block-selector-card {
+  contain: layout paint;
+}
+
+.block-selector-card :deep(.v-list) {
+  contain: content;
+}
+
+.block-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 64px;
 }
 
 .preview-container {

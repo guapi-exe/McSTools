@@ -34,6 +34,23 @@
         clickToExpandFilter: '點擊展開篩選條件',
         keywordFilter: '關鍵詞篩選',
         inputBlueprintNameOrDesc: '輸入藍圖名稱或描述',
+        filter: {
+            type: '藍圖類型',
+            allTypes: '全部類型',
+            gameVersion: '遊戲版本',
+            allVersions: '全部版本',
+        },
+        toolbar: {
+            total: '共 {count} 個藍圖',
+            perPage: '每頁',
+            jumpTo: '跳至',
+            pageUnit: '頁',
+            go: '跳轉',
+            sortNewest: '最近建立',
+            sortOldest: '最早建立',
+            sortUpdated: '最近修改',
+            sortName: '按名稱',
+        },
         allBlueprints: '全部藍圖',
         createCategory: '建立分類',
         createNewCategory: '建立新分類',
@@ -96,6 +113,8 @@
         extType: '副檔名類型',
         originSize: '原始大小',
         version: '版本',
+          javaTargetVersion: 'Java目標版本',
+          legacyTargetVersion: '舊版目標版本',
         subVersion: '適配子版本',
         weSubVersion0: '0: WE最新格式',
         weSubVersion1: '1: WE 1.16-',
@@ -123,6 +142,8 @@
         bgDesc: '適配1.12+建築小幫手三種變種格式藍圖',
         beTitle: 'MC BE',
         beDesc: '適配1.18+我的世界BE原版結構方塊格式',
+          mcEditTitle: '創世神舊版',
+          mcEditDesc: '適配1.12及以下的 MCEdit .schematic 舊版格式',
         toLitematic: '轉換為投影藍圖',
         toCreate: '轉換為香草結構',
         toWE: '轉換為創世神',
@@ -139,6 +160,7 @@
         unknownTitle: '未知格式',
         unknownDesc: '未知格式描述',
         convertToTargetVersion: '轉換到目標版本',
+        targetOutputVersion: '目標輸出版本',
         hasSubVersion: '存在子版本'
     },
     toolsReplace: {
@@ -194,6 +216,7 @@
         type: '類型',
         size: '尺寸',
         lmVersion: '投影格式版本',
+        gameVersion: '遊戲版本',
         status: '狀態',
         deleted: '已刪除',
         normal: '正常',
@@ -210,6 +233,10 @@
         noSchematic: '未選取藍圖',
         editLmVersion: '修改投影版本',
         editLmVersionHint: '修改建築投影，自身版本控制器',
+        editGameVersion: '修改遊戲版本',
+        editGameVersionHint: '只顯示方塊狀態 ID 發生變化的版本，修改後會同步寫入藍圖的 DataVersion。',
+        confirmGameVersion: '修改前請確認目標遊戲版本；舊版 .schematic 僅更新藍圖資訊。',
+        gameVersionUpdated: '遊戲版本修改完成',
         airBlocks: '空氣方塊',
         clearable: '可清除',
         clearAirBlocks: '清除空氣方塊',
@@ -256,6 +283,7 @@
         count: '數量',
         percentage: '占比',
         noMaterialData: '暫無材料資料',
+        moreRemaining: '滾動載入剩餘 {count} 條',
         noChartData: '暫無資料可供圖表展示'
     },
     toolsThreeD: {
@@ -412,6 +440,10 @@
         darkMode: '深色模式',
         lightMode: '淺色模式',
         title: '設定',
+        tabs: {
+            base: '基礎設定',
+            resource: '資源管理'
+        },
         update: {
             title: '更新設定',
             autoUpdate: '啟用自動更新',
@@ -634,7 +666,8 @@
         tabs: {
             mapArt: '地圖畫',
             ModelToSchem: '模型轉藍圖',
-            redstoneMusic: '紅石音樂'
+            redstoneMusic: '紅石音樂',
+            batchConvert: '批量轉換'
         },
         modelToSCHEM: {
             tip: '基於地圖畫方塊與顏色對照表，將目前已選藍圖模型投影並導出為地圖畫藍圖。',
@@ -686,6 +719,7 @@
                 orange: '活力橘',
                 yellow: '鳳梨黃',
                 brown: '橡木棕',
+                whiteDark: '暗夜白金',
                 greyDark: '暗色模式'
             }
         },

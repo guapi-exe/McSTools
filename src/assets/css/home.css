@@ -100,3 +100,15 @@
     display: flex;
     flex-direction: column;
 }
+.site-connection-strip {
+    color: rgb(var(--v-theme-on-surface));
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(var(--v-theme-info), .18);
+    border-radius: var(--radius-card);
+    background: rgba(var(--v-theme-info), .06);
+}

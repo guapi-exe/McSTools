@@ -1,24 +1,28 @@
-use std::collections::{BTreeMap, VecDeque};
-use std::io::Read;
-use std::sync::Arc;
-use rayon::prelude::*;
-use tauri::State;
-use crate::data_files::files::FileManager;
-use crate::database::db_apis::schematics_api::find_schematic;
-use crate::database::db_control::DatabaseState;
-use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePos, BlockStatePosList};
-use crate::utils::schematic_data::{SchematicData, Size};
-use anyhow::{anyhow, Result};
 use crate::be_schematic::to_be_schematic::ToBESchematic;
 use crate::building_gadges::to_bg_schematic::ToBgSchematic;
 use crate::create::to_create_schematic::ToCreateSchematic;
+use crate::data_files::files::FileManager;
+use crate::database::db_apis::schematics_api::find_schematic;
+use crate::database::db_control::DatabaseState;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
+use crate::mcedit::legacy_map::normalize_schematic_for_legacy;
+use crate::mcedit::to_mcedit_schematic::ToMcEditSchematic;
+use crate::utils::block_state_pos_list::{
+    BlockData, BlockId, BlockPos, BlockStatePos, BlockStatePosList,
+};
 use crate::utils::entities::EntitiesList;
+use crate::utils::schematic_data::{SchematicData, Size};
 use crate::utils::tile_entities::TileEntitiesList;
 use crate::word_edit::to_we_schematic::ToWeSchematic;
+use anyhow::{Result, anyhow};
 use fastnbt::Value;
 use fastnbt::Value::Compound;
+use rayon::prelude::*;
 use std::collections::HashMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::io::Read;
+use std::sync::Arc;
+use tauri::State;
 
 #[derive(Clone, Debug)]
 struct Offset {
@@ -58,7 +62,9 @@ pub async fn schematic_split(
         )?;
 
         let mut results = Vec::new();
-        for (index, (blocks, tile_entities, entities, part_size, _offset)) in split_parts.into_iter().enumerate() {
+        for (index, (blocks, tile_entities, entities, part_size, _offset)) in
+            split_parts.into_iter().enumerate()
+        {
             let schematic = SchematicData::new(blocks, tile_entities, entities, part_size.clone());
             let temp_file = match v_type {
                 1 => {
@@ -78,8 +84,13 @@ pub async fn schematic_split(
                     file_manager.save_json_value_temp(data)?
                 }
                 5 => {
-                    let data = ToBESchematic::new(&schematic)?.to_be_value();
+                    let data = ToBESchematic::new(&schematic)?.to_be_value()?;
                     file_manager.save_nbt_value_le_temp(data, v_type)?
+                }
+                6 => {
+                    let legacy_data = normalize_schematic_for_legacy("1.7.10", &schematic)?;
+                    let data = ToMcEditSchematic::new(&legacy_data)?.mcedit_schematic()?;
+                    file_manager.save_nbt_value_temp(data, v_type, true)?
                 }
                 _ => {
                     anyhow::bail!("unknown schematic type: {}", v_type);
@@ -95,10 +106,9 @@ pub async fn schematic_split(
 
         Ok(results)
     }
-        .await
-        .map_err(|e: anyhow::Error| e.to_string())
+    .await
+    .map_err(|e: anyhow::Error| e.to_string())
 }
-
 
 fn split_schematic_parts(
     blocks: &VecDeque<BlockStatePos>,
@@ -108,7 +118,15 @@ fn split_schematic_parts(
     split_type: i64,
     split_number: usize,
     air_frame: bool,
-) -> Result<Vec<(BlockStatePosList, TileEntitiesList, EntitiesList, Size, Offset)>> {
+) -> Result<
+    Vec<(
+        BlockStatePosList,
+        TileEntitiesList,
+        EntitiesList,
+        Size,
+        Offset,
+    )>,
+> {
     if split_number == 0 {
         return Err(anyhow!("Split number must be at least 1"));
     }
@@ -124,19 +142,53 @@ fn split_schematic_parts(
     let mut results = Vec::with_capacity(split_number);
     for (i, (mut block_list, part_size, offset)) in split_blocks.into_iter().enumerate() {
         let corner_positions = [
-            BlockPos { x: offset.x - 1, y: offset.y, z: offset.z - 1 },
-            BlockPos { x: offset.x - 1, y: offset.y, z: offset.z + part_size.length },
-            BlockPos { x: offset.x + part_size.width, y: offset.y, z: offset.z - 1 },
-            BlockPos { x: offset.x + part_size.width, y: offset.y, z: offset.z + part_size.length },
-            BlockPos { x: offset.x - 1, y: offset.y + part_size.height - 1, z: offset.z - 1 },
-            BlockPos { x: offset.x - 1, y: offset.y + part_size.height - 1, z: offset.z + part_size.length },
-            BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z - 1 },
-            BlockPos { x: offset.x + part_size.width, y: offset.y + part_size.height - 1, z: offset.z + part_size.length },
+            BlockPos {
+                x: offset.x - 1,
+                y: offset.y,
+                z: offset.z - 1,
+            },
+            BlockPos {
+                x: offset.x - 1,
+                y: offset.y,
+                z: offset.z + part_size.length,
+            },
+            BlockPos {
+                x: offset.x + part_size.width,
+                y: offset.y,
+                z: offset.z - 1,
+            },
+            BlockPos {
+                x: offset.x + part_size.width,
+                y: offset.y,
+                z: offset.z + part_size.length,
+            },
+            BlockPos {
+                x: offset.x - 1,
+                y: offset.y + part_size.height - 1,
+                z: offset.z - 1,
+            },
+            BlockPos {
+                x: offset.x - 1,
+                y: offset.y + part_size.height - 1,
+                z: offset.z + part_size.length,
+            },
+            BlockPos {
+                x: offset.x + part_size.width,
+                y: offset.y + part_size.height - 1,
+                z: offset.z - 1,
+            },
+            BlockPos {
+                x: offset.x + part_size.width,
+                y: offset.y + part_size.height - 1,
+                z: offset.z + part_size.length,
+            },
         ];
         if air_frame {
             if split_type != 3 {
                 for pos in corner_positions {
-                    block_list.elements.push_back(BlockStatePos::new(pos, Arc::clone(&air)));
+                    block_list
+                        .elements
+                        .push_back(BlockStatePos::new(pos, Arc::clone(&air)));
                 }
             }
         }
@@ -147,9 +199,12 @@ fn split_schematic_parts(
                 .iter()
                 .filter(|te| {
                     let pos = te.pos;
-                    pos.x >= offset.x && pos.x < offset.x + part_size.width &&
-                        pos.y >= offset.y && pos.y < offset.y + part_size.height &&
-                        pos.z >= offset.z && pos.z < offset.z + part_size.length
+                    pos.x >= offset.x
+                        && pos.x < offset.x + part_size.width
+                        && pos.y >= offset.y
+                        && pos.y < offset.y + part_size.height
+                        && pos.z >= offset.z
+                        && pos.z < offset.z + part_size.length
                 })
                 .cloned()
                 .collect(),
@@ -198,18 +253,20 @@ fn split_schematic_parts(
                 match &te.nbt {
                     Compound(map) => {
                         let mut new_map = map.clone();
-                        let new_pos = vec![
-                            nx, ny, nz,
-                        ];
-                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        let new_pos = vec![nx, ny, nz];
+                        new_map.insert(
+                            "Pos".to_string(),
+                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
+                        );
                         te.nbt = Compound(new_map);
                     }
                     other => {
                         let mut new_map = HashMap::new();
-                        let new_pos = vec![
-                            nx, ny, nz,
-                        ];
-                        new_map.insert("Pos".to_string(), Value::IntArray(fastnbt::IntArray::new(new_pos)));
+                        let new_pos = vec![nx, ny, nz];
+                        new_map.insert(
+                            "Pos".to_string(),
+                            Value::IntArray(fastnbt::IntArray::new(new_pos)),
+                        );
                         new_map.insert("nbt".to_string(), other.clone());
                         te.nbt = Compound(new_map);
                     }
@@ -223,13 +280,17 @@ fn split_schematic_parts(
             EntitiesList::default()
         };
 
-        results.push((block_list, part_tile_entities, part_entities, part_size, offset));
+        results.push((
+            block_list,
+            part_tile_entities,
+            part_entities,
+            part_size,
+            offset,
+        ));
     }
 
     Ok(results)
 }
-
-
 
 fn split_block_positions(
     blocks: &VecDeque<BlockStatePos>,
@@ -308,13 +369,29 @@ fn split_block_positions(
                     step
                 };
                 let offset = match split_type {
-                    1 => Offset { x: cumulative, y: 0, z: 0 },
-                    2 => Offset { x: 0, y: cumulative, z: 0 },
+                    1 => Offset {
+                        x: cumulative,
+                        y: 0,
+                        z: 0,
+                    },
+                    2 => Offset {
+                        x: 0,
+                        y: cumulative,
+                        z: 0,
+                    },
                     _ => unreachable!(),
                 };
                 let size = match split_type {
-                    1 => Size { width: part_length, height: size.height, length: size.length },
-                    2 => Size { width: size.width, height: part_length, length: size.length },
+                    1 => Size {
+                        width: part_length,
+                        height: size.height,
+                        length: size.length,
+                    },
+                    2 => Size {
+                        width: size.width,
+                        height: part_length,
+                        length: size.length,
+                    },
                     _ => unreachable!(),
                 };
                 part_sizes.push(size);
@@ -322,55 +399,63 @@ fn split_block_positions(
                 cumulative += part_length;
             }
 
-            let result = blocks.par_iter().fold(
-                || vec![VecDeque::new(); split_number],
-                |mut local_groups, block| {
-                    let pos = match axis_idx {
-                        0 => block.pos.x - min.x,
-                        1 => block.pos.y - min.y,
-                        _ => unreachable!(),
-                    };
-
-                    let mut cumulative = 0;
-                    let mut group_idx = split_number - 1;
-                    for i in 0..split_number {
-                        cumulative += if i == split_number - 1 {
-                            step + remainder
-                        } else {
-                            step
+            let result = blocks
+                .par_iter()
+                .fold(
+                    || vec![VecDeque::new(); split_number],
+                    |mut local_groups, block| {
+                        let pos = match axis_idx {
+                            0 => block.pos.x - min.x,
+                            1 => block.pos.y - min.y,
+                            _ => unreachable!(),
                         };
-                        if pos < cumulative {
-                            group_idx = i;
-                            break;
-                        }
-                    }
-                    local_groups[group_idx].push_back(block.clone());
-                    local_groups
-                },
-            ).reduce(
-                || vec![VecDeque::new(); split_number],
-                |mut global_groups, local_groups| {
-                    for (i, mut group) in local_groups.into_iter().enumerate() {
-                        global_groups[i].append(&mut group);
-                    }
-                    global_groups
-                },
-            );
 
-            Ok(result.into_iter()
+                        let mut cumulative = 0;
+                        let mut group_idx = split_number - 1;
+                        for i in 0..split_number {
+                            cumulative += if i == split_number - 1 {
+                                step + remainder
+                            } else {
+                                step
+                            };
+                            if pos < cumulative {
+                                group_idx = i;
+                                break;
+                            }
+                        }
+                        local_groups[group_idx].push_back(block.clone());
+                        local_groups
+                    },
+                )
+                .reduce(
+                    || vec![VecDeque::new(); split_number],
+                    |mut global_groups, local_groups| {
+                        for (i, mut group) in local_groups.into_iter().enumerate() {
+                            global_groups[i].append(&mut group);
+                        }
+                        global_groups
+                    },
+                );
+
+            Ok(result
+                .into_iter()
                 .enumerate()
-                .map(|(i, elements)| (
-                    BlockStatePosList { elements },
-                    part_sizes[i].clone(),
-                    offsets[i].clone(),
-                ))
+                .map(|(i, elements)| {
+                    (
+                        BlockStatePosList { elements },
+                        part_sizes[i].clone(),
+                        offsets[i].clone(),
+                    )
+                })
                 .collect())
         }
 
         3 => {
             let sqrt = (split_number as f64).sqrt() as usize;
             if sqrt * sqrt != split_number {
-                return Err(anyhow!("For grid split, split_number must be a perfect square (e.g. 4, 9, 16)"));
+                return Err(anyhow!(
+                    "For grid split, split_number must be a perfect square (e.g. 4, 9, 16)"
+                ));
             }
 
             let x_parts = sqrt;
@@ -395,68 +480,97 @@ fn split_block_positions(
 
             let mut x_cum = 0;
             for xi in 0..x_parts {
-                let w = if xi == x_parts - 1 { x_step + x_rem } else { x_step };
+                let w = if xi == x_parts - 1 {
+                    x_step + x_rem
+                } else {
+                    x_step
+                };
                 let mut z_cum = 0;
                 for zi in 0..z_parts {
-                    let l = if zi == z_parts - 1 { z_step + z_rem } else { z_step };
-                    part_sizes.push(Size { width: w, height: size.height, length: l });
-                    offsets.push(Offset { x: x_cum, y: 0, z: z_cum });
+                    let l = if zi == z_parts - 1 {
+                        z_step + z_rem
+                    } else {
+                        z_step
+                    };
+                    part_sizes.push(Size {
+                        width: w,
+                        height: size.height,
+                        length: l,
+                    });
+                    offsets.push(Offset {
+                        x: x_cum,
+                        y: 0,
+                        z: z_cum,
+                    });
                     z_cum += l;
                 }
                 x_cum += w;
             }
 
-            let result = blocks.par_iter().fold(
-                || vec![VecDeque::new(); split_number],
-                |mut local_groups, block| {
-                    let norm_x = block.pos.x - min.x;
-                    let norm_z = block.pos.z - min.z;
+            let result = blocks
+                .par_iter()
+                .fold(
+                    || vec![VecDeque::new(); split_number],
+                    |mut local_groups, block| {
+                        let norm_x = block.pos.x - min.x;
+                        let norm_z = block.pos.z - min.z;
 
-                    let mut x_cum = 0;
-                    let mut xi = x_parts - 1;
-                    for i in 0..x_parts {
-                        x_cum += if i == x_parts - 1 { x_step + x_rem } else { x_step };
-                        if norm_x < x_cum {
-                            xi = i;
-                            break;
+                        let mut x_cum = 0;
+                        let mut xi = x_parts - 1;
+                        for i in 0..x_parts {
+                            x_cum += if i == x_parts - 1 {
+                                x_step + x_rem
+                            } else {
+                                x_step
+                            };
+                            if norm_x < x_cum {
+                                xi = i;
+                                break;
+                            }
                         }
-                    }
 
-                    let mut z_cum = 0;
-                    let mut zi = z_parts - 1;
-                    for j in 0..z_parts {
-                        z_cum += if j == z_parts - 1 { z_step + z_rem } else { z_step };
-                        if norm_z < z_cum {
-                            zi = j;
-                            break;
+                        let mut z_cum = 0;
+                        let mut zi = z_parts - 1;
+                        for j in 0..z_parts {
+                            z_cum += if j == z_parts - 1 {
+                                z_step + z_rem
+                            } else {
+                                z_step
+                            };
+                            if norm_z < z_cum {
+                                zi = j;
+                                break;
+                            }
                         }
-                    }
 
-                    let group_idx = xi * z_parts + zi;
-                    local_groups[group_idx].push_back(block.clone());
-                    local_groups
-                },
-            ).reduce(
-                || vec![VecDeque::new(); split_number],
-                |mut global_groups, local_groups| {
-                    for (i, mut group) in local_groups.into_iter().enumerate() {
-                        global_groups[i].append(&mut group);
-                    }
-                    global_groups
-                },
-            );
+                        let group_idx = xi * z_parts + zi;
+                        local_groups[group_idx].push_back(block.clone());
+                        local_groups
+                    },
+                )
+                .reduce(
+                    || vec![VecDeque::new(); split_number],
+                    |mut global_groups, local_groups| {
+                        for (i, mut group) in local_groups.into_iter().enumerate() {
+                            global_groups[i].append(&mut group);
+                        }
+                        global_groups
+                    },
+                );
 
-            Ok(result.into_iter()
+            Ok(result
+                .into_iter()
                 .enumerate()
-                .map(|(i, elements)| (
-                    BlockStatePosList { elements },
-                    part_sizes[i].clone(),
-                    offsets[i].clone(),
-                ))
+                .map(|(i, elements)| {
+                    (
+                        BlockStatePosList { elements },
+                        part_sizes[i].clone(),
+                        offsets[i].clone(),
+                    )
+                })
                 .collect())
         }
 
         _ => Err(anyhow!("Invalid split type: {}", split_type)),
     }
 }
-

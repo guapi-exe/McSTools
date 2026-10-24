@@ -7,8 +7,31 @@ import {getFontUrl} from "./fonts.ts";
 export const opacity = ref(1)
 export const backgroundOpacity = ref(1);
 export const layoutMode = ref('cover');
-export const backgroundStr = ref<string | null>(null)
 export const backgroundUrl = ref<string | null>(null)
+
+// Translate a personalization layout choice into real CSS. The previous raw
+// passthrough produced invalid values ('repeat' is not a background-size).
+export const resolveBackgroundLayout = (mode: string): { backgroundSize: string; backgroundRepeat: string } => {
+    switch (mode) {
+        case 'stretch':
+            return {backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat'};
+        case 'repeat':
+            return {backgroundSize: 'auto', backgroundRepeat: 'repeat'};
+        case 'contain':
+            return {backgroundSize: 'contain', backgroundRepeat: 'no-repeat'};
+        default:
+            return {backgroundSize: 'cover', backgroundRepeat: 'no-repeat'};
+    }
+}
+
+export const removeCustomFont = () => {
+    document.fonts.forEach(font => {
+        if (font.family === 'CustomFont') {
+            document.fonts.delete(font);
+        }
+    });
+}
+
 export const initTheme = async () => {
     const fontPath = await appStore.get('fontPath', '')
     const bgPath = await appStore.get('backgroundImage', '')
@@ -25,15 +48,21 @@ export const initTheme = async () => {
             console.error('背景加载失败:', error)
             backgroundUrl.value = null
         }
+    } else {
+        backgroundUrl.value = null
     }
     if (fontPath != 'null' && fontPath != '') {
         try {
             const fontName = 'CustomFont';
             let fontUrl = await getFontUrl(fontPath);
-            const fontFace = new FontFace(fontName, `url('${fontUrl}')`);
-            await fontFace.load();
-            document.fonts.add(fontFace);
-            document.body.style.fontFamily = 'CustomFont, sans-serif !important';
+            if (fontUrl) {
+                // Drop the previous face first so re-uploading a font replaces
+                // it instead of registering a duplicate under the same family.
+                removeCustomFont();
+                const fontFace = new FontFace(fontName, `url('${fontUrl}')`);
+                await fontFace.load();
+                document.fonts.add(fontFace);
+            }
         } catch (e) {
             toast.error(`字体加载失败:${e}`, {timeout: 3000});
             console.error('字体加载失败', e);

@@ -1,0 +1,57 @@
+{
+  "description": "Java block registry snapshots backported from the website; only JSON formatting was normalized.",
+  "sourceProject": "new_mcs / crates/mcs-core",
+  "sourceRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+  "sourceDirectory": "crates/mcs-core/src/data",
+  "hashEncoding": "UTF-8 JSON with LF line endings",
+  "upstreamProject": "https://github.com/PrismarineJS/minecraft-data",
+  "upstreamAttribution": "PrismarineJS minecraft-data, as documented by the existing Java block registry source header.",
+  "materialNames": {
+    "sourceFile": "apps/web/app/data/vanilla-block-ids.generated.ts",
+    "destinationFile": "src/modules/materials/vanilla-block-names.generated.ts",
+    "sourceRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "locales": ["zh-CN", "zh-TW"],
+    "blocksPerLocale": 1166,
+    "extractedExports": ["vanillaBlockNames", "vanillaBlockTraditionalNames"],
+    "sha256Utf8LfExportsWithFinalNewline": "c36150ca4a427077a5d8e12a6b2ecf4216682877cffb82800af8b2b162b15b68",
+    "attribution": "Website-generated 1.21.11 names; its source header attributes the base Chinese labels to local McSTools with newer families added by new_mcs.",
+    "verification": "Extracted name exports match the website byte-for-byte after LF normalization; source files were clean at the recorded revision."
+  },
+  "tables": [
+    {
+      "version": "1.21.3",
+      "sha256": "d655da50e04b3f037da002099e9723c2dd3983a3d709b9d55b94dd8e4411db74",
+      "blocks": 1084
+    },
+    {
+      "version": "1.21.4",
+      "sha256": "60053d85b2d2750e15bb90113557292629e55184701e370e5a6e6a3a65b356b8",
+      "blocks": 1095
+    },
+    {
+      "version": "1.21.5",
+      "sha256": "8c8175b821678770f859f7a6addf4b7345206f23f7bb955e162768c66235dc40",
+      "blocks": 1104
+    },
+    {
+      "version": "1.21.6",
+      "sha256": "e4f58a71c55111dec75470ce48b8cfcb38b6ad8ef4d1fc07510e1e76a0491bd5",
+      "blocks": 1105
+    },
+    {
+      "version": "1.21.8",
+      "sha256": "e4f58a71c55111dec75470ce48b8cfcb38b6ad8ef4d1fc07510e1e76a0491bd5",
+      "blocks": 1105
+    },
+    {
+      "version": "1.21.9",
+      "sha256": "e46532d1f8ff7d73f4a3e5e126cff2101ca0d5f18ea3ec11f704ae2e89624425",
+      "blocks": 1166
+    },
+    {
+      "version": "1.21.11",
+      "sha256": "e46532d1f8ff7d73f4a3e5e126cff2101ca0d5f18ea3ec11f704ae2e89624425",
+      "blocks": 1166
+    }
+  ]
+}

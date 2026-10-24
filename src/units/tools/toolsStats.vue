@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { defineProps, computed, ref, watch, nextTick, onBeforeUnmount } from "vue";
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted, onActivated, onDeactivated } from "vue";
 import type { RequirementStatistics } from "../../modules/requirements.ts";
-import * as echarts from 'echarts';
+import type {ECharts} from 'echarts';
 import { useI18n } from 'vue-i18n';
-const { t: $t } = useI18n();
+const { t: $t, locale } = useI18n();
+import {materialName} from '../../modules/materials/block_names'
 import {exportRequirementsStatsToCsv} from "../../modules/exportRequirements.ts";
-import {schematicData} from "../../modules/tools_data.ts";
+import {schematicData, activeTools} from "../../modules/tools_data.ts";
 import {getIconUrl} from "../../modules/others.ts";
 
 const props = defineProps<{
@@ -13,14 +14,69 @@ const props = defineProps<{
 }>();
 
 const viewMode = ref<'list' | 'chart'>('list');
-let chartInstance: echarts.ECharts | null = null;
-let chartInstance2: echarts.ECharts | null = null;
+let chartInstance: ECharts | null = null;
+let chartInstance2: ECharts | null = null;
+let chartGeneration = 0;
+const chartError = ref('');
+const active = ref(true);
+const chartVisible = computed(() => active.value && activeTools.value === 'stats' && viewMode.value === 'chart');
+function disposeCharts() {
+  ++chartGeneration;
+  chartInstance?.dispose(); chartInstance2?.dispose();
+  chartInstance = null; chartInstance2 = null;
+}
 
 const sortedItems = computed(() => {
-  return props.data?.items?.slice().sort((a, b) => b.count - a.count) || [];
+  return (props.data?.items ?? []).map(item => ({...item, zh_cn: materialName(item.id, locale.value)}))
+    .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
 });
+
+// Incremental rendering: large blueprints can list hundreds of materials, and
+// mounting them all at once freezes the first stats open. Start with a small
+// chunk and extend as the user scrolls towards the sentinel.
+const LIST_CHUNK = 50;
+const LIST_CHUNK_STEP = 100;
+const visibleCount = ref(LIST_CHUNK);
+const visibleItems = computed(() => sortedItems.value.slice(0, visibleCount.value));
+const remainingCount = computed(() => Math.max(0, sortedItems.value.length - visibleItems.value.length));
+
+watch(sortedItems, () => {
+  visibleCount.value = LIST_CHUNK;
+});
+
+const listSentinel = ref<HTMLElement | null>(null);
+let sentinelObserver: IntersectionObserver | null = null;
+
+const loadMore = () => {
+  if (remainingCount.value > 0) {
+    visibleCount.value = Math.min(sortedItems.value.length, visibleCount.value + LIST_CHUNK_STEP);
+  }
+};
+
+onMounted(() => {
+  sentinelObserver = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) loadMore();
+  });
+  if (listSentinel.value) sentinelObserver.observe(listSentinel.value);
+});
+watch(listSentinel, (next, previous) => {
+  if (previous) sentinelObserver?.unobserve(previous);
+  if (next && active.value && activeTools.value === 'stats') sentinelObserver?.observe(next);
+});
+watch([active, activeTools], () => {
+  sentinelObserver?.disconnect();
+  if (listSentinel.value && active.value && activeTools.value === 'stats') sentinelObserver?.observe(listSentinel.value);
+});
+
 const initOrUpdateChart = async () => {
+  const generation = ++chartGeneration;
+  chartError.value = '';
+  // The default material list does not need the large chart library.
+  let echarts: typeof import('echarts');
+  try { echarts = await import('echarts'); }
+  catch (error) { if (generation === chartGeneration) chartError.value = String(error); return; }
   await nextTick();
+  if (generation !== chartGeneration || !chartVisible.value) return;
   const chartDom = document.getElementById('chart-container');
   const chartDom2 = document.getElementById('chart-container2');
   if (chartDom) {
@@ -33,9 +89,10 @@ const initOrUpdateChart = async () => {
 
     const option = {
       tooltip: {
+        renderMode: 'richText',
         trigger: 'item',
     formatter: ({ data }: any) =>
-      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
+      `${data.name}\n${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       legend: {
         type: 'scroll',
@@ -70,7 +127,6 @@ const initOrUpdateChart = async () => {
     };
 
     chartInstance.setOption(option);
-    window.addEventListener('resize', () => chartInstance?.resize());
   }
   if (chartDom2) {
     if (chartInstance2) {
@@ -81,9 +137,10 @@ const initOrUpdateChart = async () => {
 
     const option = {
       tooltip: {
+        renderMode: 'richText',
         trigger: 'item',
     formatter: ({ data }: any) =>
-      `${data.name}<br/>${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
+      `${data.name}\n${$t('toolsStats.count')}: ${data.value} (${data.percentage}%)`
       },
       dataset: [
         {
@@ -121,33 +178,34 @@ const initOrUpdateChart = async () => {
     };
 
     chartInstance2.setOption(option);
-    window.addEventListener('resize', () => chartInstance2?.resize());
   }
 };
-const exportRequirement = async() => {
-  await exportRequirementsStatsToCsv(schematicData.value.name, sortedItems.value)
-}
-watch(viewMode, (newVal) => {
-  if (newVal === 'chart') {
-    nextTick(() => {
-      if (props.data?.items?.length) {
-        initOrUpdateChart();
-      }
-    });
-  }
+
+// One named handler for both charts — attached once, removed on unmount.
+const handleWindowResize = () => {
+  chartInstance?.resize();
+  chartInstance2?.resize();
+};
+
+onMounted(() => {
+  window.addEventListener('resize', handleWindowResize);
 });
 
-watch(() => props.data, (newVal) => {
-  if (viewMode.value === 'chart' && newVal?.items?.length) {
-    initOrUpdateChart();
-  }
-}, { deep: true });
+const exportRequirement = async() => {
+  exportRequirementsStatsToCsv(schematicData.value?.name ?? 'blueprint', sortedItems.value, undefined, locale.value)
+}
+watch([chartVisible, sortedItems], () => {
+  if (chartVisible.value && sortedItems.value.length) void initOrUpdateChart();
+  else disposeCharts();
+});
+onActivated(() => { active.value = true; });
+onDeactivated(() => { active.value = false; disposeCharts(); });
 
 onBeforeUnmount(() => {
-  if (chartInstance) {
-    chartInstance.dispose();
-    window.removeEventListener('resize', () => chartInstance?.resize());
-  }
+  window.removeEventListener('resize', handleWindowResize);
+  disposeCharts();
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
 });
 
 </script>
@@ -208,7 +266,7 @@ onBeforeUnmount(() => {
 
       <tbody>
       <tr
-          v-for="(item) in sortedItems"
+          v-for="(item) in visibleItems"
           :key="item.id"
           class="table-row"
       >
@@ -280,8 +338,16 @@ onBeforeUnmount(() => {
       </tr>
       </tbody>
     </v-table>
+
+    <div v-if="remainingCount > 0" ref="listSentinel" class="load-more-sentinel">
+      <v-progress-circular indeterminate size="18" width="2" class="mr-2" />
+      <span class="text-caption text-medium-emphasis">
+        {{ $t('toolsStats.moreRemaining', { count: remainingCount }) }}
+      </span>
+    </div>
   </div>
   <div v-else class="chart-container pa-4">
+    <v-alert v-if="chartError" type="error" variant="tonal">{{ chartError }}</v-alert>
     <div
         v-if="sortedItems.length"
         id="chart-container"
@@ -331,18 +397,26 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.load-more-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+}
+
 .view-toggle {
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 4px;
+}
 
-  .v-btn {
-    transition: all 0.3s ease;
+.view-toggle .v-btn {
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
 
-    &--active {
-      background-color: #2196F3;
-      color: white !important;
-    }
-  }
+.view-toggle .v-btn--active {
+  background-color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary)) !important;
 }
 
 .chart-container {

@@ -1,6 +1,6 @@
 import {invoke} from "@tauri-apps/api/core";
 import {toast} from "../others.ts";
-import {ref} from "vue";
+import {shallowRef} from "vue";
 
 export interface BlockColorData {
     left_top: number[];
@@ -56,7 +56,12 @@ export interface RawData {
     items: SubData[];
 }
 
-export const mapArtData = ref<RawData[]>()
+// The map-art table is read-only after loading.  A shallow ref avoids making
+// every nested block/color field a Vue proxy (there are hundreds of them),
+// which otherwise causes a noticeable pause when the toolbox is opened.
+export const mapArtData = shallowRef<RawData[]>()
+
+let mapArtsRequest: Promise<RawData[]> | null = null
 
 export type CategoryBlocks = Record<string, Record<string, BlockColorData>>;
 
@@ -78,4 +83,24 @@ export async function fetchMapArtsData(
         });
         throw new Error(`err: ${error}`);
     }
+}
+
+/** Load the table once, on demand, and share concurrent requests. */
+export function ensureMapArtData(): Promise<RawData[]> {
+    if (mapArtData.value && mapArtData.value.length > 0) {
+        return Promise.resolve(mapArtData.value)
+    }
+
+    if (!mapArtsRequest) {
+        mapArtsRequest = fetchMapArtsData()
+            .then((data) => {
+                mapArtData.value = data
+                return data
+            })
+            .finally(() => {
+                mapArtsRequest = null
+            })
+    }
+
+    return mapArtsRequest
 }

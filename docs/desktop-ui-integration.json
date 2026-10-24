@@ -1,0 +1,95 @@
+{
+  "date": "2026-10-18",
+  "status": "native_ui_and_fault_regressions_verified",
+  "scope": "New desktop editor, shared export, map/model/batch toolbox and cached navigation; existing Vue/Vuetify theme retained; 3D printing excluded",
+  "isolation": "Real packaged Tauri IPC and foreground WebView2, identifier mcSchematic.native-integration-20261018, 1000x760 viewport. Normal user database untouched. No private API key or production write used.",
+  "localization": {
+    "catalog": "src/i18n/desktop.ts",
+    "messages": 290,
+    "languages": [
+      "zh",
+      "en",
+      "zh_tw",
+      "ja"
+    ],
+    "coverage": "New editor, export fields/warnings, palette, map art, model preview/generation, batch conversion and retry states",
+    "names": "1166 simplified/traditional material names reused; English/Japanese fallback uses readable block IDs; unknown mod IDs retained",
+    "localeRestore": "Normalize historical zh-CN/zh-TW/zh-Hant/zh-HK plus current select values to registered locale keys; no zh_tw -> zh-TW startup mismatch",
+    "limits": "Unknown native diagnostics remain intact; this is not a claim that every historical backend error or Minecraft Japanese name was translated"
+  },
+  "reproducedAndFixed": [
+    "Selecting a different blueprint after caching Split/Source Data caused undefined sizes errors and retained the previous source tab. Key panels by source, reset mounted-tab state, guard empty source and dispose stale text loads.",
+    "A clear/reselect ABA race could publish stale metadata or clear a newer request handle. Epoch-gated metadata/history, identity-based cleanup, shared pending getters and visible retry state now cover this.",
+    "Packaged JSON Code Worker first hit worker-src and then data-URL importScripts rejection. Explicit local-worker policy plus the existing JSONEditor Ace instance now uses a separate non-inline same-origin worker asset and disables its Blob trampoline; syntax validation remains enabled.",
+    "English narrow editor tabs could be clipped and inherited gray primary text reduced contrast. Scoped wrapping, tab sizing and on-surface body text preserve the existing theme."
+  ],
+  "nativePerformance": {
+    "map": {
+      "scenario": "1024x1024 PNG, all 320 blocks selected, relief enabled; navigate when actual map Worker starts",
+      "script": "scripts/testing/native-map-navigation.js",
+      "frames": 60,
+      "maxFrameMs": 48.4,
+      "blankFrames": 0,
+      "targetVisibleMs": 55.7,
+      "workerTerminateMs": 18.1,
+      "remainingWorkers": 0,
+      "jsHeapBytesAfter": 55721121
+    },
+    "model": {
+      "scenario": "Real GLTF+BIN cube, resolution128, enclosed fill, fixed stone; generated 2097152 blocks (128x128x128)",
+      "frames": 60,
+      "maxFrameMs": 42.5,
+      "blankFrames": 0,
+      "targetVisibleMs": 41.3,
+      "oldWebGlContextLost": true,
+      "oldCanvasRemoved": true,
+      "remainingModelCanvases": 0,
+      "return": "New canvas/context, WebGL error0, completed 2097152-block result retained",
+      "jsHeapBytes": [
+        75337974,
+        75763238,
+        75622949
+      ]
+    },
+    "limits": "Single-machine foreground diagnostic samples, not a 60fps guarantee. JS heap is not process RSS or GPU memory; no absolute peak-memory claim. 42-48ms long frames still occurred."
+  },
+  "nativeInteractions": [
+    "Actual English palette at1000px: dialog left100/right900, document width1000, initial block-item count0; category expand, all320 selection and Apply worked.",
+    "Actual shared export preview prepared from the completed2M-block model; version3955 and dimensions128x128x128 retained. Preview closed/released; large result not saved.",
+    "Actual small-library editor: temporary copy, source-block canvas picking and two-corner picking worked; two identical surface clicks produced a one-block region. No original library file modified.",
+    "Final rebuilt native Code Worker: same-origin /assets/worker-json-DgwNIOck.js?no-inline, real annotate response, errors[] and csp[].",
+    "Final rebuilt native Split/Source Data/Code paths across source3 -> source4 -> source3: no undefined sizes, no stale large-source warning, new source starts at Details.",
+    "Final native editing UI picked (0,1,1) twice, cropped temporary2³ copy to1³, then Undo restored2³. No source save performed.",
+    "Traditional setting saved through UI, normal test-window close/relaunch restored zh_tw and 繁體中文; Japanese toolbox displayed correctly at1000px. Missing Japanese batch tab label subsequently added and covered by the sixth locale test.",
+    "English editor tabs both fully visible at1000px, each width120.67px; restored on-surface body contrast. Production database SHA256 unchanged."
+  ],
+  "apiFaultVerification": {
+    "tests": "src-tauri/src/modules/mcs_api.rs",
+    "method": "Production request-building/redirect/status/permit logic with test-only transport routing to a real loopback HTTP peer; captures original URLs and actual wire Authorization. Fake test key only; no insecure TLS exception or production allowlist change.",
+    "coverage": [
+      "API -> API -> CDN -> API: Authorization present only on the first2 requests, never reattached after leaving credential scope",
+      "Anonymous request does not send an already-connected key",
+      "400/401/403/404/410/503 map to distinct safe errors and release permits",
+      "429 Retry-After bounded to1..3600, malformed fallback60; immediate retry blocked before transport",
+      "Missing/untrusted/plain-HTTP/userinfo/nonstandard-port redirects rejected; loops bounded to5 sends",
+      "Disconnected account rejected before transport; body limits, cancellation and truncated HTTP body release permits"
+    ],
+    "limit": "Does not verify a live private account or remote TLS deployment; live public listing/version-source import was verified separately"
+  },
+  "automated": {
+    "frontend": "60 Node tests passed, including6 locale/tab and5 metadata-race tests",
+    "types": "vue-tsc --noEmit passed",
+    "rust": "cargo test --offline --lib:168 passed,0 failed,2 default-ignored; historical bin tests deliberately excluded",
+    "build": "Final isolated and normal-identifier debug builds passed, including vue-tsc/Vite. Normal profile not launched. WebGL2 smoke passed."
+  },
+  "screenshots": [
+    "output/playwright/native-integration/palette-en-1000.png",
+    "output/playwright/native-integration/model-en-large-1000.png",
+    "output/playwright/native-integration/export-en-1000.png",
+    "output/playwright/native-integration/editor-en-final-1000.png",
+    "output/playwright/native-integration/toolbox-tw-final.png",
+    "output/playwright/native-integration/toolbox-ja-final.png",
+    "output/playwright/native-integration/source-code-worker-final.png"
+  ],
+  "artifactPolicy": "Local screenshots/logs/test profiles and user blueprint samples are not committed or pushed"
+}

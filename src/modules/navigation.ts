@@ -1,20 +1,8 @@
-import {ref} from "vue";
 import {NavigationGuard} from "vue-router";
-export const leaveTimer = ref<number>(0)
-export const isLeaving = ref(false)
-export const navigationGuard: NavigationGuard = (to, from, next) => {
-    isLeaving.value = true
-    console.log(to,from)
-    leaveTimer.value = window.setTimeout(() => {
-        next();
-        isLeaving.value = false
-    }, 200)
 
-    const handler = () => {
-        window.clearTimeout(leaveTimer.value)
-        next()
-    }
-
-    document.addEventListener('animationend', handler, { once: true })
+// Route transitions are handled globally by the page-level <Transition> in
+// App.vue (see modules/page_transition.ts). This guard is kept only so views
+// keep an explicit leave hook point; it never blocks navigation.
+export const navigationGuard: NavigationGuard = (_to, _from, next) => {
+    next()
 }
-

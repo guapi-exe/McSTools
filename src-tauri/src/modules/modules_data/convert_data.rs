@@ -11,6 +11,15 @@ pub struct Target {
     pub has: bool,
     pub size: String,
     pub version: i32,
+    #[serde(default)]
+    pub output: Option<ConversionOutput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversionOutput {
+    pub data_version: Option<i32>,
+    pub game_version: Option<String>,
+    pub format_version: i32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvertData {
@@ -29,6 +38,7 @@ pub enum SchematicType {
     Bg,
     We,
     Be,
+    McEdit,
 }
 
 impl SchematicType {
@@ -39,6 +49,7 @@ impl SchematicType {
             3 => Some(Self::We),
             4 => Some(Self::Bg),
             5 => Some(Self::Be),
+            6 => Some(Self::McEdit),
             _ => None,
         }
     }
@@ -58,6 +69,7 @@ impl SchematicType {
             SchematicType::We => "schem",
             SchematicType::Bg => "json",
             SchematicType::Be => "mcstructure",
+            SchematicType::McEdit => "schematic",
         }
     }
     pub fn type_id(&self) -> &'static i32 {
@@ -67,6 +79,7 @@ impl SchematicType {
             SchematicType::We => &3,
             SchematicType::Bg => &4,
             SchematicType::Be => &5,
+            SchematicType::McEdit => &6,
         }
     }
 }

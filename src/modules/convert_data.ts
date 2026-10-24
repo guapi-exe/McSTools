@@ -1,11 +1,12 @@
 import {invoke} from "@tauri-apps/api/core";
 import {toast} from "./others.ts";
-type SchematicType = "Create" | "Litematic" | "Bg" | "We" | "Be";
+type SchematicType = "Create" | "Litematic" | "Bg" | "We" | "Be" | "McEdit";
 
 interface Target {
     has: boolean;
     size: string;
     version: number;
+    output?: {data_version: number | null; game_version: string | null; format_version: number} | null;
 }
 
 export interface ConvertData {

@@ -1,24 +1,32 @@
 <script setup lang="ts">
 import {onMounted, ref, watch} from 'vue';
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {navigationGuard} from "../modules/navigation.ts";
 import {onBeforeRouteLeave} from "vue-router";
 import {appStore} from '../modules/store.ts';
 import {saveImage} from "../modules/uploadImage.ts";
-import router from "../../router";
 import {useTheme} from "vuetify/framework";
-import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity} from "../modules/theme.ts";
-import { useI18n } from 'vue-i18n';
+import {
+  backgroundOpacity,
+  backgroundUrl,
+  initTheme,
+  layoutMode,
+  opacity,
+  removeCustomFont,
+  resolveBackgroundLayout
+} from "../modules/theme.ts";
+import {useI18n} from 'vue-i18n';
 import {saveFont} from "../modules/fonts.ts";
+import {storedFileSize} from '../modules/preference-values';
 
 const { t } = useI18n()
 const selectedTheme = ref('grey');
 const backgroundImage = ref('null');
-const backgroundSize = ref<number>();
+const backgroundSize = ref(0);
 const backgroundDimensions = ref();
 const backgroundName = ref();
 const fontPath = ref();
 const fontName = ref();
-const fontSize = ref();
+const fontSize = ref(0);
 const background = ref();
 const font = ref();
 const theme = useTheme()
@@ -28,10 +36,6 @@ const layoutModes = [
   { label: t('individuation.background.layoutModes.contain'), value: 'contain', color: 'purple-darken-2' },
   { label: t('individuation.background.layoutModes.cover'), value: 'cover', color: 'blue-darken-2' },
 ];
-
-const refreshBackground = async() => {
-  await router.push({name: 'emptyRoute'});
-};
 const themes = [
   { label: t('individuation.theme.options.grey'), value: 'grey', color: 'bg-blue-grey-lighten-5', icon: 'mdi-weather-sunny' },
   { label: t('individuation.theme.options.blue'), value: 'blue', color: 'blue-darken-2', icon: 'mdi-weather-sunny' },
@@ -40,47 +44,60 @@ const themes = [
   { label: t('individuation.theme.options.orange'), value: 'orange', color: 'orange-darken-2', icon: 'mdi-fire' },
   { label: t('individuation.theme.options.yellow'), value: 'yellow', color: 'yellow-darken-3', icon: 'mdi-fruit-pineapple' },
   { label: t('individuation.theme.options.brown'), value: 'brown', color: 'brown-darken-3', icon: 'mdi-square-rounded' },
+  { label: t('individuation.theme.options.whiteDark'), value: 'white_dark', color: 'indigo-lighten-3', icon: 'mdi-weather-night' },
   { label: t('individuation.theme.options.greyDark'), value: 'grey_dark', color: 'black-darken-3', icon: 'mdi-moon-waning-crescent' },
 ]
 onBeforeRouteLeave(navigationGuard)
 
 onMounted(async () => {
   selectedTheme.value = await appStore.get('selectedTheme', 'blue');
-  await appStore.set('oldTheme', 'blue')
   backgroundImage.value = await appStore.get('backgroundImage', 'null');
-  backgroundSize.value = await appStore.get('backgroundSize', 0);
+  backgroundSize.value = storedFileSize(await appStore.get<unknown>('backgroundSize', 0));
   backgroundDimensions.value = await appStore.get('backgroundDimensions', "null")
   backgroundName.value = await appStore.get('backgroundName', "null")
   fontName.value = await appStore.get('fontName', "null")
-  fontSize.value = await appStore.get('fontSize', "null")
+  fontSize.value = storedFileSize(await appStore.get<unknown>('fontSize', 0))
   fontPath.value = await appStore.get('fontPath', "null")
   theme.global.name.value = selectedTheme.value
 });
 
-const updateBackGround = async(file: File| undefined) =>{
-  let data = await saveImage(file)
-  await appStore.set('backgroundImage', data?.path);
-  await appStore.set('backgroundSize', data?.size)
-  await appStore.set('backgroundDimensions', data?.dimensions)
-  await appStore.set('backgroundName', data?.name)
-  await router.push({name: 'emptyRoute'});
+// All changes below apply instantly through the reactive theme refs — no
+// page refresh involved (initTheme updates backgroundUrl / the FontFace).
+const updateBackGround = async (file: File | undefined) => {
+  const data = await saveImage(file)
+  if (!data) return
+  await appStore.set('backgroundImage', data.path);
+  await appStore.set('backgroundSize', data.size)
+  await appStore.set('backgroundDimensions', data.dimensions)
+  await appStore.set('backgroundName', data.name)
+  backgroundImage.value = data.path
+  backgroundSize.value = data.size
+  backgroundDimensions.value = data.dimensions
+  backgroundName.value = data.name
   await initTheme();
 }
 
-const updateFont = async(file: File| undefined) =>{
-  let data = await saveFont(file)
-  await appStore.set('fontPath', data?.path);
-  await appStore.set('fontSize', data?.size)
-  await appStore.set('fontName', data?.name)
-  await router.push({name: 'emptyRoute'});
+const updateFont = async (file: File | undefined) => {
+  const data = await saveFont(file)
+  if (!data) return
+  await appStore.set('fontPath', data.path);
+  await appStore.set('fontSize', data.size)
+  await appStore.set('fontName', data.name)
+  fontPath.value = data.path
+  fontSize.value = data.size
+  fontName.value = data.name
   await initTheme();
 }
+
 const clearBackGround = async () => {
   await appStore.set('backgroundImage', 'null');
   await appStore.set('backgroundSize', 0)
   await appStore.set('backgroundDimensions', 'null')
   await appStore.set('backgroundName', 'null')
-  await router.push({name: 'emptyRoute'});
+  backgroundImage.value = 'null'
+  backgroundSize.value = 0
+  backgroundDimensions.value = 'null'
+  backgroundName.value = 'null'
   await initTheme();
 }
 
@@ -88,46 +105,43 @@ const clearFont = async () => {
   await appStore.set('fontPath', 'null');
   await appStore.set('fontSize', 0)
   await appStore.set('fontName', 'null')
-  document.fonts.forEach(font => {
-    if (font.family === 'CustomFont') {
-      document.fonts.delete(font);
-    }
-  });
+  fontPath.value = 'null'
+  fontSize.value = 0
+  fontName.value = 'null'
+  removeCustomFont();
   document.body.style.fontFamily = '';
-  await router.push({name: 'emptyRoute'});
   await initTheme();
 }
 
-
 watch(selectedTheme, (val) => {
-      theme.global.name.value = val
-      appStore.set('selectedTheme', val)
-      if (val != "grey_dark") {
-        appStore.set('lodTheme', val)
-      }
+  theme.global.name.value = val
+  appStore.set('selectedTheme', val)
+  // The last manually chosen light theme is what "system dark" restores to.
+  if (val !== 'grey_dark' && val !== 'white_dark') {
+    appStore.set('oldTheme', val)
+  }
 });
-watch(backgroundImage, (val) => appStore.set('backgroundImage', val));
-watch(layoutMode, (val) => appStore.set('layoutMode', val));
-watch(opacity, (val) => appStore.set('opacity', val))
-watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
+watch(layoutMode, (val) => appStore.setDebounced('layoutMode', val));
+watch(opacity, (val) => appStore.setDebounced('opacity', val));
+watch(backgroundOpacity, (val) => appStore.setDebounced('backgroundOpacity', val));
 </script>
 
-<template  class="page-wrapper">
+<template>
+  <div class="page-view">
   <v-row no-gutters
          class="mb-4 animate-row "
-         :class="{ 'animate-row-out': isLeaving }"
   >
     <v-col class="mb-4" cols="12">
-        <v-card class="mx-auto v-theme--custom text-primary " :style="{ '--surface-alpha': opacity }" elevation="4">
-          <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-3" :style="{ '--surface-alpha': opacity + 0.2 }">
+        <v-card class="mx-auto v-theme--custom text-primary " elevation="2">
+          <v-toolbar density="compact" class="bg-surface-container pa-3">
             <v-toolbar-title>
               <v-icon icon="mdi-palette text-medium-emphasis" class="mr-2"></v-icon>
-              <span class="text-h5 text-medium-emphasis">{{ t('individuation.title') }}</span>
+              <span class="text-h6 text-medium-emphasis">{{ t('individuation.title') }}</span>
             </v-toolbar-title>
           </v-toolbar>
 
           <v-card-text class="pa-6">
-            <v-card variant="flat" class="mb-3 bg-blue-grey-lighten-5">
+            <v-card variant="flat" class="mb-3 bg-surface-container">
               <v-card-text>
                 <v-row align="center">
                   <v-col cols="2">
@@ -159,7 +173,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
                 </v-row>
               </v-card-text>
             </v-card>
-            <v-card variant="flat" class="bg-blue-grey-lighten-5">
+            <v-card variant="flat" class="bg-surface-container">
               <v-card-text>
                 <v-row align="center" justify="center">
                   <v-col cols="2">
@@ -179,7 +193,6 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
                             v-for="theme in themes"
                             :key="theme.value"
                             :color="theme.color"
-                            :v-model="selectedTheme"
                             :value="theme.value"
                             class="text-medium-emphasis"
                         >
@@ -204,11 +217,11 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
         </v-card>
     </v-col>
     <v-col class="mb-4" cols="12">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class="pa-2" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3">
           <v-toolbar-title>
             <v-icon icon="mdi-image text-medium-emphasis" class="mr-2"></v-icon>
-            <span class="text-h7 text-medium-emphasis">{{ t('individuation.background.title') }}</span>
+            <span class="text-h6 text-medium-emphasis">{{ t('individuation.background.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -220,9 +233,9 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
                   :style="{
                     backgroundColor: `rgba(255,255,255, ${1 - backgroundOpacity})`,
                     backgroundImage: `url(${backgroundUrl})`,
-                    backgroundSize: 'cover',
+                    backgroundSize: resolveBackgroundLayout(layoutMode).backgroundSize,
+                    backgroundRepeat: resolveBackgroundLayout(layoutMode).backgroundRepeat,
                     backgroundPosition: 'center',
-                    backgroundAttachment: 'fixed',
                   }"
                   contain
                   transition="fade-transition"
@@ -246,7 +259,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
             </v-col>
 
             <v-col cols="6" class="info-column">
-              <v-card class="h-100" :style="{ '--surface-alpha': opacity }" elevation="2">
+              <v-card class="h-100" elevation="2">
                 <v-card-title class="d-flex align-center">
                   <v-icon left>mdi-information</v-icon>
                   {{ t('individuation.background.imageInfo') }}
@@ -297,30 +310,19 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
           </v-row>
 
           <v-row class="mb-4">
-            <v-col cols="6">
+            <v-col cols="12">
               <v-file-input
                   v-model="background"
                   accept="image/png, image/jpeg, image/bmp"
                   :label="t('individuation.background.actions.select')"
                   density="compact"
-                  placeholder="单击选择文件"
                   show-size
                   prepend-icon="mdi-folder-open"
                   @update:model-value="updateBackGround(background)"
               ></v-file-input>
             </v-col>
-            <v-col cols="6">
-              <v-btn
-                  variant="outlined"
-                  block
-                  @click="refreshBackground"
-              >
-                <v-icon left>mdi-refresh</v-icon>
-                {{ t('individuation.background.actions.refresh') }}
-              </v-btn>
-            </v-col>
           </v-row>
-          <v-card variant="flat" class="bg-blue-grey-lighten-5 mb-3">
+          <v-card variant="flat" class="bg-surface-container mb-3">
             <v-card-text class="pa-6">
               <v-row align="center" >
                 <v-col cols="2" class="d-flex align-center text-medium-emphasis">
@@ -351,7 +353,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
             </v-card-text>
           </v-card>
 
-          <v-card variant="flat" class="bg-blue-grey-lighten-5 mb-2">
+          <v-card variant="flat" class="bg-surface-container mb-2">
             <v-card-text class="pa-6">
               <v-row align="center">
                 <v-col cols="2" class="d-flex align-center text-medium-emphasis">
@@ -391,11 +393,11 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
       </v-card>
     </v-col>
     <v-col class="mb-4" cols="12">
-      <v-card class="mx-auto" :style="{ '--surface-alpha': opacity }" elevation="4">
-        <v-toolbar density="compact" class="pa-2" :style="{ '--surface-alpha': opacity + 0.2 }">
+      <v-card class="mx-auto" elevation="2">
+        <v-toolbar density="compact" class="bg-surface-container pa-3">
           <v-toolbar-title>
             <v-icon icon="mdi-format-font text-medium-emphasis" class="mr-2"></v-icon>
-            <span class="text-h7 text-medium-emphasis">{{ t('individuation.font.title') }}</span>
+            <span class="text-h6 text-medium-emphasis">{{ t('individuation.font.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -433,7 +435,7 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
             </v-col>
 
             <v-col cols="6" class="info-column">
-              <v-card class="h-100" :style="{ '--surface-alpha': opacity }" elevation="2">
+              <v-card class="h-100" elevation="2">
                 <v-card-title class="d-flex align-center">
                   <v-icon left>mdi-information</v-icon>
                   {{ t('individuation.font.fontInfo') }}
@@ -477,34 +479,23 @@ watch(backgroundOpacity, (val) => appStore.set('backgroundOpacity', val))
           </v-row>
 
           <v-row class="mb-4">
-            <v-col cols="6">
+            <v-col cols="12">
               <v-file-input
                   v-model="font"
                   accept=".ttf, .woff, .woff2, font/ttf, font/woff, font/woff2"
                   :label="t('individuation.font.actions.select')"
                   density="compact"
-                  placeholder="单击选择文件"
                   show-size
                   prepend-icon="mdi-folder-open"
                   @update:model-value="updateFont(font)"
               ></v-file-input>
-            </v-col>
-            <v-col cols="6">
-              <v-btn
-                  variant="outlined"
-                  block
-                  @click="refreshBackground"
-              >
-                <v-icon left>mdi-refresh</v-icon>
-                {{ t('individuation.font.actions.refresh') }}
-              </v-btn>
             </v-col>
           </v-row>
         </v-card-text>
       </v-card>
     </v-col>
   </v-row>
+  </div>
 </template>
 
-<style scoped lang="css" src="../assets/css/individuation.css"></style>
 <style scoped lang="css" src="../assets/css/individuation.css"></style>

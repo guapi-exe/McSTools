@@ -1,21 +1,26 @@
 <template >
-  <v-app :style="backgroundStyle" id="custom-font-style">
+  <v-app :style="backgroundStyle" :class="{ 'has-custom-bg': !!backgroundUrl }" id="custom-font-style">
     <v-theme-provider>
       <div class="layout-container">
         <app-layout class="app-layout" />
         <v-main>
           <div class="scroll-container">
-            <router-view v-slot="{ Component }">
-              <transition name="page" mode="out-in">
-                <div class="page-wrapper">
-                  <component :is="Component" />
-                </div>
-              </transition>
+            <router-view v-slot="{ Component, route }">
+              <Transition :name="transitionName" @enter="applyPendingScroll">
+                <KeepAlive :max="8" :include="keepAliveNames">
+                  <component
+                      :is="Component"
+                      :key="String(route.name)"
+                  />
+                </KeepAlive>
+              </Transition>
             </router-view>
           </div>
         </v-main>
       </div>
     </v-theme-provider>
+    <ScrollRail target=".scroll-container" offset="calc(var(--v-layout-left, 72px) + 4px)" />
+    <McsConnection />
     <v-dialog v-model="updateDialog" max-width="500">
       <v-card
           class="v-theme--custom"
@@ -131,12 +136,13 @@
           v-show="showBackToTop"
           color="info"
           :absolute="true"
-          icon="mdi-up"
           size="large"
           location="right bottom"
           class="back-to-top"
           @click="scrollToTop"
-      />
+      >
+        <v-icon icon="mdi-arrow-up" />
+      </v-fab>
     </v-fab-transition>
     <v-fab v-if="change_data"
            icon="mdi-content-save-all-outline"
@@ -151,17 +157,22 @@
 
 <script setup lang="ts">
 import AppLayout from "./layout/AppLayout.vue";
+import ScrollRail from "./layout/ScrollRail.vue";
+import McsConnection from './units/account/McsConnection.vue';
+import {restoreMcsConnection} from './modules/web_schematic/mcs_api';
 import {nextTick, onMounted, onUnmounted, ref, watchEffect} from "vue";
+import {useRouter} from "vue-router";
 import {appStore} from "./modules/store.ts";
 import {useTheme} from "vuetify/framework";
 import {useI18n} from 'vue-i18n'
-import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity} from "./modules/theme.ts";
+import {normalizeAppLocale} from './i18n/locale'
+import {backgroundOpacity, backgroundUrl, initTheme, layoutMode, opacity, resolveBackgroundLayout} from "./modules/theme.ts";
+import {applyPendingScroll, onPageChange, transitionName} from "./modules/page_transition.ts";
 import {invoke} from "@tauri-apps/api/core";
 import {fetchJeBlocks, jeBlocks} from "./modules/je_blocks.ts";
 import {fetchUserData} from "./modules/user_data.ts";
 import {relaunch} from "@tauri-apps/plugin-process";
 import {appData, getAppVersion} from "./modules/app_data.ts";
-import {fetchMapArtsData, mapArtData} from "./modules/map_art/map_art_data.ts";
 import {
   checkUpdate,
   confirmUpdate,
@@ -178,8 +189,7 @@ import {
   updateTotalBytes,
   UpdateState
 } from "./modules/chuck_update.ts";
-import {loadThreeDBlocksResources} from "./modules/3DBLOCKS";
-import {detectTheme, toast} from "./modules/others.ts";
+import {detectTheme} from "./modules/others.ts";
 import {change_data, showSaveDialog} from "./modules/snbt_to_json.ts";
 
 type IdleCapableWindow = Window & {
@@ -187,16 +197,27 @@ type IdleCapableWindow = Window & {
 }
 
 const theme = useTheme()
+const router = useRouter()
 const selectedTheme = ref('grey')
 const autoUpdateEnabled = ref(true);
+
+// Component names kept alive across navigations. Must match the SFC file
+// names; /empty (EmptyViews) is deliberately excluded so it re-mounts.
+const keepAliveNames = [
+  'homeViews', 'toolsViews', 'schematicsViews', 'individuationViews',
+  'reportViews', 'aboutViews', 'othersViews', 'settingViews',
+]
+router.afterEach((to, from) => onPageChange(to, from))
+
 const backgroundStyle = ref({
   backgroundColor: '',
   backgroundImage: '',
   backgroundSize: 'cover',
+  backgroundRepeat: 'no-repeat',
   backgroundPosition: 'center',
-  backgroundAttachment: 'fixed',
   '--gradient-opacity': `${1 - backgroundOpacity.value}`,
-  transform: 'translateZ(0)',
+  '--surface-alpha': `${opacity.value}`,
+  '--surface-alpha-raised': `${Math.min(1, opacity.value + 0.2)}`,
 })
 
 const showBackToTop = ref(false)
@@ -260,7 +281,7 @@ const formatRemainingTime = (seconds: number | null, totalBytes: number | null) 
 }
 
 const checkScroll = () => {
-  const mainContent = document.getElementById('app') as HTMLElement
+  const mainContent = document.querySelector('.scroll-container') as HTMLElement | null
   const scrollY = mainContent?.scrollTop || 0
   showBackToTop.value = scrollY > 300
 }
@@ -281,11 +302,12 @@ const runWhenBrowserIdle = (task: () => void | Promise<void>, timeout = 1200) =>
 }
 
 const preloadNonCriticalResources = async () => {
-  const [appVersionResult, jeBlocksResult, mapArtResult, resourcesResult, updateResult] = await Promise.allSettled([
+  // Keep large map-art and 3D resource trees out of the global idle task.
+  // They are loaded by the tool that actually needs them, otherwise a route
+  // switch can compete with JSON parsing, atlas creation and image decoding.
+  const [appVersionResult, jeBlocksResult, updateResult] = await Promise.allSettled([
     getAppVersion(),
     fetchJeBlocks(),
-    fetchMapArtsData(),
-    loadThreeDBlocksResources(),
     autoUpdateEnabled.value ? checkUpdate(true) : Promise.resolve(null),
   ])
 
@@ -297,21 +319,13 @@ const preloadNonCriticalResources = async () => {
     jeBlocks.value = jeBlocksResult.value
   }
 
-  if (mapArtResult.status === 'fulfilled') {
-    mapArtData.value = mapArtResult.value
-  }
-
-  if (resourcesResult.status === 'rejected') {
-    toast.error(`资源加载失败:${resourcesResult.reason}`, {timeout: 3000})
-  }
-
   if (updateResult.status === 'rejected') {
     console.error('检查更新失败:', updateResult.reason)
   }
 }
 
 const scrollToTop = () => {
-  const mainContent = document.getElementById('app') as HTMLElement
+  const mainContent = document.querySelector('.scroll-container') as HTMLElement | null
   if (!mainContent) return
 
   const startPosition = mainContent.scrollTop
@@ -332,7 +346,7 @@ const scrollToTop = () => {
   requestAnimationFrame(animate)
 }
 onUnmounted(() => {
-  const mainContent = document.getElementById('app')
+  const mainContent = document.querySelector('.scroll-container')
   if (mainContent) {
     mainContent.removeEventListener('scroll', checkScroll)
   }
@@ -340,7 +354,12 @@ onUnmounted(() => {
 
 
 watchEffect(() => {
+  // Card and toolbar translucency are driven from the app root so every page
+  // inherits them; individual pages no longer need to inline the variables.
+  backgroundStyle.value['--surface-alpha'] = `${opacity.value}`
+  backgroundStyle.value['--surface-alpha-raised'] = `${Math.min(1, opacity.value + 0.2)}`
   if (backgroundUrl.value) {
+    const layout = resolveBackgroundLayout(layoutMode.value)
     backgroundStyle.value.backgroundImage = `
       linear-gradient(
         rgba(var(--v-theme-background), var(--gradient-opacity)),
@@ -348,7 +367,8 @@ watchEffect(() => {
       ),
       url(${backgroundUrl.value})
     `;
-    backgroundStyle.value.backgroundSize = layoutMode.value;
+    backgroundStyle.value.backgroundSize = layout.backgroundSize;
+    backgroundStyle.value.backgroundRepeat = layout.backgroundRepeat;
     backgroundStyle.value["--gradient-opacity"] = (1 - backgroundOpacity.value).toString()
   } else {
     backgroundStyle.value.backgroundImage = '';
@@ -356,22 +376,21 @@ watchEffect(() => {
 })
 
 onMounted(async () => {
+  // Restoring the saved connection and checking the site must not block shell paint.
+  void restoreMcsConnection()
   await nextTick(() => {
-    const mainContent = document.getElementById('app')
+    const mainContent = document.querySelector('.scroll-container')
     if (mainContent) {
       mainContent.addEventListener('scroll', checkScroll)
     }
   })
   const [storedLocaleValue, storedThemeValue, storedAutoUpdate] = await Promise.all([
     appStore.get('locale', 'zh-CN'),
-    appStore.get('selectedTheme', 'grey'),
+    appStore.get('selectedTheme', 'blue'),
     appStore.get('autoUpdate', true),
   ])
 
-  let storedLocale = storedLocaleValue
-  if (storedLocale === 'zh') storedLocale = 'zh-CN'
-  if (storedLocale === 'zh_tw') storedLocale = 'zh-TW'
-  locale.value = storedLocale
+  locale.value = normalizeAppLocale(storedLocaleValue)
   selectedTheme.value = storedThemeValue
   autoUpdateEnabled.value = storedAutoUpdate
   theme.global.name.value = selectedTheme.value
@@ -442,6 +461,7 @@ onMounted(async () => {
 </style>
 <style lang="css" src="./assets/css/app.css"></style>
 <style lang="scss" src="./assets/css/main.scss"></style>
+<style lang="css" src="./assets/css/motion.css"></style>
 <style lang="css" src="./assets/css/card.css"></style>
 <style lang="css" src="./assets/css/views.css"></style>
 <style lang="css" src="./assets/css/loading.css"></style>

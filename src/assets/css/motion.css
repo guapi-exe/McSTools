@@ -1,0 +1,86 @@
+/* Global motion tokens. Every animation in the app should reference these
+   so durations and easings stay consistent and easy to tune. */
+:root {
+    --motion-fast: 160ms;
+    --motion-page: 240ms;
+    --motion-page-exit: 0ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0.13, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --page-shift: 14px;
+    --radius-card: 12px;
+}
+
+/* Replace the outgoing page in the same frame. Never fade a whole route to
+   transparent or wait for its exit: that produces a visible blank flash.
+   Only lightweight incoming pages use a short settle movement. */
+.page-forward-enter-active,
+.page-backward-enter-active {
+    transition: transform var(--motion-page) var(--ease-emphasized), opacity var(--motion-page) var(--ease-standard);
+    /* Deliberately no will-change here: promoting the whole (often huge)
+       incoming page into its own layer costs more raster time than the slide
+       saves. */
+}
+
+.page-forward-leave-active,
+.page-backward-leave-active {
+    transition: none;
+    pointer-events: none;
+}
+
+.page-forward-enter-from {
+    opacity: .86;
+    transform: translateX(var(--page-shift));
+}
+
+.page-forward-leave-to {
+    opacity: 1;
+}
+
+.page-backward-enter-from {
+    opacity: .86;
+    transform: translateX(calc(var(--page-shift) * -1));
+}
+
+.page-backward-leave-to {
+    opacity: 1;
+}
+
+/* Fixed-layout and heavy routes use only a short opacity settle. Never
+   transform these ancestors: that moves fixed cards under the drawer. */
+.page-fade-enter-active {
+    transition: opacity var(--motion-page) var(--ease-standard);
+}
+
+.page-fade-leave-active {
+    transition: none;
+    pointer-events: none;
+}
+
+.page-fade-enter-from { opacity: .78; }
+
+.page-fade-leave-to {
+    opacity: 1;
+}
+
+/* First load and same-route navigations: no animation at all. */
+.page-none-enter-active,
+.page-none-leave-active {
+    transition: none;
+}
+
+.page-none-enter-from,
+.page-none-leave-to {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-forward-enter-active,
+    .page-forward-leave-active,
+    .page-backward-enter-active,
+    .page-backward-leave-active,
+    .page-fade-enter-active,
+    .page-fade-leave-active {
+        transition-duration: 1ms !important;
+    }
+}

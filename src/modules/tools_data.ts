@@ -14,8 +14,16 @@ export let schematicRequirements = ref<RequirementStatistics | undefined>();
 export let schematicStr = ref<string | undefined>();
 export let uniqueBlocks = ref<BlockData[] | undefined>();
 export let historyRecordData = ref<HistoryRecordData | undefined>();
-export const activeTools = ref()
+export const schematicLoadError = ref('')
+let fetchEpoch = 0
+// Keep the tools window on a concrete panel from its first render. An
+// undefined tab value makes Vuetify briefly mount an empty window while the
+// route is entering, which is visible on slower machines.
+export const activeTools = ref('schematic')
 export const clear_tools = () =>{
+    ++fetchEpoch
+    schematicLoadError.value = ''
+    activeTools.value = 'schematic'
     schematic_id.value = undefined
     schematicData.value = undefined
     schematicRequirements.value = undefined
@@ -25,30 +33,70 @@ export const clear_tools = () =>{
     historyRecordData.value = undefined
 }
 
+// Dedup guard: selecting a schematic from the library and the tools-page
+// fallback both call fetch_data for the same id — reuse the in-flight request
+// instead of issuing it twice.
+let fetchInFlight: { id: number; epoch: number; promise: Promise<void> } | null = null
+
 export const fetch_data = async (id: number) => {
+    if (schematic_id.value !== id) clear_tools()
     schematic_id.value = id
-    schematicData.value = await fetchSchematic(id)
-    convertData.value = await fetchConvertData(id)
-    schematicRequirements.value = await fetchRequirementsWithStats(id)
-    uniqueBlocks.value = await fetchUniqueBlocks(id)
-    historyRecordData.value = await fetchHistoryRecord(id)
-    console.log(historyRecordData.value)
+    if (fetchInFlight?.id === id && fetchInFlight.epoch === fetchEpoch) {
+        return fetchInFlight.promise
+    }
+    const epoch = ++fetchEpoch
+    schematicLoadError.value = ''
+    const promise = (async () => {
+        // History is deliberately NOT fetched here: it parses every past
+        // requirements/blocks snapshot and is rarely viewed — the history
+        // panel loads it on demand via fetch_history.
+        const [data, conversions, requirements, blocks] = await Promise.all([
+            fetchSchematic(id),
+            fetchConvertData(id),
+            fetchRequirementsWithStats(id),
+            fetchUniqueBlocks(id),
+        ])
+        // A newer selection supersedes this result.
+        if (schematic_id.value !== id || fetchEpoch !== epoch) return
+        schematicData.value = data
+        convertData.value = conversions
+        schematicRequirements.value = requirements
+        uniqueBlocks.value = blocks
+    })()
+    fetchInFlight = {id, epoch, promise}
+    try {
+        await promise
+    } catch (error) {
+        if (schematic_id.value === id && fetchEpoch === epoch) {
+            schematicLoadError.value = error instanceof Error ? error.message : String(error)
+        }
+        throw error
+    } finally {
+        if (fetchInFlight?.promise === promise) fetchInFlight = null
+    }
+}
+
+export const fetch_history = async (id: number) => {
+    const epoch = fetchEpoch
+    const history = await fetchHistoryRecord(id)
+    if (schematic_id.value === id && fetchEpoch === epoch) {
+        historyRecordData.value = history
+    }
+    return history
 }
 
 export const get_data = async (id: number) => {
-    if (id == schematic_id.value){
+    if (id == schematic_id.value && schematicData.value){
         return schematicData.value
     }
-    clear_tools()
     await fetch_data(id)
     return schematicData.value
 }
 
 export const get_requirements = async (id: number) => {
-    if (id == schematic_id.value){
+    if (id == schematic_id.value && schematicRequirements.value){
         return schematicRequirements.value
     }
-    clear_tools()
     await fetch_data(id)
     return schematicRequirements.value
 }

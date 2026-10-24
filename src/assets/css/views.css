@@ -1,32 +1,33 @@
-.page-wrapper {
+.page-view {
     overflow-x: hidden;
-    overflow-y: hidden;
 }
 
 .animate-row {
-    animation: rowEntrance 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.animate-row-out {
-    animation: rowOut 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Route chunks can resolve on a later frame. Keep the content fully
+       visible and use only a very small settle movement. */
+    animation: rowEntrance var(--motion-fast) var(--ease-standard) both;
 }
 
-@keyframes rowOut{
-    from {
-        transform: translateX(0);
-        opacity: 1;
-    }
-    to {
-        transform: translateX(-500px);
-        opacity: 0;
-    }
+/* The router already animates entry. Do not stack a second transform or
+   animate fixed cards, whose edges must stay aligned with the sidebar. */
+.page-view .animate-row,
+.animate-row.full-screen-card {
+    animation: none;
 }
+
 @keyframes rowEntrance {
     from {
-        opacity: 0;
-        transform: translateX(-500px);
+        opacity: 1;
+        transform: translate3d(-4px, 0, 0);
     }
     to {
         opacity: 1;
-        transform: translateX(0);
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-row {
+        animation: none !important;
     }
 }

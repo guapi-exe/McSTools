@@ -4,8 +4,7 @@ import createImg from '../static/img/create.jpg'
 import lmImg from '../static/img/Litematica.jpg'
 import weImg from '../static/img/wordEdit.png'
 import beImg from '../static/img/grass_block.png'
-import {onBeforeUnmount, onMounted, ref} from "vue";
-import {opacity} from "../modules/theme.ts";
+import {onActivated, onBeforeUnmount, onDeactivated, onMounted, ref} from "vue";
 import {onBeforeRouteLeave} from 'vue-router'
 import {
   files,
@@ -16,64 +15,26 @@ import {
   uploadStatus
 } from "../modules/upload_schematic.ts";
 import {userData} from "../modules/user_data.ts";
-import {isLeaving, navigationGuard} from "../modules/navigation.ts";
+import {mcsConnected, mcsSaved, mcsStatus, mcsStatusLabel, mcsBlueprintCount, mcsConnectionDialog} from '../modules/web_schematic/mcs_api';
+import {useRouter} from 'vue-router';
+import {navigationGuard} from "../modules/navigation.ts";
 import {createTimeManager} from '../modules/time_data.ts'
-import {messageList} from "../modules/messages.ts";
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n()
-const timeManager = createTimeManager()
+const router = useRouter()
+const openSiteLibrary = (collection = 'public') => router.push({name: 'schematic', query: {source: 'web', collection}})
+const timeManager = createTimeManager(false)
+const timeComponent = timeManager.useInComponent()
 const {
   currentDate,
   hours,
   minutes,
   seconds,
   isNewSecond,
-} = timeManager.useInComponent()
-const currentIndex = ref(0)
-const displayText = ref('')
+} = timeComponent
+timeComponent.setup()
 const isDragging = ref(false);
-const isAnimating = ref(false)
-let intervalId: number | null = null
-let timeoutId: number | null = null
-const randomHanChar = () => {
-  const symbols = '~!@#$%^&*()_+?？；;，。.、你更下二一三四我'
-  return Math.random() > 0.3
-      ? symbols[Math.floor(Math.random() * symbols.length)]
-      : String.fromCharCode(0x4e00 + Math.floor(Math.random() * 20902))
-}
-const generateNoise = (length: number) => {
-  return Array.from({ length }, () => randomHanChar()).join('')
-}
-const revealText = (target: string) => {
-  let index = 0
-  const targetArr = target.split('')
-  const noiseArr = generateNoise(target.length).split('')
-
-  intervalId = setInterval(() => {
-    if (index >= target.length) {
-      clearInterval(intervalId!)
-      intervalId = null
-      isAnimating.value = false
-      return
-    }
-
-    noiseArr[index] = targetArr[index]
-    displayText.value = noiseArr.join('')
-    index++
-  }, 50)
-}
-const switchMessage = () => {
-  isAnimating.value = true
-  const target = messageList.value[currentIndex.value]
-
-  displayText.value = generateNoise(target.length)
-
-  timeoutId = setTimeout(() => {
-    revealText(target)
-    timeoutId = null
-  }, 300)
-}
 const onDragOver = async (e: any) => {
   e.preventDefault();
   isDragging.value = true;
@@ -96,41 +57,40 @@ const onDrop = async (e: any) => {
   console.log(files);
   await handleUpload(-1);
 }
+// Pause the cached home page's clock while another page is active.
 onMounted(() => {
-  setInterval(() => {
-    currentIndex.value = (currentIndex.value + 1) % messageList.value.length
-    switchMessage()
-  }, 10000)
+  timeManager.start()
+})
 
-  switchMessage()
+onActivated(() => {
+  timeManager.start()
+})
+
+onDeactivated(() => {
+  timeManager.stop()
 })
 
 onBeforeUnmount(() => {
-    if (progressTimer.value) {
-      window.clearInterval(progressTimer.value)
-    }
-  if (intervalId) clearInterval(intervalId)
-  if (timeoutId) clearTimeout(timeoutId)
+  if (progressTimer.value) {
+    window.clearInterval(progressTimer.value)
+  }
 })
 onBeforeRouteLeave(navigationGuard)
 </script>
 
-<template class="page-wrapper">
+<template>
+  <div class="page-view">
   <v-row no-gutters class="mb-4 animate-row"
-         :class="{ 'animate-row-out': isLeaving }"
-         transition="scroll-x-transition"
   >
     <v-col>
       <v-card
           class="mx-auto v-theme--custom text-primary"
-          :style="{ '--surface-alpha': opacity }"
-          elevation="4"
-          transition="slide-x-transition"
+          elevation="2"
       >
-        <v-toolbar density="compact" class="bg-blue-grey-lighten-5 pa-3" :style="{ '--surface-alpha': opacity + 0.2 }">
+        <v-toolbar density="compact" class="bg-surface-container pa-3">
           <v-toolbar-title>
             <v-icon icon="mdi-tools" class="mr-2 text-medium-emphasis"></v-icon>
-            <span class="text-h5 text-medium-emphasis">{{ t('home.title') }}</span>
+            <span class="text-h6 text-medium-emphasis">{{ t('home.title') }}</span>
           </v-toolbar-title>
         </v-toolbar>
 
@@ -151,7 +111,7 @@ onBeforeRouteLeave(navigationGuard)
                 <v-icon icon="mdi-cloud-upload" size="28" color="teal" class="mr-2"></v-icon>
                 <div>
                   <div class="text-caption text-grey text-medium-emphasis">{{ t('home.stats.cloudSchematics') }}</div>
-                  <div class="text-h4 text-grey-darken-3 text-medium-emphasis">{{ userData?.cloud ?? 0 }}</div>
+                  <div class="text-h4 text-grey-darken-3 text-medium-emphasis">{{ mcsBlueprintCount ?? '—' }}</div>
                 </div>
               </div>
             </v-col>
@@ -161,32 +121,20 @@ onBeforeRouteLeave(navigationGuard)
             <v-col cols="5">
               <v-row class="mb-4 justify-md-end" dense>
                 <v-col cols="6" md="4">
-                  <div class="d-flex align-start">
+                  <button class="d-flex align-start text-left" aria-label="蓝图站账户与连接" @click="mcsConnectionDialog = true">
                     <v-avatar size="56" class="mr-3">
-                      <v-img
-                          :src="userData?.avatar || '/default-avatar.png'"
-                          aspect-ratio="1"
-                      >
-                        <template v-slot:placeholder>
-                          <v-progress-circular indeterminate />
-                        </template>
-                        <template v-slot:error>
-                          <v-icon size="45">
-                            mdi-account-circle
-                          </v-icon>
-                        </template>
-                      </v-img>
+                      <v-icon size="45" :color="mcsConnected ? 'info' : undefined" icon="mdi-account-circle-outline" />
                     </v-avatar>
                     <div>
                       <div class="text-caption text-grey-darken-1 text-medium-emphasis mb-1">
                         <v-icon small left>mdi-login</v-icon>
-                        {{ t('home.stats.welcome') }}
+                        {{ mcsConnected ? t('home.stats.welcome') : '连接蓝图站' }}
                       </div>
-                      <div class="text-h6 font-weight-medium text-blue-darken-4">
-                        {{ userData?.nickname || '用户' }}
+                      <div class="text-h6 font-weight-medium text-info">
+                        {{ mcsSaved ? '站点账户' : '离线使用' }}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 </v-col>
 
                 <v-col cols="6" md="4">
@@ -233,21 +181,22 @@ onBeforeRouteLeave(navigationGuard)
               </v-row>
             </v-col>
           </v-row>
-          <v-alert
-              variant="tonal"
-              color="blue"
-              icon="mdi-information-outline"
-              class="mt-4 monospace-font"
-          >
-            {{ displayText }}
-          </v-alert>
+          <div class="site-connection-strip">
+            <v-icon :icon="mcsStatus === 'connected' ? 'mdi-cloud-check-outline' : 'mdi-cloud-outline'" color="info" size="30" />
+            <div class="flex-grow-1">
+              <div class="font-weight-medium">MCS 蓝图站 <span class="text-caption text-medium-emphasis ml-2">{{ mcsStatusLabel }}</span></div>
+            </div>
+            <v-btn variant="text" size="small" @click="openSiteLibrary()">浏览蓝图站</v-btn>
+            <v-btn v-if="mcsConnected" variant="tonal" color="info" size="small" @click="openSiteLibrary('mine')">我的蓝图</v-btn>
+            <v-btn v-if="mcsConnected" variant="text" size="small" @click="openSiteLibrary('favourites')">我的收藏</v-btn>
+            <v-btn variant="tonal" color="info" size="small" @click="mcsConnectionDialog = true">{{ mcsSaved ? '管理连接' : '连接账户' }}</v-btn>
+          </div>
         </v-card-text>
       </v-card>
     </v-col>
   </v-row>
   <v-row
       class="animate-row"
-      :class="{ 'animate-row-out': isLeaving }"
       style="height: 500px"
   >
     <v-col cols="8" class="h-100">
@@ -256,14 +205,13 @@ onBeforeRouteLeave(navigationGuard)
       v-theme--custom text-primary
       flex-column
       h-100"
-              elevation="4"
-              :style="{ '--surface-alpha': opacity }"
+              elevation="2"
               @dragover.prevent="onDragOver"
               @dragleave="onDragLeave"
               @drop.prevent="onDrop"
 
       >
-        <v-card-title class="text-h6 bg-blue-lighten-5">
+        <v-card-title class="text-h6 bg-surface-container">
           <v-icon icon="mdi-cloud-upload" class="mr-2"></v-icon>
           {{ t('home.upload.title') }}
         </v-card-title>
@@ -291,7 +239,7 @@ onBeforeRouteLeave(navigationGuard)
                 bg-color="grey-lighten-3"
                 :label="t('home.upload.selectFile')"
                 multiple
-                accept=".nbt, .json, .schem, .litematic, .mcstructure"
+                accept=".nbt, .json, .schem, .schematic, .litematic, .mcstructure"
                 :max-file-size="100 * 1024 * 1024"
                 :loading="uploadStatus === 'uploading'"
                 :error-messages="uploadError"
@@ -382,9 +330,8 @@ onBeforeRouteLeave(navigationGuard)
       <v-card class="
       h-100
       v-theme--custom text-primary "
-              :style="{ '--surface-alpha': opacity }"
-              elevation="4">
-        <v-card-title class="text-h6 bg-green-lighten-5">
+              elevation="2">
+        <v-card-title class="text-h6 bg-surface-container">
           <v-icon icon="mdi-format-list-checks" class="mr-2"></v-icon>
           {{ t('home.supportedTypes.title') }}
         </v-card-title>
@@ -481,7 +428,7 @@ onBeforeRouteLeave(navigationGuard)
       </v-card>
     </v-col>
   </v-row>
-
+  </div>
 </template>
 
 <style scoped lang="css" src="../assets/css/home.css"></style>

@@ -12,25 +12,35 @@
       <v-icon
           icon="mdi-cube-scan"
           size="40"
-          class="app-logo text-medium-emphasis"
+          class="app-logo"
       />
     </div>
 
-    <v-list density="compact" class="nav-list" style="background: none !important;">
+    <v-list ref="navList" density="compact" class="nav-list" style="background: none !important;">
+      <!-- Single sliding indicator (PCL2 style): one element animates between
+           items instead of each item toggling its own bar. -->
+      <div
+          class="nav-indicator"
+          :style="{ transform: `translateY(${indicatorOffset}px)`, opacity: indicatorVisible ? 1 : 0 }"
+      ></div>
       <v-tooltip
           v-for="item in navItems"
           :key="item.value"
           location="right"
           :open-delay="100"
-          transition="slide-x-reverse-transition"
+          :transition="false"
       >
         <template v-slot:activator="{ props }">
           <v-list-item
               v-bind="props"
               :value="item.value"
+              :aria-label="item.title"
+              :aria-current="activeTab === item.value ? 'page' : undefined"
               :class="{ 'active-item': activeTab === item.value }"
               class="nav-item"
-              @click.native="activeTab = item.value; router.push(`/${item.value}`)"
+              @pointerenter="preloadNavigation(item.value)"
+              @focus="preloadNavigation(item.value)"
+              @click="navigate(item.value)"
           >
             <div class="icon-wrapper ">
               <v-icon :icon="item.icon" size="28"/>
@@ -42,7 +52,14 @@
     </v-list>
     <template v-slot:append>
       <div class="bottom-actions">
-        <v-tooltip location="right">
+        <v-tooltip location="right" :text="mcsStatusLabel">
+          <template #activator="{props}">
+            <v-btn v-bind="props" variant="text" icon="mdi-account-circle-outline" :aria-label="mcsStatusLabel" class="account-btn" @click="mcsConnectionDialog = true">
+              <v-badge :color="mcsStatus === 'connected' ? 'success' : mcsSaved ? 'warning' : 'grey'" dot floating><v-icon icon="mdi-account-circle-outline" /></v-badge>
+            </v-btn>
+          </template>
+        </v-tooltip>
+        <v-tooltip location="right" :transition="false">
           <template v-slot:activator="{ props }">
             <div class="d-flex justify-center">
               <v-btn
@@ -50,7 +67,7 @@
                   icon="mdi-cog-outline"
                   variant="text"
                   class="more-btn"
-                  @click.native="activeTab = 'setting'; router.push(`/setting`)"
+                  @click="navigate('setting')"
               />
             </div>
           </template>
@@ -63,10 +80,76 @@
 </template>
 
 <script setup lang="ts">
-import { activeTab, navItems } from '../modules/layout.ts'
+import {computed, onMounted, onBeforeUnmount, ref, watch} from "vue";
+import {activeTab, navItems} from '../modules/layout.ts'
 import {useRouter} from "vue-router";
+import {preloadRoute} from "../../router/index.js";
+import {mcsConnectionDialog, mcsSaved, mcsStatus, mcsStatusLabel} from '../modules/web_schematic/mcs_api';
 
 const router = useRouter()
+watch(() => router.currentRoute.value.name, name => { if (name) activeTab.value = String(name) }, {immediate: true})
+let navigationFrame: number | null = null
+const preloadedRoutes = new Set<string>()
+
+// Measure the active item's center, including theme/density differences.
+// Hidden when the active route is not in the list (e.g. settings).
+const navList = ref<{ $el: HTMLElement }>()
+const indicatorOffset = ref(0)
+const navIndex = computed(() => navItems.findIndex(item => item.value === activeTab.value))
+const indicatorVisible = computed(() => navIndex.value !== -1)
+const updateIndicator = () => {
+  const item = navList.value?.$el.querySelector('.active-item') as HTMLElement | null
+  if (item) indicatorOffset.value = item.offsetTop + (item.offsetHeight - 28) / 2
+}
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  updateIndicator()
+  observer = new ResizeObserver(updateIndicator)
+  if (navList.value) observer.observe(navList.value.$el)
+})
+watch(activeTab, updateIndicator, {flush: 'post'})
+onBeforeUnmount(() => { observer?.disconnect(); if (navigationFrame !== null) cancelAnimationFrame(navigationFrame) })
+
+const preloadNavigation = (value: string) => {
+  if (preloadedRoutes.has(value)) return
+  preloadedRoutes.add(value)
+  void preloadRoute(value).catch(() => {
+    // The router retries the import when the route is opened.
+    preloadedRoutes.delete(value)
+  })
+}
+
+const navigate = (value: string) => {
+  const target = `/${value}`
+  activeTab.value = value
+  preloadNavigation(value)
+
+  if (navigationFrame !== null) {
+    cancelAnimationFrame(navigationFrame)
+    navigationFrame = null
+  }
+
+  // Avoid re-running route guards and remounting a heavy view when the active
+  // navigation item is clicked repeatedly.
+  if (router.currentRoute.value.path === target) return
+
+  const commitNavigation = () => {
+    void router.push(target).catch((error) => {
+      console.error('页面切换失败:', error)
+    })
+  }
+
+  // Let the active indicator paint before a heavy route is torn down.  This
+  // keeps the sidebar response immediate even when the current view is busy.
+  if (typeof requestAnimationFrame === 'function') {
+    navigationFrame = requestAnimationFrame(() => {
+      navigationFrame = null
+      commitNavigation()
+    })
+  } else {
+    commitNavigation()
+  }
+}
 </script>
 
 <style scoped>
@@ -76,12 +159,8 @@ const router = useRouter()
   top: 0;
   height: 100vh;
   z-index: 1000;
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.05);
-}
-
-.v-main {
-  margin-left: 72px;
-  transition: margin 0.3s ease;
+  isolation: isolate;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.045);
 }
 
 .logo-container {
@@ -91,8 +170,9 @@ const router = useRouter()
 }
 
 .app-logo {
-  color: #4A4A4A;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: rgb(var(--v-theme-on-primary));
+  opacity: 0.85;
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .app-logo:hover {
@@ -101,34 +181,38 @@ const router = useRouter()
 
 .nav-list {
   padding: 0 8px;
+  position: relative;
 }
 
 .nav-item {
   min-height: 56px;
   margin: 4px 0;
   border-radius: 8px;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 .nav-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(var(--v-theme-on-primary), 0.08);
 }
 
 .nav-item.active-item {
-  background: rgba(98, 0, 238, 0.08);
+  background: rgba(var(--v-theme-on-primary), 0.14);
   position: relative;
 }
 
-.nav-item.active-item::before {
-  content: '';
+/* PCL2-style sliding active indicator, driven from the template. */
+.nav-indicator {
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 24px;
+  top: 0;
   width: 3px;
-  background: #6200ee;
+  height: 28px;
   border-radius: 0 2px 2px 0;
+  background: rgb(var(--v-theme-on-primary));
+  transition:
+      transform var(--motion-page) var(--ease-emphasized),
+      opacity var(--motion-fast) var(--ease-standard);
+  pointer-events: none;
 }
 
 /* 图标容器 */
@@ -139,34 +223,31 @@ const router = useRouter()
   width: 100%;
   height: 48px;
   position: relative;
+  transition: transform var(--motion-page) var(--ease-emphasized);
 }
 
-.icon-wrapper::after {
-  content: "";
-  position: absolute;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: transparent;
-  transition: all 0.3s ease;
-}
-
-.icon-wrapper:hover::after {
-  background: rgba(0, 0, 0, 0.05);
-}
+.active-item .icon-wrapper { transform: translateX(2px) scale(1.08); }
+.nav-item:active .icon-wrapper { transform: scale(.94); }
 
 .bottom-actions {
+  width: 100%;
   padding: 16px 0;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
 }
 
 .more-btn {
-  transform: rotate(90deg);
-  transition: transform 0.3s ease;
+  margin: 0 !important;
+  transform: rotate(0deg);
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .more-btn:hover {
-  transform: rotate(0deg);
+  transform: rotate(180deg);
 }
 
 .tooltip-text {
@@ -175,22 +256,8 @@ const router = useRouter()
   color: white !important;
   border-radius: 6px;
 }
-.bottom-actions {
-  width: 100%;
-  padding: 16px 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
 
-.more-btn {
-  margin: 0 !important;
-  transform: rotate(0deg);
-  transition: all 0.3s ease;
-}
-
-.more-btn:hover {
-  transform: rotate(180deg);
+@media (prefers-reduced-motion: reduce) {
+  .nav-indicator, .icon-wrapper, .app-logo, .more-btn { transition: none; }
 }
 </style>

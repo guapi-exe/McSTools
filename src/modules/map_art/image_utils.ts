@@ -21,7 +21,7 @@ export interface Size {
 }
 
 export interface ColorMatchOptions {
-    matchMode: 'rgb' | 'weighted' | 'redmean'
+    matchMode: 'rgb' | 'weighted' | 'redmean' | 'oklab'
     brightness: number
     contrast: number
     saturation: number
@@ -40,6 +40,9 @@ export interface MapArtColorEntry {
     r: number
     g: number
     b: number
+    low?: number[]
+    normal?: number[]
+    high?: number[]
 }
 
 export function colorDistance(

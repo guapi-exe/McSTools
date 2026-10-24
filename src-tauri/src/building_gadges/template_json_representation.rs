@@ -1,5 +1,6 @@
 use crate::utils::block_state_pos_list::{BlockData, BlockId, BlockPos, BlockStatePosList};
 use crate::utils::extend_value::NbtExt;
+use crate::utils::parse_limits::ParseLimits;
 use crate::utils::schematic_data::SchematicError;
 use fastnbt::Value;
 use fastnbt::Value::Compound;
@@ -11,9 +12,23 @@ pub const B2_BYTE_MASK: i64 = 0xFFFF;
 pub const B3_BYTE_MASK: i64 = 0xFFFFFF;
 
 pub fn deserialize(nbt: HashMap<String, Value>) -> Result<BlockStatePosList, SchematicError> {
+    deserialize_with_limits(nbt, &ParseLimits::default())
+}
+
+pub fn deserialize_with_limits(
+    nbt: HashMap<String, Value>,
+    limits: &ParseLimits,
+) -> Result<BlockStatePosList, SchematicError> {
     let mut block_list = BlockStatePosList::default();
     let pos_list = nbt.get_list("pos")?;
     let state_list = nbt.get_list("data")?;
+    limits.validate_len_at_most(
+        "Building Gadgets source positions",
+        pos_list.len(),
+        limits.max_volume,
+    )?;
+    limits.validate_palette_len(state_list.len())?;
+    let mut palette: Vec<Option<Arc<BlockData>>> = vec![None; state_list.len()];
 
     for data in pos_list {
         let Value::Long(long_nbt) = data else {
@@ -22,6 +37,10 @@ pub fn deserialize(nbt: HashMap<String, Value>) -> Result<BlockStatePosList, Sch
 
         let pos = pos_from_long(*long_nbt)?;
         let state_id = read_state_id(*long_nbt);
+        if let Some(Some(block)) = palette.get(state_id as usize) {
+            limits.push_block(&mut block_list, pos.x, pos.y, pos.z, block)?;
+            continue;
+        }
 
         let state_value = state_list
             .get(state_id as usize)
@@ -47,13 +66,12 @@ pub fn deserialize(nbt: HashMap<String, Value>) -> Result<BlockStatePosList, Sch
             }
         }
 
-        block_list.add(
-            pos,
-            Arc::new(BlockData {
-                id: BlockId { name },
-                properties,
-            }),
-        );
+        let block = Arc::new(BlockData {
+            id: BlockId { name },
+            properties,
+        });
+        limits.push_block(&mut block_list, pos.x, pos.y, pos.z, &block)?;
+        palette[state_id as usize] = Some(block);
     }
 
     Ok(block_list)

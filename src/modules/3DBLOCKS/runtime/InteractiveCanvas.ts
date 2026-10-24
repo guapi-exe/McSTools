@@ -17,6 +17,8 @@ export class InteractiveCanvas {
     private cameraPosition: [number, number, number] = [0, 0, 0]
     private canvas: HTMLCanvasElement
     private onBlockHover?: (rayData: RayData | null) => void
+    private onBlockClick?: (rayData: RayData) => void
+    private onEditPointer?: (phase: 'start' | 'move' | 'end', rayData: RayData | null) => boolean
     private keysPressed: Set<string> = new Set()
     private isAnimating = false
     private disposed = false
@@ -27,6 +29,7 @@ export class InteractiveCanvas {
     private readonly events = new AbortController()
     private lastAnimationTime = 0
     private middleDrag: { startX: number, startY: number, startCamera: [number, number, number] } | null = null
+    private resizeObserver: ResizeObserver | null = null
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -45,10 +48,17 @@ export class InteractiveCanvas {
             ? [...camera.position]
             : this.getOrbitCameraPosition(this.center, this.viewDist, this.xRotation, this.yRotation)
         let dragPos: null | [number, number] = null
+        let clickStart: null | [number, number] = null
+        let hasDragged = false
+        let editingDrag = false
         
         canvas.addEventListener('mousedown', evt => {
             this.pauseHover()
             if (evt.button === 0) {
+                clickStart = [evt.clientX, evt.clientY]
+                hasDragged = false
+                editingDrag = this.onEditPointer?.('start', this.clientToRay(evt.clientX, evt.clientY)) ?? false
+                if (editingDrag) { evt.preventDefault(); return }
                 dragPos = [evt.clientX, evt.clientY]
             } else if (evt.button === 1 || evt.button === 2) {
                 this.middleDrag = { startX: evt.clientX, startY: evt.clientY, startCamera: [...this.cameraPosition] }
@@ -56,7 +66,13 @@ export class InteractiveCanvas {
         }, { signal: this.events.signal })
         canvas.addEventListener('contextmenu', evt => evt.preventDefault(), { signal: this.events.signal })
         canvas.addEventListener('mousemove', evt => {
+            if (editingDrag) {
+                this.onEditPointer?.('move', this.clientToRay(evt.clientX, evt.clientY))
+                return
+            }
             if (dragPos) {
+                if (!hasDragged && clickStart && Math.hypot(evt.clientX - clickStart[0], evt.clientY - clickStart[1]) < 4) return
+                hasDragged = true
                 this.yRotation += (evt.clientX - dragPos[0]) / 100
                 this.xRotation += (evt.clientY - dragPos[1]) / 100
                 dragPos = [evt.clientX, evt.clientY]
@@ -83,7 +99,14 @@ export class InteractiveCanvas {
                 }
             }
         }, { signal: this.events.signal })
-        canvas.addEventListener('mouseup', () => {
+        window.addEventListener('mouseup', evt => {
+            if (editingDrag) this.onEditPointer?.('end', this.clientToRay(evt.clientX, evt.clientY))
+            else if (evt.button === 0 && clickStart && !hasDragged && evt.target === canvas) {
+                const ray = this.clientToRay(evt.clientX, evt.clientY)
+                if (ray) this.onBlockClick?.(ray)
+            }
+            editingDrag = false
+            clickStart = null
             dragPos = null
             this.middleDrag = null
             this.pauseHover(80)
@@ -125,13 +148,31 @@ export class InteractiveCanvas {
             this.keysPressed.delete(evt.key.toLowerCase())
         }, { signal: this.events.signal })
         window.addEventListener('blur', () => {
+            if (editingDrag) this.onEditPointer?.('end', null)
+            editingDrag = false
+            clickStart = null
+            dragPos = null
+            this.middleDrag = null
             this.keysPressed.clear()
             this.isAnimating = false
         }, { signal: this.events.signal })
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(() => this.redraw())
+            this.resizeObserver.observe(canvas)
+        }
     }
 
     public setBlockHoverHandler(handler: (rayData: RayData | null) => void) {
         this.onBlockHover = handler
+    }
+
+    public setBlockClickHandler(handler: (rayData: RayData) => void) { this.onBlockClick = handler }
+    public setEditPointerHandler(handler: (phase: 'start' | 'move' | 'end', rayData: RayData | null) => boolean) { this.onEditPointer = handler }
+    public clientToRay(clientX: number, clientY: number): RayData | null {
+        const rect = this.canvas.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) return null
+        return this.screenToRay((clientX - rect.left) * this.canvas.width / rect.width,
+            (clientY - rect.top) * this.canvas.height / rect.height)
     }
 
     private pauseHover(ms = 100) {
@@ -398,6 +439,10 @@ export class InteractiveCanvas {
         this.disposed = true
         this.keysPressed.clear()
         this.onBlockHover = undefined
+        this.onBlockClick = undefined
+        this.onEditPointer = undefined
+        this.resizeObserver?.disconnect()
+        this.resizeObserver = null
         this.events.abort()
     }
 

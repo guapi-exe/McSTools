@@ -1,6 +1,9 @@
+use crate::utils::nbt_scan::scan_little_endian_nbt;
+use crate::utils::parse_limits::ParseLimits;
+use crate::utils::schematic_data::SchematicError;
+use fastnbt::{ByteArray, IntArray, LongArray, Tag, Value};
 use std::collections::HashMap;
 use std::io::{self, Read};
-use fastnbt::{ByteArray, IntArray, LongArray, Tag, Value};
 
 pub fn read_exact<const N: usize>(r: &mut impl Read) -> io::Result<[u8; N]> {
     let mut buf = [0u8; N];
@@ -39,18 +42,11 @@ pub fn read_f64_le(r: &mut impl Read) -> io::Result<f64> {
 
 /// BE使用小端在前I16数组存储STR数据
 pub fn read_string_le(r: &mut impl Read) -> io::Result<String> {
-    let ln = read_i16_le(r)?;
-    if ln < 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "negative string length",
-        ));
-    }
+    let ln = u16::from_le_bytes(read_exact::<2>(r)?);
     let mut buf = vec![0u8; ln as usize];
     r.read_exact(&mut buf)?;
-    Ok(String::from_utf8(buf).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, format!("utf8 error: {}", e))
-    })?)
+    Ok(String::from_utf8(buf)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("utf8 error: {}", e)))?)
 }
 pub fn tag_from_u8(b: u8) -> io::Result<Tag> {
     match b {
@@ -73,9 +69,13 @@ pub fn tag_from_u8(b: u8) -> io::Result<Tag> {
         )),
     }
 }
-pub fn read_tag_payload(r: &mut impl Read, tag_id: Tag) -> io::Result<Value> {
+// Only reachable after the whole immutable source passed structural preflight.
+fn read_tag_payload(r: &mut impl Read, tag_id: Tag) -> io::Result<Value> {
     match tag_id {
-        Tag::End => Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected TAG_End")),
+        Tag::End => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected TAG_End",
+        )),
         Tag::Byte => Ok(Value::Byte(read_i8(r)?)),
         Tag::Short => Ok(Value::Short(read_i16_le(r)?)),
         Tag::Int => Ok(Value::Int(read_i32_le(r)?)),
@@ -86,7 +86,10 @@ pub fn read_tag_payload(r: &mut impl Read, tag_id: Tag) -> io::Result<Value> {
         Tag::ByteArray => {
             let len = read_i32_le(r)?; // 长度是 i32
             if len < 0 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "negative byte array length"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "negative byte array length",
+                ));
             }
             let mut buf = vec![0u8; len as usize];
             r.read_exact(&mut buf)?;
@@ -153,10 +156,22 @@ pub fn read_tag_payload(r: &mut impl Read, tag_id: Tag) -> io::Result<Value> {
             }
             Ok(Value::LongArray(LongArray::new(v)))
         }
-
     }
 }
-pub fn load_nbt_le(mut r: impl Read) -> io::Result<HashMap<String, Value>> {
+pub fn load_nbt_le(data: &[u8]) -> Result<HashMap<String, Value>, SchematicError> {
+    load_nbt_le_with_limits(data, &ParseLimits::default())
+}
+
+pub fn load_nbt_le_with_limits(
+    data: &[u8],
+    limits: &ParseLimits,
+) -> Result<HashMap<String, Value>, SchematicError> {
+    scan_little_endian_nbt(data, limits)?;
+    decode_checked_nbt_le(data).map_err(SchematicError::Io)
+}
+
+fn decode_checked_nbt_le(data: &[u8]) -> io::Result<HashMap<String, Value>> {
+    let mut r = data;
     let tag_id = tag_from_u8(read_u8(&mut r)?)?;
     if tag_id != Tag::Compound {
         return Err(io::Error::new(
@@ -171,5 +186,52 @@ pub fn load_nbt_le(mut r: impl Read) -> io::Result<HashMap<String, Value>> {
             io::ErrorKind::InvalidData,
             "root payload not compound",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preflight_rejects_claimed_arrays_depth_trailing_and_truncation() {
+        let mut huge = vec![10, 0, 0, 7, 1, 0, b'x'];
+        huge.extend_from_slice(&i32::MAX.to_le_bytes());
+        assert!(
+            load_nbt_le(&huge)
+                .unwrap_err()
+                .to_string()
+                .contains("limit")
+        );
+        let mut deep = vec![10, 0, 0];
+        for _ in 0..4 {
+            deep.extend_from_slice(&[10, 0, 0]);
+        }
+        deep.extend_from_slice(&[0; 5]);
+        let limits = ParseLimits {
+            max_nbt_depth: 3,
+            ..ParseLimits::default()
+        };
+        assert!(
+            load_nbt_le_with_limits(&deep, &limits)
+                .unwrap_err()
+                .to_string()
+                .contains("depth")
+        );
+        for bad in [vec![10, 0, 0, 0, 1], vec![10, 0, 0, 3, 1, 0, b'x', 0]] {
+            assert!(load_nbt_le(&bad).is_err());
+        }
+    }
+
+    #[test]
+    fn unsigned_string_lengths_and_empty_end_lists_roundtrip() {
+        let text = "a".repeat(40_000);
+        let mut raw = vec![10, 0, 0, 8, 1, 0, b's'];
+        raw.extend_from_slice(&(text.len() as u16).to_le_bytes());
+        raw.extend_from_slice(text.as_bytes());
+        raw.extend_from_slice(&[9, 1, 0, b'l', 0, 0, 0, 0, 0, 0]);
+        let parsed = load_nbt_le(&raw).unwrap();
+        assert_eq!(parsed["s"].as_str().unwrap(), text);
+        assert_eq!(parsed["l"], Value::List(vec![]));
     }
 }

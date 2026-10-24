@@ -1,6 +1,14 @@
 pub mod convert;
 pub mod history;
 pub mod map_art;
+pub mod mcs_api;
+pub(crate) mod mcs_credentials;
+pub mod blueprint_editor;
+pub mod blueprint_export;
+pub mod generated_blueprint;
+pub(crate) mod batch_archive;
+pub mod blueprint_batch;
+pub mod blueprint_import;
 pub mod modules_data;
 pub mod replace;
 pub mod schematic;

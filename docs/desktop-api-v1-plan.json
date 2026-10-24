@@ -1,0 +1,282 @@
+{
+  "objective": "接入新 MCS API，回迁网站蓝图编辑及非 3D 打印工具箱功能，并在现有风格下改善流畅度",
+  "status": "implemented_and_scoped_acceptance_verified",
+  "updatedOn": "2026-10-18",
+  "references": {
+    "conversation": "new_mcs · 继承上下文（已修复）",
+    "openapi": "https://www.mcschematic.top/api/v1/openapi.json?audience=developer",
+    "websiteSource": "D:/git/new_mcs",
+    "websiteConversionRevision": "5e525a11f3aa916fbfa7efb7b096690706f096ea",
+    "parserSafety": "docs/desktop-parser-safety.json",
+    "websiteToolboxRevision": "13e9642413983f0c1578dc8635f2577a89c8ceea",
+    "toolboxBackport": "docs/desktop-toolbox-backport.json",
+    "nativeIntegration": "docs/desktop-native-integration.json",
+    "uiIntegration": "docs/desktop-ui-integration.json"
+  },
+  "baseline": {
+    "status": "pushed_before_edits",
+    "remote": "https://github.com/guapi-exe/McSTools.git",
+    "branch": "desktop-api-v1-20261018",
+    "commit": "50b52f1",
+    "excluded": [
+      "src-tauri/schematic/out2.litematic",
+      ".playwright-cli",
+      ".zcode",
+      "pelican-bicycle.html"
+    ]
+  },
+  "constraints": [
+    "保留原有 Vue/Vuetify、主题和侧栏整体风格",
+    "不改动或部署网站，不搬运无关 SEO 修改",
+    "不移植 3D 打印、切片器、Bambu Studio 或耗材功能",
+    "API Key 只读且仅驻留内存，不放入 URL、日志或配置文件",
+    "生产接口仅进行公开只读核对，测试不写真实用户蓝图库",
+    "空间不足时才清理明确可重建的编译缓存，不删除用户数据"
+  ],
+  "phases": [
+    {
+      "id": "api",
+      "status": "implemented_public_native_and_local_http_faults_verified",
+      "requirements": [
+        "公开蓝图库：新版字段、服务端游标、分类/格式/来源版本/搜索/优选/排序",
+        "个人蓝图及收藏只读范围，过期、权限不足和不可用收藏的清晰状态",
+        "选择网站不可变版本，下载该版本原文件而非预览传输格式",
+        "原生有界下载与后台解析，避免 WebView 数字数组传输整个文件",
+        "固定 API 路径及 HTTPS 域名边界，跨来源重定向不携带凭据",
+        "限流等待、并发限额、去重和过期异步响应隔离"
+      ],
+      "pendingVerification": [],
+      "verificationLimits": [
+        "未使用真实私有 API Key；个人权限故障由本地真实 HTTP 响应验证，公开 API 与不可变原文件导入已原生验证。"
+      ]
+    },
+    {
+      "id": "blueprint_editor_backport",
+      "status": "implemented_native_pick_crop_undo_export_and_localization_verified",
+      "implemented": [
+        "Rust 后台非破坏编辑会话，stage/render/commit 两阶段确认；失败候选不进入撤销历史",
+        "全局/区域方块替换、状态保留选项、移除被替换方块的容器载荷",
+        "内/外裁剪；负坐标、浮点实体、乘客和悬挂实体锚点重定位及溢出保护",
+        "最多 3 步且 400 万非原始记录的撤销历史，原始快照可重置",
+        "3D 两点点选、工作平面、正/侧/俯视、可拖动区域表面及常量规模线框",
+        "3D 页面停用释放 WebGL，保留临时副本；隐藏时取消未确认候选",
+        "整体/内部/外部导出在后台捕获已确认快照，不改变当前副本或撤销记录",
+        "共享格式/子格式/游戏版本导出面板；原生另存副本（拒绝覆盖、临时文件原子落盘）及新增到蓝图库",
+        "保持源文件的精确 DataVersion；无可靠 Java 版本时显式选目标；MCEdit 导入读取导出的 MinecraftVersion 元数据"
+      ],
+      "pending": [],
+      "requirements": [
+        "3D 方块拾取与高亮，来源/目标方块选择器",
+        "全局与区域替换，保留兼容方块属性",
+        "两点选择、工作平面和视角预设、拖动区域边界",
+        "裁剪选区内部/外部，正确处理方块实体、实体与坐标",
+        "有界撤销历史和恢复原始会话，失败不覆盖已生效状态",
+        "全体/选区内/选区外导出，选择格式、子格式与版本",
+        "原始文件不被编辑预览静默覆盖，保存副本操作明确"
+      ],
+      "verificationLimits": [
+        "真实小样本完成拾取、两角选区、裁剪、撤销及共享导出；拖动还有浏览器协议/几何测试，不宣称所有原生视角组合均已穷举。",
+        "跨游戏版本的复杂实体、物品及容器 NBT 仍需游戏内核验，不等同完整 Minecraft DataFixer。"
+      ]
+    },
+    {
+      "id": "conversion_and_materials",
+      "status": "implemented_native_exports_and_roundtrips_verified_with_documented_limits",
+      "inspectionFindings": [
+        "已修复 Litematica 主动添加空气边框；LM/WE 使用统一边界计算并保留声明空边",
+        "已修复 Sponge v3 Blocks.Data 字段、v2/v3 实体与方块实体封装，并补齐 Vanilla Structure/MCEdit 往返",
+        "已实现共享原生编码器、兼容变更预览、同时应用的自定义替换和合法目标验证；编辑器导出已接入",
+        "已补入网站的 1.21.3/4/5/6/8/9/11 方块表与 DataVersion，UI 不再显示没有兼容表的转换目标",
+        "toolsConvert 六个入口、地图画和模型转换已接入统一导出面板，旧 convert 命令已移除；本地批量工具已接入相同格式目录、版本校验和编码器",
+        "encode_uploaded_schematic 已改用共享后台解析及单一 SQLite 事务；新文件 no-clobber 原子落盘，提交失败仅清理本次创建的文件",
+        "网站大稀疏解析/有界预检已接入全部格式；fastnbt 精确升级到 2.6.2，其余锁定依赖不变"
+      ],
+      "requirements": [
+        "格式转换默认保留来源 DataVersion，Java 游戏版本转换独立可选",
+        "最终输出同时应用格式、子格式、游戏版本与替换规则",
+        "兼容性变更预览、自定义替换目标验证和过期规则清理",
+        "未知原版方块不静默变空气，模组 ID 保留并说明限制",
+        "BE 输出不套用 Java 版本升级/降级",
+        "对齐网站大稀疏蓝图读取和有界 NBT 解码，不能只限制压缩文件传输大小",
+        "统一中文材料名称与 CSV，保留原始 ID、BOM、转义和公式注入防护"
+      ],
+      "implemented": [
+        "共享编码器区分格式转换与显式游戏版本转换，保留 patch/snapshot 的精确源 DataVersion",
+        "旧版数字目标要求选择 1.7.10–1.12.2；Java 命名调色板保留模组 ID，数字 MCEdit 对未知模组要求替换",
+        "BE 不接受 Java 版本和 Java 自定义替换参数；BG 明确提示不包含实体/容器",
+        "新增旧版实体根封装、常见旧版 ID 与坐标安全检查；未知旧版实体及不兼容乘客树报错，不声称完整 DataFixer",
+        "对替换掉类型的容器载荷做清理；自定义替换源不存在、重复源或无效目标会拒绝导出",
+        "原格式卡片内即时打开统一弹窗，固定格式但可选择子版本/游戏版本/替换规则；默认保持源版本，不再猜测 1.20.4",
+        "转换缓存记录实际输出版本及文件大小/时间指纹；过期版本标签忽略，生成/更新、另存副本、导出既有文件语义分离",
+        "转换缓存拒绝写入原蓝图所在格式槽；Litematica 格式版本共用文件槽也受保护；复制使用 no-clobber 原子写入",
+        "回迁网站 1166 项简繁中文材料名，保留未知/模组命名空间和原 ID；CSV 使用同名规则、BOM、CRLF、引号转义及公式防护，附组数/余数",
+        "共享导入核心保留原始字节，事务内更新元信息/材料/历史/计数，保留已有用户分类与标签；历史记录含真实 ID/时间，更新会写入正确的 lm_version",
+        "导入拒绝未知扩展名；没有实际 Java 版本标记时不再按格式臆测游戏版本（旧版更新仍保留明确选过的有效 UI 版本）",
+        "六格式源文件解析分离输入、解压、源体积、保留记录、文本及交互预览预算；Java gzip 两遍有界流不保留整份解压缓存，BE/原始 Java/SNBT 同样结构预检",
+        "旧版读取不再复制 Blocks/Data/AddBlocks 或为空气逐格分配；Litematica/Sponge 借用状态数组，BE 逐位置合并主/水层，BG 状态按调色板缓存",
+        "本地/API/导出再导入借用原字节；API 下载及本地前置检查统一 256 MiB 输入、1 GiB 解压；保留原始文件，预览预算超限不禁用材料和受支持转换",
+        "文本预览检查展开与预计 SNBT 输出大小，避免压缩小文件转成巨型 WebView 文本；SNBT 保存预检防止坏结构覆盖",
+        "API GET 并发许可覆盖整个正文读取，并验证完成/超限/取消/真实 HTTP 正文截断时释放",
+        "本地批量转换复用六格式解析与共享编码器；默认保留各文件的精确 DataVersion，旧版需要显式目标，BE 清空 Java 参数；单文件与批量共用格式控件和兼容警告",
+        "明确提示 Building Gadgets 输出按实际方块范围收紧空白边界；批量往返测试分别验证 BG 实际边界和其他格式声明尺寸"
+      ],
+      "limitations": [
+        "断电/进程强杀不等同普通异常：文件已落盘、SQLite 尚未提交的极短窗口可能留下孤立文件；当前保守拒绝覆盖，不宣称跨文件系统 ACID",
+        "大源可解析不等于可在交互预算内编辑：桌面端增加约 512 MiB 记录及 1 GiB 预计 NBT 分配预算，仍不是进程 RSS 保证，详见 parser-safety 记录",
+        "已完成真实小样本系统导出、独立 NBT 读回及多格式往返；复杂实体/物品的实际游戏表现仍需目标游戏验证。"
+      ]
+    },
+    {
+      "id": "toolbox_backport",
+      "status": "implemented_map_model_batch_native_and_localization_verified",
+      "requirements": [
+        "对齐网站地图画的调色板、色彩设置和目标格式/版本导出",
+        "对齐非打印模型转体素蓝图工具的必要功能",
+        "新增本地批量转换，逐项状态、失败隔离和安全文件名",
+        "共享导出配置与兼容性逻辑，不重复维护互相矛盾的格式表"
+      ],
+      "implemented": [
+        "回迁网站同源地图画匹配：OKLab/Redmean/加权/RGB、四种抖动、蛇形扩散、透明阈值、阶梯候选限高、轴向、背板与脚手架支撑",
+        "预览、纹理PNG与蓝图使用同一组方块索引，杜绝预览/原生导出各自重新匹配；默认展示地图色阶预览，纹理PNG仍可导出",
+        "按需方块组合弹窗：13材质/14颜色分组、名称和ID搜索、整组半选、搜索批量选择、应用/取消草稿、虚拟行与懒加载图标",
+        "Worker可终止任务及过期结果隔离；KeepAlive停用取消生成、关闭导出弹窗，保留已完成结果；工具箱使用无整页变换的重页面切换",
+        "有界原生临时快照及二进制u16调色板IPC，接入共享格式/子格式/游戏版本/自定义替换/另存/事务入库，旧地图画直接入库不再由该页面调用",
+        "修正网站支撑的重复空白高度及背板下底面空洞；只有水平地图画生成竖直脚手架柱，其他方块仍需游戏内核查支撑条件",
+        "模型回迁Worker采样、实心封闭填充、固定方块/材质色、OKLab等四算法及三轴旋转；同一结果用于统计、外露面预览及统一版本导出",
+        "模型附件支持OBJ/多MTL/纹理、STL、GLTF/BIN/纹理、GLB；提取材质组、UV通道、实例及默认骨骼/形变姿态，缺失/损坏/外部附件明确失败",
+        "模型文件/展开数据/三角面/采样预算预检；单一按需WebGL预览、外露面Worker、缓存停用终止任务与释放GPU，回来恢复CPU数据",
+        "新增本地批量转换：六扩展名和 ZIP、原生文件选择/二进制拖入、串行队列、逐项错误隔离/仅失败重试、停止、搜索筛选、完成结果勾选、单份及所选 ZIP 另存",
+        "1000 文件/256 MiB 输入/128 MiB ZIP/512 MiB 结果预算；CRC、声明/实际解压量、加密/分卷/ZIP64 拒绝，路径只作元数据，不落盘解包；安全去重文件名与 no-clobber 临时文件原子保存",
+        "批量队列在页签/路由缓存中保留；停用阻止下一项并请求取消当前项，迟到停止确认前禁止启动下一轮；固定行高虚拟化不受隐藏页面 0 行高污染",
+        "检查 redStoneMusic.vue：目前仅显示未实现提示，没有音频上下文、Worker、计时器或后台任务；本次不新增网站未提供的红石音乐实现"
+      ],
+      "pending": [],
+      "verificationLimits": [
+        "游戏内地图色阶、重力/易碎方块及脚手架物理条件仍需实际放置验证；模型扩展支持范围见 toolboxBackport。"
+      ]
+    },
+    {
+      "id": "smoothness",
+      "status": "implemented_and_measured_in_native_webview_with_limits",
+      "implemented": [
+        "页面不再退场到完全透明后才挂载目标页，避免叠加入口动画",
+        "固定蓝图库不使用父级位移动画，保留侧栏边界",
+        "在线蓝图库虚拟列表、浅响应数据和搜索防抖",
+        "地图画展开状态纳入渲染缓存依赖，处理器改为浅响应式",
+        "图标不内联入入口 JS，通用图标查询不拉入 3D 资源加载器",
+        "材料表默认不加载 ECharts；图表按需加载，标签切换或 KeepAlive 停用释放画布，回来恢复；修复渐进列表 sentinel 重挂载观察",
+        "原生字符串/数据/预览三个读取命令移入 spawn_blocking，读并发限制为一；提前释放 DB 连接，解析不占异步运行时线程",
+        "本地上传预检大小、捕获队列、防重复提交和清除旧计时器；逐个成功后更新列表，修复更新被计为新增的问题",
+        "地图画匹配移到可终止Worker；预览和导出同源；自选方块控件仅在弹窗打开时创建，切页取消未完成任务并复用方块数据",
+        "模型采样与外露面生成移到Worker、单渲染器按需绘制、停用释放上下文，固定方块模式跳过颜色工作；PBR环境贴图只在需要的源模型创建",
+        "批量源文件和结果驻留原生内存，前端仅展示元数据；原生选择不发送文件字节，拖入走有界二进制 IPC；原生解析/编码在共享单许可后台工作线程",
+        "修复新批量工具的 KeepAlive 虚拟行高归零问题：固定 106px 行高/530px 视窗/最多 9 行，无隐藏尺寸观测；1000 条记录返回页面不再全量挂载",
+        "工具源切换按 ID 隔离缓存，清空/重选以 epoch 丢弃迟到结果；共享加载与重试，避免 undefined sizes 和错误转圈。",
+        "编辑/导出/调色板/地图画/模型/批量新增文案纳入简中、繁中、英文、日文，规范旧语言代码；修复窄窗口英文编辑页签和文本对比度。",
+        "JSON Code 校验 Worker 改为同源独立构建资源，保留真实校验，避免打包 CSP 与 data URL importScripts 失败。"
+      ],
+      "measurements": "真实前台 WebView：1024²地图画生成中切页60帧0空白，目标55.7ms，Worker18.1ms终止；128³模型2097152块切页目标41.3ms，GPU上下文和画布释放、返回结果保留。单机样本非60fps保证。",
+      "followUps": [
+        "进程峰值 RSS/GPU 字节和跨设备长期性能基准未测；当前记录仅包含帧时间、JS heap 及资源生命周期。",
+        "旧本地上传数字数组 IPC、跨编辑/转换/导入全局调度和解析中途取消仍可继续优化；本轮 API/新工具已采用有界原生处理。"
+      ]
+    },
+    {
+      "id": "verification",
+      "status": "scoped_acceptance_completed",
+      "observed": [
+        "独立应用标识连接真实 WebView2，无模拟 IPC：公开不可变版本原文件下载入库、生成快照入库、编辑 stage/cancel/commit/crop/undo/reset、选区 1.7.10 副本入库通过；源文件未变",
+        "真实系统 Open/Save As：ZIP 两成功一失败隔离、1.7.10 结果 ZIP 保存，系统覆盖确认后应用仍拒绝覆盖，校验值不变；地图画保存取消后可重试",
+        "修复打包环境 AppData 跨卷重定向原子保存失败、本地 GLTF blob 被 CSP 拦截、空字体大小渲染异常、投影计数/毫秒时间戳/输出名称元数据",
+        "pnpm build 通过，仍有大 chunk 提示",
+        "cargo check --offline 同时通过库和 mcstools 程序入口；bin 仍有 39 个 warning，未宣称零警告",
+        "API TypeScript 适配单元测试 9 项通过",
+        "编辑几何单元测试 4 项通过，覆盖整数范围、工作平面、表面拾取与拖动限制",
+        "真实浏览器+模拟原生协议：120 石头替换为金块，预览后才提交；6×5×10 裁剪副本切页恢复，停用后 renderer/canvas 均释放",
+        "真实浏览器：提交失败保持 revision/历史，取消候选并恢复旧预览；撤销、两点拾取、鼠标拖动选区通过",
+        "模拟 900ms 编辑计算期间切页：revision 不变、候选释放、GPU 释放；1000px 窗口无横向溢出、编辑面板左边 108px 大于导航右边 72px",
+        "缩放窗口黑背景问题修复：先调整缓冲尺寸后清屏，ResizeObserver 驱动一次重绘；像素为 [245,245,245,255] 且 WebGL error=0",
+        "额外显式执行的真实公开 API 下载及桌面解析器测试 1 项通过",
+        "现有 WebGL2 eager/lazy 3D 渲染回归通过",
+        "浏览器模拟：版本 2 导入参数、快慢搜索竞态、分页、429 恢复、收藏占位与断开连接通过",
+        "1000px 视口：蓝图库左侧与导航右侧同为 72px；48 条数据仅渲染 5 行",
+        "真实方块表 UI：13 分类初始 0 子行，展开一个分类渲染 10 行且 10 张图标加载成功，单选/全选/收起通过",
+        "前台缓存切换采样 117 帧：0 空白帧、0 方块表重复请求，最大帧间隔约 54.6ms，仍需优化长帧；未使用后台标签节流样本作为性能结论",
+        "入口 JS 从 3585.43kB/gzip1700.51kB 降为 905.83kB/gzip161.80kB；此项不是启动耗时基准",
+        "本轮 Rust 库全量 98 项通过、1 项联网测试忽略；含精确 3578 DataVersion、同时替换、版本约束、模组/未知方块、Sponge->旧版实体封装、负坐标和 FileManager 读回测试",
+        "cargo check --offline 库和程序入口通过；库仍有 34 个既有警告，bin 39 个警告",
+        "本轮 pnpm build（vue-tsc + Vite）通过；Node API/编辑几何 13 项测试通过",
+        "真实浏览器/模拟原生命令：保持源版本提交 targetDataVersion=null；MCEdit 未选择旧版目标时阻止保存；目标5与自定义 oak_planks->gold_block 同时提交",
+        "浏览器 1000×760 导出弹窗：left140/right860、宽720、高约612，document无横向溢出；截图 output/playwright/api-v1/export-legacy-1000.png 已视觉检查",
+        "本轮新增导出面板仍仅为浏览器协议测试，不能证明系统保存对话框与真实数据库导入；后续必须补原生集成",
+        "本轮 WebGL2 冒烟测试通过：31,514 非空像素，eager32/lazy8块，距离裁剪与延迟上传有效；不是实际超大蓝图压力测试",
+        "浏览器模拟保存失败后 revision=0、history=0、方块280不变；切换BE后 Java选择器隐藏、targetDataVersion=null、overrides=[]，模拟新增入库参数正确",
+        "本批 pnpm build 通过（vue-tsc + Vite，3996 模块），仍有大 chunk 提示；Node API/几何/材料测试 17 项通过",
+        "本批 Rust 库 110 项通过、1 项联网测试忽略；新增原文件保护、缓存原子替换/版本指纹、复制拒绝覆盖以及真实 SQLite/临时目录导入测试",
+        "六格式十子格式组合完成编码、事务入库、原始字节比对和解析读回；现代格式精确源 DataVersion3578 与旧版1.7.10元数据保留",
+        "真实隔离 SQLite 测试覆盖写盘失败、SQL写入失败、延迟外键导致COMMIT失败、并发两次更新、历史损坏及不覆盖已有版本",
+        "浏览器/模拟原生协议：MCEdit默认保留源版本但现代源未指定旧版目标时禁止保存；选择1.7.10生成缓存，失败提示保留、重试恢复、复制缓存不重复转换",
+        "1000×760转换缓存弹窗截图 output/playwright/api-v1/conversion-cache-1000.png 已视觉检查；按钮可见，正文可滚动，不覆盖左侧导航",
+        "浏览器材料表显示石头/铜箱/模组原ID；实际下载CSV包含BOM、中文名称、组数、余数及对=1+1的文本防护",
+        "浏览器材料列表 ECharts 请求0/画布0，切图表后库请求1/画布2，切离画布0，返回画布2；1000px窗口无横向溢出",
+        "最终 cargo check --offline 库与桌面入口通过；仍有未使用项和接口可见性等警告，未宣称零警告",
+        "浏览器模拟2秒保存延迟：程序切离并卸载弹窗后能够重新打开，未卡在busy；请求仍是原先id42/version0的BE转换，targetDataVersion=null、overrides=[]",
+        "有界解析批次：Rust 库全量 141 通过、2 默认忽略；Node API/几何/材料/上传逻辑 21 通过，pnpm build（vue-tsc+Vite）通过",
+        "显式大稀疏专项通过：合成1000×400×1000、4亿源位置，Blocks/Data共800000000字节，压缩7465096字节；保留400万石头、坐标正确且共享Arc。调试构建含生成耗时48785ms，未测进程峰值内存",
+        "默认忽略的真实公开 API 下载/解析测试在新 fastnbt 和 BG 有界读取后单独执行通过；未上传文件、未写用户库，不等于完整 Tauri IPC 入库",
+        "六格式九子格式组合覆盖空气压缩、尺寸、共享状态、保留记录超限；旧版高位ID、metadata及两种AddBlocks仍通过",
+        "NBT 检查覆盖字节/深度/列表/标签/预计分配、数组宽度/累计字节、负长度、截断、CRC、串联gzip及尾随数据；BE小端和SNBT也有回归",
+        "文本预览的17MiB展开数组被拒绝转大文本，源文件字节未改变且原生读取可用；恶意深SNBT不覆盖旧文件；导入事务/BE水层/JE版本既有测试均通过",
+        "本地上传4项逻辑测试覆盖读文件前拒绝超限、部分成功计数、更新不加数量、旧定时器清除、捕获队列及防重复提交",
+        "未改动页面布局或声称本批验证了3D大文件交互；完整原生UI/IPC、重负载帧时间仍在待验收清单",
+        "本批仍有未使用项/可见性等 Rust 警告与 Vite 大 chunk 提示，未宣称零警告；C盘约8.67GiB、D盘约41.58GiB，无需清缓存",
+        "地图画批次：Rust库145通过、2默认忽略；新增4项临时快照/六格式往返测试；Node组合30项通过，pnpm build及cargo check库/程序入口通过",
+        "真实Worker/画布与模拟原生IPC：64×48渐变含8×8透明区域生成3008方块；原生临时输入6619字节，未调用旧create_map_art命令",
+        "旧版导出要求选择目标5，BE清空Java参数；900ms延迟准备后关闭弹窗释放迟到快照；模拟失败未保留快照，重试可用；纹理PNG实际下载",
+        "1000×760弹窗left120/right880、无横向溢出，色组14且按需渲染；截图toolbox-export-legacy-1000.png和toolbox-palette-colors-1000.png已查看",
+        "重负载1024²/320块/阶梯：初样本有109.2ms长帧，重页面切换复测60前台帧最大30.2ms/0空白，目标页约66.2ms出现、terminate约23.3ms调用；随后Worker数0。单机诊断非普遍帧率保证",
+        "此批未触及真实用户蓝图库或网站部署，未移植3D打印；C8.63GiB/D41.39GiB，无需清编译缓存",
+        "模型批次：Rust库145通过、2默认忽略；Node39项通过（工具箱18项）；pnpm build通过，仍有大chunk提示",
+        "13项真实浏览器模型加载检查通过：OBJ、ASCII/二进制STL、MTL材质组、GLTF BIN/PNG与UV1、实例、默认骨骼/形变、GLB及附件拒绝路径",
+        "模型UI/真实Worker/模拟IPC：空壳296和封闭实心512方块，1124字节二进制快照；1.7.10导出参数正确，关闭释放；预览与输出同源",
+        "模型页面停用后context丢失且画布移除，返回创建新context并保留512方块；压力取消后无迟到结果，随后Worker数0；GLTF PBR源预览glError0",
+        "空闲构建条件下三轮128分辨率彩色模型导航，各60帧，最大间隔42.4/36.3/36.5ms，0空白；目标出现36/30.6/29.8ms，terminate41.6/34.6/33.1ms。并行构建样本曾84.9ms；均非WebView/60fps保证",
+        "1000px模型导出卡片left120/right880，页面无横向溢出；三张模型截图已检查。仍为模拟桥，系统保存/真实IPC/游戏核验待完成；C8.62GiB/D41.60GiB，无需清缓存",
+        "批量批次：Rust 库 157 通过、2 默认忽略，其中新增 12 项批量/ZIP 专项；pnpm build（vue-tsc + Vite）通过；cargo check --offline 库及程序入口通过，bin 仍有 39 个警告",
+        "真实 Vue + 模拟批量 IPC：三项中一项失败后仍完成后项，仅重试失败 ID；选择两份 ZIP 和单份另存参数准确；拒绝覆盖提示不丢结果；初始化失败可重试",
+        "批量现代源转 MCEdit 未选目标时报错，选择 1.7.10 后 targetDataVersion=5；BE 清空 Java 参数并隐藏目标列表。真实 16×16 地图画 Worker 同时回归共享控件的另存/临时快照释放",
+        "1000 项测试发现 Vuetify 隐藏行高被记为 0、返回后挂载 1000 行（观察到 121.1ms 长帧）；固定行高改造后返回 9 行、底部 7 行，两轮各 60 帧最大 24.2/24.2ms、0 空白，每轮只开始一项且取消后成功数 0。单机诊断、模拟计算，不是原生 WebView/60fps 保证",
+        "拖入原始二进制载荷 54 字节对应 3 字节源；拒绝第 1001 项、跳过不支持文件。延迟 1200ms 的停止 IPC 确认前新运行按钮保持禁用，之后恢复执行成功",
+        "批量截图检查修复复选框 grid-area 引发的文件名挤窄；1000px 无横向溢出。C8.57GiB/D40.49GiB，无需清缓存；真实系统选择/保存与完整 IPC 仍未宣称通过",
+        "最终 Node 60项通过，Rust库168项通过/2项默认忽略；JSON Code本地Worker收到annotate回包，原生切换两份蓝图零运行时/CSP错误；繁体重启恢复和日文工具箱已核查。详见desktop-ui-integration。",
+        "原生编辑UI同一方块两次拾取得到1块选区，应用裁剪为1×1×1，撤销恢复2×2×2；源码Code/拆分缓存切换后新源回到详情，不继承旧大尺寸警告。"
+      ],
+      "followUpValidation": [
+        "更复杂实体/物品/模组以及游戏内放置行为；不声称实现完整 Minecraft DataFixer。",
+        "更多硬件的峰值内存和持续负载基准；本次未制作或发布签名安装包。"
+      ]
+    }
+  ],
+  "checkpoint": {
+    "status": "final_source_handoff",
+    "branch": "desktop-api-v1-20261018",
+    "scope": "API v1、网站编辑及地图画/模型/批量工具回迁、统一多版本导出和流畅度治理已实现并完成分层验收；非打印范围。正常标识调试构建已通过，不包含私有测试资料或生成物。",
+    "excluded": [
+      "src-tauri/schematic/out2.litematic",
+      ".playwright-cli/",
+      ".zcode/",
+      "output/",
+      "pelican-bicycle.html"
+    ],
+    "baseCommit": "5016398420fa528b8fb7a0033c37fd14f5abfaaf"
+  },
+  "finalAcceptance": {
+    "scope": "Requested software integration/backport/smoothness work completed; remaining items are explicitly bounded game/runtime verification limits and optional follow-ups, not unimplemented requested features.",
+    "automated": "Node60 + Rust lib168,2 default-ignored + vue-tsc/Vite + WebGL2 smoke",
+    "native": "Real isolated WebView/system dialogs/IPC plus native heavy navigation; not presented as browser mocks.",
+    "normalDebugBuild": "Passed: node scripts/tauri-run.cjs build --debug --no-bundle, mcSchematic identifier; binary built but normal profile not launched",
+    "release": "No signed installer, release upload, website deployment or 3D printing port",
+    "userData": "Production DB SHA256 unchanged; unrelated sample, personal files, profiles and output artifacts excluded",
+    "cleanup": "No caches deleted; disk space sufficient"
+  }
+}

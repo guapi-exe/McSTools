@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import {defineProps, onMounted, reactive, ref, watch} from "vue";
-import {SchematicsData, schematicTypeList} from "../../modules/schematics_data.ts";
+import {
+  fetchSchematicGameVersions,
+  GameVersionOption,
+  SchematicsData,
+  schematicTypeList,
+} from "../../modules/schematics_data.ts";
 import dayjs from "dayjs";
 import {files, handleUpload, progressValue, uploadError, uploadStatus} from "../../modules/upload_schematic.ts";
-import {update_schematic_name, update_user_classification} from "../../modules/update_schematic.ts";
+import {
+  update_schematic_game_version,
+  update_schematic_name,
+  update_user_classification,
+} from "../../modules/update_schematic.ts";
 import {fetch_data, schematic_id} from "../../modules/tools_data.ts";
 import {toast} from "../../modules/others.ts";
 import {userData} from "../../modules/user_data.ts";
-import {opacity} from "../../modules/theme.ts";
 import { useI18n } from 'vue-i18n';
 const { t: $t } = useI18n();
 import {invoke} from "@tauri-apps/api/core";
@@ -17,10 +25,14 @@ const props = defineProps<{
 }>()
 const tags = ref<string[]>([])
 const showLmVersionDialog = ref(false)
+const showGameVersionDialog = ref(false)
 const showBeClearAirDialog = ref(false)
 const lastTags = ref<string[]>([]);
 const editing = ref(false)
 const lmVersion = ref(6)
+const gameVersionOptions = ref<GameVersionOption[]>([])
+const selectedGameVersion = ref<GameVersionOption | null>(null)
+const gameVersionLoading = ref(false)
 const editLoading = ref(false)
 const checkingBeAir = ref(false)
 const beAirActionLoading = ref(false)
@@ -29,6 +41,7 @@ const parseDimensions = (sizeStr: string) => {
   const [length, width, height] = sizeStr.split(',').map(Number);
   return [`X${length}`, `Y${width}`, `Z${height}`]
 };
+const supportsGameVersion = (schematicType: number) => [1, 2, 3, 6].includes(schematicType)
 const schematicEdit = reactive({
   name: '',
   schematic_tags: [] as string[],
@@ -110,6 +123,55 @@ const setLmVersion = async () => {
   showLmVersionDialog.value = false;
 }
 
+const loadGameVersionOptions = async () => {
+  if (!props.data || !supportsGameVersion(props.data.schematic_type)) {
+    gameVersionOptions.value = []
+    selectedGameVersion.value = null
+    return
+  }
+
+  try {
+    gameVersionLoading.value = true
+    gameVersionOptions.value = await fetchSchematicGameVersions(
+      props.data.schematic_type,
+      props.data.sub_type,
+    )
+    selectedGameVersion.value =
+      gameVersionOptions.value.find(option => option.name === props.data?.game_version) ??
+      gameVersionOptions.value[gameVersionOptions.value.length - 1] ??
+      null
+  } catch (error) {
+    gameVersionOptions.value = []
+    selectedGameVersion.value = null
+    console.warn('Unable to load game version options', error)
+  } finally {
+    gameVersionLoading.value = false
+  }
+}
+
+const setGameVersion = async () => {
+  if (!props.data || !selectedGameVersion.value) return
+
+  try {
+    gameVersionLoading.value = true
+    const result = await update_schematic_game_version(
+      props.data.id,
+      selectedGameVersion.value.name,
+    )
+    if (result) {
+      props.data.game_version = selectedGameVersion.value.name
+      showGameVersionDialog.value = false
+      toast.success($t('toolsSchematic.gameVersionUpdated'), {
+        timeout: 3000,
+      })
+    }
+  } catch (error) {
+    toast.error(`发生了一个错误:${error}`, { timeout: 3000 })
+  } finally {
+    gameVersionLoading.value = false
+  }
+}
+
 const loadBeAirState = async () => {
   if (!props.data || props.data.schematic_type !== 5) {
     hasBeAirBlocks.value = false
@@ -153,7 +215,7 @@ const clearBeAirBlocks = async () => {
 }
 
 watch(
-  () => props.data?.id,
+  () => [props.data?.id, props.data?.schematic_type, props.data?.sub_type],
   async () => {
     if (props.data) {
       schematicEdit.name = props.data.name;
@@ -170,15 +232,17 @@ watch(
       lmVersion.value = props.data.lm_version;
     }
 
+    await loadGameVersionOptions()
     await loadBeAirState()
   },
   { immediate: true }
 )
 
 onMounted(() => {
-  if ((userData.value.classification && typeof userData.value.classification === 'string') && userData.value.classification.length >= 0) {
-    tags.value = userData.value.classification
-        ? userData.value.classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+  const classification = userData.value?.classification
+  if (typeof classification === 'string') {
+    tags.value = classification
+        ? classification.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
         : [];
     lastTags.value = tags.value
   } else {
@@ -243,7 +307,7 @@ onMounted(() => {
             </v-list-item>
 
             <v-list-item>
-              <v-list-item-title>{{$t('toolsSchematic.type')}}：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4 | 5] }} </v-list-item-title>
+              <v-list-item-title>{{$t('toolsSchematic.type')}}：{{ schematicTypeList[props.data.schematic_type as 1 | 2 | 3 | 4 | 5 | 6] }} </v-list-item-title>
             </v-list-item>
 
             <v-list-item>
@@ -279,6 +343,23 @@ onMounted(() => {
                       size="x-small"
                       icon="mdi-pencil"
                       @click="showLmVersionDialog = true;"
+                  ></v-btn>
+                </v-list-item-action>
+              </template>
+            </v-list-item>
+            <v-list-item v-if="supportsGameVersion(props.data.schematic_type)">
+              <v-list-item-title class="d-flex align-center">
+                <span>{{$t('toolsSchematic.gameVersion')}}：{{ props.data.game_version || $t('toolsSchematic.unknown') }}</span>
+              </v-list-item-title>
+              <template v-slot:append>
+                <v-list-item-action class="ml-2">
+                  <v-btn
+                      variant="text"
+                      size="x-small"
+                      icon="mdi-pencil"
+                      :loading="gameVersionLoading"
+                      :disabled="gameVersionOptions.length === 0"
+                      @click="showGameVersionDialog = true"
                   ></v-btn>
                 </v-list-item-action>
               </template>
@@ -319,14 +400,6 @@ onMounted(() => {
 
             <v-list-item>
               <v-list-item-title>{{$t('toolsSchematic.version')}}：v{{ props.data.version }}
-                <v-chip
-                    color="orange-lighten-4"
-                    size="small"
-                    class="text-orange-darken-4"
-                >
-                  <v-icon start icon="mdi-cube"></v-icon>
-                  {{ props.data.game_version }}
-                </v-chip>
               </v-list-item-title>
             </v-list-item>
 
@@ -384,7 +457,7 @@ onMounted(() => {
       bg-color="grey-lighten-3"
       :label="$t('toolsSchematic.updateFile')"
       multiple
-      accept=".nbt, .json, .schem, .litematic, .mcstructure"
+      accept=".nbt, .json, .schem, .schematic, .litematic, .mcstructure"
       :max-file-size="100 * 1024 * 1024"
       :loading="uploadStatus === 'uploading'"
       :error-messages="uploadError"
@@ -478,7 +551,6 @@ onMounted(() => {
   <v-dialog v-model="showLmVersionDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
@@ -521,10 +593,66 @@ onMounted(() => {
     </v-card>
   </v-dialog>
 
+  <v-dialog v-model="showGameVersionDialog" max-width="600" persistent>
+    <v-card
+        class="v-theme--custom"
+    >
+      <v-card-title class="headline">
+        <v-icon color="info" class="mr-2">mdi-cube-outline</v-icon>
+        {{$t('toolsSchematic.editGameVersion')}}
+      </v-card-title>
+
+      <v-card-subtitle class="text-caption text-grey-darken-1">
+        {{$t('toolsSchematic.editGameVersionHint')}}
+      </v-card-subtitle>
+      <v-card-text>
+        <v-select
+            v-model="selectedGameVersion"
+            :items="gameVersionOptions"
+            item-title="name"
+            return-object
+            density="compact"
+            :label="$t('toolsSchematic.targetVersion')"
+            :loading="gameVersionLoading"
+        >
+          <template #item="{ props: itemProps, item }">
+            <v-list-item
+                v-bind="itemProps"
+                :title="item.raw.name"
+                :subtitle="`DataVersion ${item.raw.id}`"
+            ></v-list-item>
+          </template>
+          <template #selection="{ item }">
+            <span>{{ item.raw.name }} ({{ item.raw.id }})</span>
+          </template>
+        </v-select>
+        <span class="text-caption text-grey-darken-1">
+          {{$t('toolsSchematic.confirmGameVersion')}}
+        </span>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+            color="grey-darken-1"
+            @click="showGameVersionDialog = false"
+        >
+          {{$t('toolsSchematic.cancel')}}
+        </v-btn>
+        <v-btn
+            color="info"
+            :loading="gameVersionLoading"
+            :disabled="!selectedGameVersion"
+            @click="setGameVersion"
+        >
+          {{$t('toolsSchematic.confirmEdit')}}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-dialog v-model="showBeClearAirDialog" max-width="600" persistent>
     <v-card
         class="v-theme--custom"
-        :style="{ '--surface-alpha': opacity }"
     >
       <v-card-title class="headline">
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>

@@ -21,6 +21,10 @@ pub enum SchematicError {
     SQL(#[from] rusqlite::Error),
     #[error("NBT error: {0}")]
     Nbt(#[from] fastnbt::error::Error),
+    #[error("Parser limit exceeded: {0}")]
+    LimitExceeded(String),
+    #[error("Invalid NBT structure: {0}")]
+    NbtPreflight(String),
     #[error("UTF8 error: {0}")]
     UTF8(#[from] std::string::FromUtf8Error),
     #[error("SNBT error: {0}")]
@@ -80,4 +84,3 @@ impl SchematicData {
         }
     }
 }
-

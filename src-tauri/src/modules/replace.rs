@@ -1,3 +1,4 @@
+use crate::be_schematic::to_be_schematic::ToBESchematic;
 use crate::building_gadges::to_bg_schematic::ToBgSchematic;
 use crate::create::to_create_schematic::ToCreateSchematic;
 use crate::data_files::files::FileManager;
@@ -7,16 +8,17 @@ use crate::database::db_apis::schematics_api::{find_schematic, new_schematic};
 use crate::database::db_apis::user_api::add_user_schematic;
 use crate::database::db_control::DatabaseState;
 use crate::litematica::to_lm_schematic::ToLmSchematic;
+use crate::mcedit::legacy_map::normalize_schematic_for_legacy;
+use crate::mcedit::to_mcedit_schematic::ToMcEditSchematic;
 use crate::modules::modules_data::convert_data::get_unique_block_str;
 use crate::modules::modules_data::replace_data::{ReplacementRule, RuleMatcher};
 use crate::utils::block_state_pos_list::{BlockData, BlockId};
 use crate::utils::minecraft_data::je_blocks_data::BlocksData;
-use crate::utils::requirements::{get_requirements, RequirementStr};
+use crate::utils::requirements::{RequirementStr, get_requirements};
 use crate::word_edit::to_we_schematic::ToWeSchematic;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tauri::State;
-use crate::be_schematic::to_be_schematic::ToBESchematic;
 
 #[tauri::command]
 pub async fn schematic_replacement(
@@ -210,7 +212,7 @@ pub async fn schematic_replacement(
                 let requirements_str = RequirementStr::from_requirements(&requirement, &je_blocks)
                     .export_to_string()?;
                 let unique_blocks = get_unique_block_str(&data.blocks)?;
-                let data = ToBESchematic::new(&data)?.to_be_value();
+                let data = ToBESchematic::new(&data)?.to_be_value()?;
                 schematic.name = format!("replace_schematic_{}", schematic_id);
                 let new_id = new_schematic(&mut conn, schematic.clone())?;
                 new_schematic_data(
@@ -229,6 +231,32 @@ pub async fn schematic_replacement(
                     unique_blocks,
                 )?;
                 file_manager.save_nbt_le_value(new_id, data, 0, sub_version, v_type)?;
+            }
+            6 => {
+                let legacy_data = normalize_schematic_for_legacy("1.7.10", &data)?;
+                let requirement = get_requirements(&legacy_data.blocks)?;
+                let requirements_str = RequirementStr::from_requirements(&requirement, &je_blocks)
+                    .export_to_string()?;
+                let unique_blocks = get_unique_block_str(&legacy_data.blocks)?;
+                let data = ToMcEditSchematic::new(&legacy_data)?.mcedit_schematic()?;
+                schematic.name = format!("replace_schematic_{}", schematic_id);
+                let new_id = new_schematic(&mut conn, schematic.clone())?;
+                new_schematic_data(
+                    &mut conn,
+                    new_id,
+                    requirements_str.clone(),
+                    unique_blocks.clone(),
+                )?;
+                add_user_schematic(&mut conn, 1)?;
+                let schematic_str = serde_json::to_string(&schematic)?;
+                new_history(
+                    &mut conn,
+                    new_id,
+                    schematic_str,
+                    requirements_str,
+                    unique_blocks,
+                )?;
+                file_manager.save_nbt_value(new_id, data, 0, sub_version, v_type, true)?;
             }
             _ => return Err(anyhow::anyhow!("unknow type: {}", v_type)),
         }

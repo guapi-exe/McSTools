@@ -127,6 +127,27 @@ pub fn update_schematic_lm_version(
     Ok(schematic_id)
 }
 
+pub fn update_schematic_game_version(
+    conn: &mut PooledConnection<SqliteConnectionManager>,
+    game_version: &str,
+    schematic_id: i64,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
+        r#"UPDATE schematics
+        SET
+            game_version = ?1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?2"#,
+        params![game_version, schematic_id],
+    )?;
+
+    tx.commit()?;
+
+    Ok(schematic_id)
+}
+
 pub fn new_schematic(
     mut conn: &mut PooledConnection<SqliteConnectionManager>,
     schematic: Schematic,
@@ -155,12 +176,8 @@ pub fn new_schematic(
     Ok(rowid)
 }
 
-pub fn find_schematic(
-    mut conn: &mut PooledConnection<SqliteConnectionManager>,
-    id: i64,
-) -> Result<Schematic> {
-    let tx = conn.transaction()?;
-    let schematic = tx.query_row(
+pub fn find_schematic(conn: &rusqlite::Connection, id: i64) -> Result<Schematic> {
+    let schematic = conn.query_row(
         "SELECT * FROM schematics WHERE id = ? AND is_deleted = FALSE",
         [id],
         |row| {
@@ -185,7 +202,6 @@ pub fn find_schematic(
             })
         },
     );
-    tx.commit()?;
     Ok(schematic?)
 }
 
@@ -235,6 +251,10 @@ pub fn get_schematics(
     classification_filter: &str,
     page: i32,
     page_size: i32,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+    schematic_type: Option<i32>,
+    game_version: Option<String>,
 ) -> Result<PaginatedResponse<Schematic>, String> {
     let conn = db.0.get().map_err(|e| e.to_string())?;
     let page = page.max(1);
@@ -254,23 +274,59 @@ pub fn get_schematics(
         format!("%{}%", classification_filter)
     };
 
-    let mut stmt = conn
-        .prepare(
-            r#"
-        SELECT * FROM schematics
+    // -1 / "" mean "no filter" for the optional dimension filters.
+    let type_param = schematic_type.unwrap_or(-1);
+    let version_param = game_version.unwrap_or_default();
+
+    // Sort keys are formatted into the SQL, so only whitelisted values are
+    // accepted — anything else falls back to the default ordering.
+    let sort_column = match sort_by.as_deref() {
+        Some("updated_at") => "updated_at",
+        Some("name") => "name",
+        _ => "created_at",
+    };
+    let sort_direction = match sort_order.as_deref() {
+        Some("asc") => "ASC",
+        _ => "DESC",
+    };
+
+    let where_clause = r#"
         WHERE
             is_deleted = FALSE
             AND (?2 = '' OR schematic_tags LIKE ?2)
             AND (?1 = '' OR name LIKE ?1 OR description LIKE ?1 OR schematic_tags LIKE ?1)
-        ORDER BY created_at DESC
-        LIMIT ?3 OFFSET ?4
-        "#,
+            AND (?3 < 0 OR type = ?3)
+            AND (?4 = '' OR game_version = ?4)
+    "#;
+
+    let total: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM schematics {where_clause}"),
+            rusqlite::params![
+                search_pattern,
+                classification_pattern,
+                type_param,
+                version_param
+            ],
+            |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
+    let sql = format!(
+        r#"SELECT * FROM schematics {where_clause} ORDER BY {sort_column} {sort_direction} LIMIT ?5 OFFSET ?6"#
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
     let schematics = stmt
         .query_map(
-            rusqlite::params![search_pattern, classification_pattern, page_size, offset],
+            rusqlite::params![
+                search_pattern,
+                classification_pattern,
+                type_param,
+                version_param,
+                page_size,
+                offset
+            ],
             |row| {
                 Ok(Schematic {
                     id: row.get("id")?,
@@ -301,10 +357,9 @@ pub fn get_schematics(
         data: schematics,
         page,
         page_size,
+        total,
     })
 }
-
-
 
 #[tauri::command]
 pub fn delete_schematic_database(db: State<'_, DatabaseState>, id: i64) -> Result<i64, String> {
@@ -318,6 +373,7 @@ pub fn delete_schematic_database(db: State<'_, DatabaseState>, id: i64) -> Resul
 pub fn count_schematics(
     db: State<'_, DatabaseState>,
     classification_filter: &str,
+    filter: Option<String>,
 ) -> Result<i64, String> {
     let conn = db.0.get().map_err(|e| e.to_string())?;
 
@@ -328,21 +384,57 @@ pub fn count_schematics(
         format!("%{}%", classification_filter)
     };
 
+    // Same text matching as get_schematics so counts stay consistent with the
+    // list when a search keyword is active.
+    let keyword = filter.unwrap_or_default();
+    let search_pattern = if keyword.is_empty() {
+        "".to_string()
+    } else {
+        format!("%{}%", keyword)
+    };
+
     let mut stmt = conn
         .prepare(
             r#"
             SELECT COUNT(*) FROM schematics
             WHERE
                 (?1 = '' OR schematic_tags LIKE ?1)
+                AND (?2 = '' OR name LIKE ?2 OR description LIKE ?2 OR schematic_tags LIKE ?2)
                 AND is_deleted = FALSE
             "#,
         )
         .map_err(|e| e.to_string())?;
 
     let count: i64 = stmt
-        .query_row(rusqlite::params![filter_pattern], |row| row.get(0))
+        .query_row(rusqlite::params![filter_pattern, search_pattern], |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())?;
 
     Ok(count)
 }
 
+/// Distinct game versions actually present in the library, newest first.
+/// Drives the game-version filter dropdown without hardcoding a list.
+#[tauri::command]
+pub fn get_distinct_game_versions(db: State<'_, DatabaseState>) -> Result<Vec<String>, String> {
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT DISTINCT game_version FROM schematics
+            WHERE is_deleted = FALSE AND game_version != ''
+            ORDER BY game_version DESC
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let versions = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(versions)
+}
