@@ -1,5 +1,6 @@
-//! Read-only bridge to the developer API. Credentials never enter a URL,
-//! persisted settings, or an HTTP redirect to another origin.
+//! Read-only bridge to the developer API. Credentials stay in the native
+//! database/session, never in frontend settings, logs or cross-origin redirects.
+use crate::database::db_control::DatabaseState;
 use crate::modules::schematic::encode_uploaded_schematic;
 use base64::Engine;
 use reqwest::{Client, Response, Url, header};
@@ -36,8 +37,9 @@ impl McsApiError {
 
 pub struct McsApiState {
     client: Client,
-    // Deliberately not Debug/Serialize: the key is process-memory only.
+    // Deliberately not Debug/Serialize. Persistence uses the native database.
     key: Mutex<Option<String>>,
+    session: tokio::sync::Mutex<bool>,
     retry_at: Mutex<Option<Instant>>,
     requests: tokio::sync::Semaphore,
     imports: tokio::sync::Semaphore,
@@ -72,6 +74,7 @@ impl McsApiState {
                 .user_agent(concat!("McSTools/", env!("CARGO_PKG_VERSION")))
                 .build()?,
             key: Mutex::new(None),
+            session: tokio::sync::Mutex::new(false),
             retry_at: Mutex::new(None),
             requests: tokio::sync::Semaphore::new(4),
             imports: tokio::sync::Semaphore::new(1),
@@ -359,27 +362,116 @@ fn source_filename(name: &str, format: &str) -> Result<String, McsApiError> {
     Ok(format!("{stem}.{extension}"))
 }
 
-#[tauri::command]
-pub fn set_mcs_api_key(api: State<'_, McsApiState>, key: String) -> Result<(), McsApiError> {
+fn validate_key(key: &str) -> Result<(), McsApiError> {
     let key = key.trim();
-    if !key.is_empty()
-        && (!key.starts_with("mcs_live_")
-            || key.len() > 512
-            || !key
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'))
-    {
+    if !key.is_empty() && !super::mcs_credentials::valid_key(key) {
         return Err(McsApiError::new(
             "INVALID_KEY",
             "请输入网站签发的 mcs_live_ 开头的只读 API Key",
         ));
     }
-    *api.key.lock().map_err(|_| internal_error())? = if key.is_empty() {
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McsConnection {
+    connected: bool,
+    persisted: bool,
+    blueprint_count: Option<u64>,
+}
+
+fn connection_store_error(message: &'static str) -> McsApiError {
+    McsApiError::new("CREDENTIAL_STORE", message)
+}
+
+#[tauri::command]
+pub async fn restore_mcs_connection(
+    app: AppHandle,
+    db: State<'_, DatabaseState>,
+    api: State<'_, McsApiState>,
+) -> Result<McsConnection, McsApiError> {
+    let mut initialized = api.session.lock().await;
+    if !*initialized {
+        let identifier = app.config().identifier.clone();
+        let pool = db.0.clone();
+        let key = tauri::async_runtime::spawn_blocking(move || {
+            let conn = pool.get().map_err(|_| "无法读取连接，请稍后重试")?;
+            super::mcs_credentials::read(&conn, &identifier)
+        })
+        .await
+        .map_err(|_| internal_error())?
+        .map_err(connection_store_error)?;
+        if let Some(ref key) = key {
+            validate_key(key)?;
+        }
+        *api.key.lock().map_err(|_| internal_error())? = key;
+        *initialized = true;
+    }
+    let connected = api.key.lock().map_err(|_| internal_error())?.is_some();
+    Ok(McsConnection {
+        connected,
+        persisted: connected,
+        blueprint_count: None,
+    })
+}
+
+#[tauri::command]
+pub async fn set_mcs_api_key(
+    app: AppHandle,
+    db: State<'_, DatabaseState>,
+    api: State<'_, McsApiState>,
+    key: String,
+) -> Result<McsConnection, McsApiError> {
+    validate_key(&key)?;
+    let key = key.trim().to_owned();
+    // Serialize restore/connect/logout. A slow verification cannot resurrect
+    // a connection after logout, nor replace a newer successful connection.
+    let mut initialized = api.session.lock().await;
+    let identifier = app.config().identifier.clone();
+    let count = if key.is_empty() {
         None
     } else {
-        Some(key.into())
+        // Validate before replacing a saved connection. Use a separate
+        // state so a bad key never temporarily takes over running requests.
+        let candidate = McsApiState::new().map_err(|_| internal_error())?;
+        *candidate.key.lock().map_err(|_| internal_error())? = Some(key.clone());
+        let response = candidate
+            .json(
+                "/api/v1/account/blueprints",
+                &BTreeMap::from([("page".into(), "1".into()), ("limit".into(), "1".into())]),
+                true,
+            )
+            .await?;
+        if !response.get("items").is_some_and(Value::is_array) {
+            return Err(McsApiError::new(
+                "INVALID_RESPONSE",
+                "蓝图站账户响应格式不正确，原连接保持不变",
+            ));
+        }
+        response.get("totalCount").and_then(Value::as_u64)
     };
-    Ok(())
+    let stored_key = key.clone();
+    let pool = db.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = pool.get().map_err(|_| "无法保存连接，原连接保持不变")?;
+        if stored_key.is_empty() {
+            super::mcs_credentials::delete(&conn, &identifier)
+        } else {
+            super::mcs_credentials::write(&conn, &identifier, &stored_key)
+        }
+    })
+    .await
+    .map_err(|_| internal_error())?
+    .map_err(connection_store_error)?;
+    let connected = !key.is_empty();
+    *api.key.lock().map_err(|_| internal_error())? = if connected { Some(key) } else { None };
+    *initialized = true;
+    Ok(McsConnection {
+        connected,
+        persisted: connected,
+        blueprint_count: count,
+    })
 }
 
 #[tauri::command]
@@ -519,6 +611,9 @@ mod tests {
                         Err(error) => panic!("test HTTP accept: {error}"),
                     }
                 };
+                // Windows accepted sockets can inherit the listener's
+                // nonblocking mode; the fixture reads a full HTTP header.
+                socket.set_nonblocking(false).unwrap();
                 socket
                     .set_read_timeout(Some(Duration::from_secs(3)))
                     .unwrap();

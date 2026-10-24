@@ -20,6 +20,7 @@
       </div>
     </v-theme-provider>
     <ScrollRail target=".scroll-container" offset="calc(var(--v-layout-left, 72px) + 4px)" />
+    <McsConnection />
     <v-dialog v-model="updateDialog" max-width="500">
       <v-card
           class="v-theme--custom"
@@ -157,6 +158,8 @@
 <script setup lang="ts">
 import AppLayout from "./layout/AppLayout.vue";
 import ScrollRail from "./layout/ScrollRail.vue";
+import McsConnection from './units/account/McsConnection.vue';
+import {restoreMcsConnection} from './modules/web_schematic/mcs_api';
 import {nextTick, onMounted, onUnmounted, ref, watchEffect} from "vue";
 import {useRouter} from "vue-router";
 import {appStore} from "./modules/store.ts";
@@ -373,6 +376,8 @@ watchEffect(() => {
 })
 
 onMounted(async () => {
+  // Restoring the saved connection and checking the site must not block shell paint.
+  void restoreMcsConnection()
   await nextTick(() => {
     const mainContent = document.querySelector('.scroll-container')
     if (mainContent) {

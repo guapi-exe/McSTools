@@ -1,6 +1,6 @@
 [package]
 name = "mcstools"
-version = "1.3.0"
+version = "1.4.0"
 description = "MCSTools"
 authors = ["guapi-exe"]
 edition = "2024"
@@ -13,6 +13,11 @@ edition = "2024"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "rust_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[target.'cfg(windows)'.dependencies]
+# Read/remove connections saved by earlier builds during one-time migration.
+# New connections use the same SQLite implementation on every platform.
+windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -30,7 +35,8 @@ rayon = "1.10.0"
 sysinfo = "0.34.2"
 base64 = "0.22.1"
 regex = "1.11.1"
-fastsnbt = "0.2.0"
+# 0.2.0 omits empty compounds, producing malformed source-view SNBT.
+fastsnbt = "0.2.1"
 anyhow = "1.0.97"
 rusqlite = { version = "0.34.0", features = ["bundled"] }
 r2d2 = "0.8.10"

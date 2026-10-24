@@ -36,7 +36,7 @@ use modules::convert::{
 };
 use modules::history::get_history;
 use modules::map_art::{create_map_art, create_map_art_from_pixels};
-use modules::mcs_api::{McsApiState, import_mcs_blueprint, mcs_api_get, mcs_api_preview, set_mcs_api_key};
+use modules::mcs_api::{McsApiState, import_mcs_blueprint, mcs_api_get, mcs_api_preview, set_mcs_api_key, restore_mcs_connection};
 use modules::blueprint_editor::{BlueprintEditorState, open_blueprint_editor, stage_blueprint_edit, commit_blueprint_edit, cancel_blueprint_edit, close_blueprint_editor};
 use modules::blueprint_export::{get_blueprint_export_formats, plan_blueprint_export, save_blueprint_export};
 use modules::generated_blueprint::{GeneratedBlueprintState, stage_generated_blueprint, release_generated_blueprint};
@@ -115,6 +115,7 @@ pub fn run() {
             perform_search,
             get_map_arts,
             set_mcs_api_key,
+            restore_mcs_connection,
             mcs_api_get,
             mcs_api_preview,
             import_mcs_blueprint,

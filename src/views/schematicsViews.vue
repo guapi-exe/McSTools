@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, defineAsyncComponent, ref, watch} from "vue";
-import {onBeforeRouteLeave} from "vue-router";
+import {onBeforeRouteLeave, useRoute} from "vue-router";
 import {navigationGuard} from "../modules/navigation.ts";
 import MCS from "../static/img/fav512.png"
 import CMS from "../static/img/CMS.png"
@@ -12,6 +12,10 @@ const WebData = defineAsyncComponent(() => import("../units/schematics/webData.v
 
 const { t } = useI18n()
 const active = ref<'local' | 'web'>('local')
+const route = useRoute()
+watch(() => route.query.source, value => {
+  if (value === 'web') { selectedSite.value = 'MCS'; active.value = 'web' }
+}, {immediate: true})
 const loadedPanels = ref<Record<'local' | 'web', boolean>>({
   local: true,
   web: false,

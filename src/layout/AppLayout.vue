@@ -16,7 +16,7 @@
       />
     </div>
 
-    <v-list density="compact" class="nav-list" style="background: none !important;">
+    <v-list ref="navList" density="compact" class="nav-list" style="background: none !important;">
       <!-- Single sliding indicator (PCL2 style): one element animates between
            items instead of each item toggling its own bar. -->
       <div
@@ -34,6 +34,8 @@
           <v-list-item
               v-bind="props"
               :value="item.value"
+              :aria-label="item.title"
+              :aria-current="activeTab === item.value ? 'page' : undefined"
               :class="{ 'active-item': activeTab === item.value }"
               class="nav-item"
               @pointerenter="preloadNavigation(item.value)"
@@ -50,6 +52,13 @@
     </v-list>
     <template v-slot:append>
       <div class="bottom-actions">
+        <v-tooltip location="right" :text="mcsStatusLabel">
+          <template #activator="{props}">
+            <v-btn v-bind="props" variant="text" icon="mdi-account-circle-outline" :aria-label="mcsStatusLabel" class="account-btn" @click="mcsConnectionDialog = true">
+              <v-badge :color="mcsStatus === 'connected' ? 'success' : mcsSaved ? 'warning' : 'grey'" dot floating><v-icon icon="mdi-account-circle-outline" /></v-badge>
+            </v-btn>
+          </template>
+        </v-tooltip>
         <v-tooltip location="right" :transition="false">
           <template v-slot:activator="{ props }">
             <div class="d-flex justify-center">
@@ -71,22 +80,35 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from "vue";
+import {computed, onMounted, onBeforeUnmount, ref, watch} from "vue";
 import {activeTab, navItems} from '../modules/layout.ts'
 import {useRouter} from "vue-router";
 import {preloadRoute} from "../../router/index.js";
+import {mcsConnectionDialog, mcsSaved, mcsStatus, mcsStatusLabel} from '../modules/web_schematic/mcs_api';
 
 const router = useRouter()
+watch(() => router.currentRoute.value.name, name => { if (name) activeTab.value = String(name) }, {immediate: true})
 let navigationFrame: number | null = null
 const preloadedRoutes = new Set<string>()
 
-// The nav list renders items at a fixed pitch (56px item + 4px top/bottom
-// margin); the indicator simply rides that grid. Hidden when the active
-// route is not in the list (e.g. the settings route).
-const ITEM_PITCH = 64
+// Measure the active item's center, including theme/density differences.
+// Hidden when the active route is not in the list (e.g. settings).
+const navList = ref<{ $el: HTMLElement }>()
+const indicatorOffset = ref(0)
 const navIndex = computed(() => navItems.findIndex(item => item.value === activeTab.value))
-const indicatorOffset = computed(() => navIndex.value * ITEM_PITCH + 4)
 const indicatorVisible = computed(() => navIndex.value !== -1)
+const updateIndicator = () => {
+  const item = navList.value?.$el.querySelector('.active-item') as HTMLElement | null
+  if (item) indicatorOffset.value = item.offsetTop + (item.offsetHeight - 28) / 2
+}
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  updateIndicator()
+  observer = new ResizeObserver(updateIndicator)
+  if (navList.value) observer.observe(navList.value.$el)
+})
+watch(activeTab, updateIndicator, {flush: 'post'})
+onBeforeUnmount(() => { observer?.disconnect(); if (navigationFrame !== null) cancelAnimationFrame(navigationFrame) })
 
 const preloadNavigation = (value: string) => {
   if (preloadedRoutes.has(value)) return
@@ -170,11 +192,11 @@ const navigate = (value: string) => {
 }
 
 .nav-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(var(--v-theme-on-primary), 0.08);
 }
 
 .nav-item.active-item {
-  background: rgba(var(--v-theme-primary), 0.08);
+  background: rgba(var(--v-theme-on-primary), 0.14);
   position: relative;
 }
 
@@ -184,9 +206,9 @@ const navigate = (value: string) => {
   left: 0;
   top: 0;
   width: 3px;
-  height: 24px;
+  height: 28px;
   border-radius: 0 2px 2px 0;
-  background: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-on-primary));
   transition:
       transform var(--motion-page) var(--ease-emphasized),
       opacity var(--motion-fast) var(--ease-standard);
@@ -201,13 +223,19 @@ const navigate = (value: string) => {
   width: 100%;
   height: 48px;
   position: relative;
+  transition: transform var(--motion-page) var(--ease-emphasized);
 }
+
+.active-item .icon-wrapper { transform: translateX(2px) scale(1.08); }
+.nav-item:active .icon-wrapper { transform: scale(.94); }
 
 .bottom-actions {
   width: 100%;
   padding: 16px 0;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
+  flex-direction: column;
+  gap: 6px;
   justify-content: center;
   align-items: center;
 }
@@ -227,5 +255,9 @@ const navigate = (value: string) => {
   padding: 6px 12px;
   color: white !important;
   border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-indicator, .icon-wrapper, .app-logo, .more-btn { transition: none; }
 }
 </style>

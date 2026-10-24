@@ -2,7 +2,8 @@
 import {computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch} from 'vue';
 import dayjs from 'dayjs';
 import McsPreview from './McsPreview.vue';
-import {connectMcsApi, fetchMcSchematics, fetchMcsCategories, fetchMcsVersion, fetchMcsVersions, importMcsVersion, mcsConnected, mcsErrorMessage, mcsSessionRevision} from '../../modules/web_schematic/mcs_api';
+import {fetchMcSchematics, fetchMcsCategories, fetchMcsVersion, fetchMcsVersions, importMcsVersion, mcsConnected, mcsErrorMessage, mcsSessionRevision, mcsConnectionDialog, mcsStatusLabel} from '../../modules/web_schematic/mcs_api';
+import {useRoute} from 'vue-router';
 import {blueprintWebUrl, formatLabel, mergeLibraryItems, sourceFormats} from '../../modules/web_schematic/mcs_api_contract';
 import type {McsCategory, McsCollection, McsFilters, McsLibraryItem, McsVersion, McsVersionDetail} from '../../modules/web_schematic/mcs_api_contract';
 import {openLink, toast} from '../../modules/others';
@@ -10,6 +11,8 @@ import {markLocalSchematicsDirty} from '../../modules/upload_schematic';
 import {fetchUserData} from '../../modules/user_data';
 
 const collection = ref<McsCollection>('public');
+const route = useRoute();
+watch(() => route.query.collection, value => { if (['public', 'mine', 'favourites'].includes(String(value))) collection.value = value as McsCollection; }, {immediate: true});
 const filters = reactive<McsFilters>({keyword: '', sort: 'latest', featured: false, category: '', format: '', gameVersion: ''});
 const items = shallowRef<McsLibraryItem[]>([]);
 const categories = shallowRef<McsCategory[]>([]);
@@ -108,23 +111,7 @@ watch(() => [filters.sort, filters.featured, filters.category, filters.format, f
 watch(collection, () => { closeDetails(); reload(0, true); });
 watch(mcsSessionRevision, () => { closeDetails(); reload(0, true); });
 
-const keyDialog = ref(false);
-const keyInput = ref('');
-const keyLoading = ref(false);
-const keyError = ref('');
-watch(keyDialog, () => { keyInput.value = ''; keyError.value = ''; });
-async function connect() {
-  if (keyLoading.value || !keyInput.value.trim()) return;
-  keyLoading.value = true;
-  keyError.value = '';
-  try { await connectMcsApi(keyInput.value); keyDialog.value = false; }
-  catch (cause) { keyError.value = mcsErrorMessage(cause); }
-  finally { keyInput.value = ''; keyLoading.value = false; }
-}
-async function disconnect() {
-  try { await connectMcsApi(''); collection.value = 'public'; }
-  catch (cause) { toast.error(mcsErrorMessage(cause)); }
-}
+// A single app-level dialog owns the connection, including the home/sidebar.
 
 const selected = shallowRef<McsLibraryItem>();
 const detailDialog = ref(false);
@@ -216,8 +203,7 @@ onBeforeUnmount(() => { invalidate(); closeDetails(); });
           <v-btn value="favourites" size="small">我的收藏</v-btn>
         </v-btn-toggle>
         <v-spacer />
-        <v-btn v-if="mcsConnected" size="small" variant="text" prepend-icon="mdi-link-off" @click="disconnect">断开只读连接</v-btn>
-        <v-btn v-else size="small" variant="text" prepend-icon="mdi-key-outline" @click="keyDialog = true">连接 API Key</v-btn>
+        <v-btn size="small" variant="text" prepend-icon="mdi-account-circle-outline" @click="mcsConnectionDialog = true">{{ mcsStatusLabel }}</v-btn>
         <v-btn size="small" variant="text" icon="mdi-refresh" aria-label="刷新蓝图" :disabled="loading || needsKey" @click="reload()" />
       </div>
       <div v-if="collection !== 'favourites'" class="d-flex ga-2 align-center">
@@ -276,18 +262,6 @@ onBeforeUnmount(() => { invalidate(); closeDetails(); });
       <v-btn v-if="hasMore" size="small" variant="text" :loading="loading" @click="loadMore()">加载更多</v-btn>
       <span v-else>已加载全部</span>
     </footer>
-
-    <v-dialog v-model="keyDialog" max-width="560" :persistent="keyLoading">
-      <v-card title="连接 MCS 只读 API">
-        <v-card-text>
-          <p class="text-body-2 mb-4">在网站账户设置中创建 API Key。读取个人蓝图和收藏需要 account:read；查看版本和下载需要 public:read。公开浏览无需密钥。</p>
-          <v-text-field v-model="keyInput" label="API Key" type="password" autocomplete="off" spellcheck="false" variant="outlined" hide-details @keyup.enter="connect" />
-          <p class="text-caption text-medium-emphasis mt-2">仅保存在本次软件运行的内存中，不写入配置、磁盘或日志。重启后需要重新连接。</p>
-          <v-alert v-if="keyError" type="error" variant="tonal" class="mt-3" density="compact">{{ keyError }}</v-alert>
-        </v-card-text>
-        <v-card-actions><v-spacer /><v-btn :disabled="keyLoading" @click="keyDialog = false">取消</v-btn><v-btn color="info" :loading="keyLoading" :disabled="!keyInput.trim()" @click="connect">连接</v-btn></v-card-actions>
-      </v-card>
-    </v-dialog>
 
     <v-dialog :model-value="detailDialog" max-width="640" :persistent="!!importing" @update:model-value="value => { if (!value) closeDetails(); }">
       <v-card :title="selected?.title || '选择蓝图版本'">

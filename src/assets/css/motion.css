@@ -2,12 +2,12 @@
    so durations and easings stay consistent and easy to tune. */
 :root {
     --motion-fast: 160ms;
-    --motion-page: 140ms;
+    --motion-page: 240ms;
     --motion-page-exit: 0ms;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized: cubic-bezier(0.3, 0, 0.13, 1);
     --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-    --page-shift: 6px;
+    --page-shift: 14px;
     --radius-card: 12px;
 }
 
@@ -16,7 +16,7 @@
    Only lightweight incoming pages use a short settle movement. */
 .page-forward-enter-active,
 .page-backward-enter-active {
-    transition: transform var(--motion-page) var(--ease-emphasized);
+    transition: transform var(--motion-page) var(--ease-emphasized), opacity var(--motion-page) var(--ease-standard);
     /* Deliberately no will-change here: promoting the whole (often huge)
        incoming page into its own layer costs more raster time than the slide
        saves. */
@@ -29,7 +29,7 @@
 }
 
 .page-forward-enter-from {
-    opacity: 1;
+    opacity: .86;
     transform: translateX(var(--page-shift));
 }
 
@@ -38,7 +38,7 @@
 }
 
 .page-backward-enter-from {
-    opacity: 1;
+    opacity: .86;
     transform: translateX(calc(var(--page-shift) * -1));
 }
 
@@ -46,10 +46,10 @@
     opacity: 1;
 }
 
-/* Fixed-layout and heavy routes swap without promoting a giant GPU layer.
-   Transforms here would also move the library under the navigation drawer. */
+/* Fixed-layout and heavy routes use only a short opacity settle. Never
+   transform these ancestors: that moves fixed cards under the drawer. */
 .page-fade-enter-active {
-    transition: none;
+    transition: opacity var(--motion-page) var(--ease-standard);
 }
 
 .page-fade-leave-active {
@@ -57,7 +57,8 @@
     pointer-events: none;
 }
 
-.page-fade-enter-from,
+.page-fade-enter-from { opacity: .78; }
+
 .page-fade-leave-to {
     opacity: 1;
 }

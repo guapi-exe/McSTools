@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-19",
+  "scope": "Desktop source-data responsiveness, navigation motion and app-level persistent MCS connection",
+  "websiteBoundary": {
+    "websiteSourceModified": false,
+    "deployed": false,
+    "contract": "https://www.mcschematic.top/api/v1/openapi.json?audience=developer",
+    "profile": "Current-account nickname/avatar are not exposed in the developer contract. Per user instruction, defer integration until the site provides that endpoint; display an explicit site-account placeholder, never a blueprint author or stale local user.",
+    "ownerCount": "GET /api/v1/account/blueprints?page=1&limit=1; totalCount is optional in cursor mode, so request offset pagination explicitly."
+  },
+  "implementation": {
+    "source": "Dedicated worker retains the full typed NBT document. The main thread receives at most 100 child summaries per request and renders a virtual tree. Scalar/subtree edits use bounded SNBT text; save serializes the complete document, including unseen pages. Filtering explicitly applies to expanded fields.",
+    "editing": "Node editing retains Byte/Short/Int/Long/Float/Double and typed-array semantics. Oversized subtree editing directs the user to smaller child nodes. Failed saves keep the dirty state and allow retry.",
+    "motion": "240 ms incoming transitions; 14 px shift for lightweight routes, opacity-only for fixed/heavy routes, no fully transparent frame. Sidebar indicator uses measured item position and contrasting on-primary colour. Reduced-motion preference is respected.",
+    "connection": "App-wide home/sidebar/library connection dialog. Per the user's revised multi-platform requirement, persist verified connections in the native SQLite site_connections table. Native restore returns status only, not the key. Offline preserves credentials; revoked authentication clears private UI state. Explicit disconnect clears the key and retains a NULL migration marker. Database copies contain sensitive connection data and must not be published.",
+    "otherPlatforms": "All platforms use the same SQLite schema and persistence path. Windows Credential Manager is read/removed only for one-time migration from earlier builds; there are no new vault writes. No credentials are placed in frontend profiles, configuration, URLs or logs.",
+    "sourceFix": "fastsnbt 0.2.1 preserves empty compound delimiters, including consecutive empty list entries. Frontend save uses quoted keys, compact lists, signed typed byte/long arrays and explicit floating-point literals to retain native NBT types. Removed the source-view explanatory paragraph."
+  },
+  "verification": {
+    "typecheck": "passed",
+    "nodeTests": {"passed": 72, "failed": 0},
+    "rustLibraryTests": {"passed": 177, "failed": 0, "ignored": 3},
+    "connectionPersistenceTests": "Isolated SQLite tests cover reopening, repeated schema initialization, failed writes, legacy migration ordering, disconnect markers, invalid records and reset. Browser tests use fake credentials only.",
+    "sourceNativeRoundtrip": "Explicitly ran the default-ignored cross-runtime test on a local blueprint without writing it, plus a synthetic scalar/array/empty-object fixture. Native SNBT to frontend document to saved SNBT to native Value preserves every value and type. Browser fixture expansion/edit/save also preserves empty objects and the full 413280-element array.",
+    "desktopBuild": "Normal mcSchematic profile: node scripts/tauri-run.cjs build --debug --no-bundle passed. Existing Rust warnings and Vite large-chunk warnings remain.",
+    "sourceBrowserFixture": {
+      "environment": "Playwright Chromium, local Vite dev server, 1600x1000. Route modules already loaded, fresh document and worker; native IPC mocked. Not a real-account or packaged-WebView performance benchmark.",
+      "arrayElements": 413280,
+      "readyMilliseconds": 347,
+      "maximumFrameIntervalMilliseconds": 42.5,
+      "framesOver50Milliseconds": 0,
+      "initialDomRows": 2,
+      "expandedDomRows": 24,
+      "secondPageDomRows": 27,
+      "failedSaveKeptDirty": true,
+      "successfulRetryKeptFullArray": true,
+      "successfulRetryKeptLong": "9223372036854775807"
+    },
+    "navigationBrowserFixture": {
+      "theme": "grey_dark with custom background and 0.84 surface opacity",
+      "blankFrames": 0,
+      "sourceRequestsBeforeAndAfter": [2, 2],
+      "editedSourceStatePreserved": true,
+      "sidebarRightAndLibraryLeftPixels": [72, 72],
+      "maximumFrameIntervalsMilliseconds": {"report": 42.4, "about": 78.9, "library": 66.7, "cachedTools": 18.3},
+      "note": "Cold page module/render work can still cause longer frames; do not claim universal 60 fps."
+    },
+    "connectionBrowserFixture": "Verified fake-key restore after reload, home-to-mine navigation using authenticated API, offline vs invalid-key UI, private rows cleared on invalid authentication, and explicit disconnect remaining disconnected after reload. No real API key used.",
+    "reducedMotion": "Sidebar indicator computed transition duration is 0s when prefers-reduced-motion is enabled.",
+    "productionDatabase": "Unchanged during verification; no user credentials or database contents are included in this report.",
+    "preservedUnrelatedChanges": ["src-tauri/schematic/out2.litematic", ".zcode/", "pelican-bicycle.html"],
+    "committedOrPushedThisTask": false
+  }
+}

@@ -137,6 +137,14 @@ pub(crate) fn initialize_schema(conn: &Connection) -> Result<()> {
             cloud INTEGER DEFAULT 0
         );
 
+        -- Native-only connection data: not part of user profiles or settings.
+        -- A NULL key records an explicit disconnect / completed legacy migration.
+        CREATE TABLE IF NOT EXISTS site_connections (
+            origin TEXT PRIMARY KEY NOT NULL,
+            api_key TEXT CHECK(api_key IS NULL OR length(api_key) BETWEEN 1 AND 512),
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         INSERT INTO user_data (id, nickname, avatar, qq, accessToken, openid, schematics, cloud)
         SELECT 1, '', '', '', '', '', 0, 0
         WHERE NOT EXISTS (SELECT 1 FROM user_data WHERE id = 1);
@@ -183,6 +191,7 @@ fn add_column_if_missing_user(conn: &Connection) -> Result<()> {
 
 pub fn drop_all_tables_in_transaction(conn: &Connection) -> Result<()> {
     let tables = [
+        "site_connections",
         "app_logs",
         "user_data",
         "schematics_history",

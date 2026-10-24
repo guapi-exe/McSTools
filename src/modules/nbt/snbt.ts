@@ -4,6 +4,7 @@ export interface StringifyOptions {
     pretty?: boolean;
     breakLength?: number;
     quote?: "single" | "double";
+    quoteKeys?: boolean;
 }
 
 export interface ParseOptions {
@@ -104,6 +105,14 @@ export function stringify(tag: nbt.Tag, options: StringifyOptions = {}): string 
     const quoteChar = options.quote === "single" ? "'" : options.quote === "double" ? '"' : null;
     const spaces = " ".repeat(4);
 
+    function floatingLiteral(value: number): string {
+        if (Object.is(value, -0)) return '-0.0';
+        const text = String(value);
+        // The native reader requires a decimal point/exponent for floats,
+        // including whole-valued Float/Double tags such as 0.0 and 1.0.
+        return Number.isFinite(value) && !/[.eE]/.test(text) ? `${text}.0` : text;
+    }
+
     function escapeString(text: string): string {
         let q = quoteChar ?? '"';
         if (quoteChar == null) {
@@ -131,15 +140,15 @@ export function stringify(tag: nbt.Tag, options: StringifyOptions = {}): string 
         if (tag instanceof nbt.Short) return `${tag.value}s`;
         if (tag instanceof nbt.Int) return `${tag.value | 0}`;
         if (typeof tag === "bigint") return `${tag}l`;
-        if (tag instanceof nbt.Float) return `${tag.value}f`;
-        if (typeof tag === "number") return Number.isInteger(tag) ? `${tag}.0` : tag.toString();
+        if (tag instanceof nbt.Float) return `${floatingLiteral(tag.value)}f`;
+        if (typeof tag === "number") return `${floatingLiteral(tag)}d`;
         if (typeof tag === "string") return escapeString(tag);
-        if (tag instanceof Uint8Array || tag instanceof Int8Array) return `[B;${space}${[...tag].join(sep)}]`;
+        if (tag instanceof Uint8Array || tag instanceof Int8Array) return `[B;${space}${[...tag].map(v => `${(v << 24) >> 24}b`).join(sep)}]`;
         if (tag instanceof Int32Array) return `[I;${space}${[...tag].join(sep)}]`;
-        if (tag instanceof BigInt64Array) return `[L;${space}${[...tag].join(sep)}]`;
+        if (tag instanceof BigInt64Array) return `[L;${space}${[...tag].map(v => `${v}l`).join(sep)}]`;
         if (Array.isArray(tag)) {
             const list = tag.map(t => stringifyInner(t, depth + 1));
-            if (list.reduce((acc, x) => acc + x.length, 0) > breakLength || list.some(x => x.includes("\n"))) {
+            if (pretty && (list.reduce((acc, x) => acc + x.length, 0) > breakLength || list.some(x => x.includes("\n")))) {
                 return `[\n${list.map(x => spaces.repeat(depth) + x).join(",\n")}\n${spaces.repeat(depth - 1)}]`;
             } else {
                 return `[${list.join(sep)}]`;
@@ -151,7 +160,7 @@ export function stringify(tag: nbt.Tag, options: StringifyOptions = {}): string 
             : Object.entries(tag).filter(([_, v]) => v != null);
 
         const pairs = entries.map(([key, t]) => {
-            if (!unquotedRegExp.test(key)) key = escapeString(key);
+            if (options.quoteKeys || !unquotedRegExp.test(key)) key = escapeString(key);
             return `${key}:${space}${stringifyInner(t, depth + 1)}`;
         });
 
@@ -177,40 +186,26 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
     };
 
     function skipWhitespace() {
-        while (index < text.length && (text[index] === " " || text[index] === "\n")) index++;
+        while (index < text.length && /\s/.test(text[index])) index++;
     }
 
     function readNumber(): nbt.Tag | null {
-        if (!"-0123456789".includes(text[index])) return null;
-        i = index++;
-        let hasFloatingPoint = false;
-
-        while (index < text.length) {
-            char = text[index++];
-            if ("0123456789".includes(char)) continue;
-            if (char === ".") {
-                if (hasFloatingPoint) return (index--, null);
-                hasFloatingPoint = true;
-            } else if ("fFbBsSlLdD".includes(char)) {
-                const slice = text.slice(i, index - 1);
-                switch (char) {
-                    case "f":
-                    case "F": return new nbt.Float(+slice);
-                    case "b":
-                    case "B": return new nbt.Byte(+slice);
-                    case "s":
-                    case "S": return new nbt.Short(+slice);
-                    case "l":
-                    case "L": return BigInt(slice);
-                    case "d":
-                    case "D": return +slice;
-                }
-            } else {
-                return hasFloatingPoint ? +text.slice(i, --index) : new nbt.Int(+text.slice(i, --index));
-            }
+        const match = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([bBsSlLfFdD]?)/.exec(text.slice(index));
+        if (!match || (index + match[0].length < text.length && unquotedRegExp.test(text[index + match[0].length]))) return null;
+        index += match[0].length;
+        const suffix = match[1].toLowerCase(), raw = suffix ? match[0].slice(0, -1) : match[0];
+        if (suffix === 'l') {
+            const value = BigInt(raw);
+            if (value < -(1n << 63n) || value >= (1n << 63n)) throw new Error('Long 超出 64 位范围');
+            return value;
         }
-
-        return hasFloatingPoint ? +text.slice(i, index) : new nbt.Int(+text.slice(i, index));
+        const value = Number(raw);
+        if (!Number.isFinite(value)) throw new Error('数值超出范围');
+        if (suffix === 'f') return new nbt.Float(value);
+        if (suffix === 'd' || (!suffix && /[.eE]/.test(raw))) return value;
+        const limit = suffix === 'b' ? 128 : suffix === 's' ? 32768 : 2147483648;
+        if (!Number.isInteger(value) || value < -limit || value >= limit) throw new Error('整数超出 NBT 类型范围');
+        return suffix === 'b' ? new nbt.Byte(value) : suffix === 's' ? new nbt.Short(value) : new nbt.Int(value);
     }
 
     function readUnquotedString(): string {
@@ -277,7 +272,7 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
                 index++;
                 return options.useMaps
                     ? new Map(entries)
-                    : entries.reduce((obj, [k, v]) => (obj[k] = v, obj), {} as nbt.TagObject);
+                    : Object.fromEntries(entries) as nbt.TagObject;
             }
 
             const key = readString();
@@ -286,7 +281,7 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
             skipWhitespace();
 
             let value: nbt.Tag | null;
-            if (text[index] === "," || text[index] === "}") value = null;
+            if (text[index] === "," || text[index] === "}") throw unexpectedChar();
             else value = readValue();
 
             entries.push([key, value]);
@@ -308,11 +303,15 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
             i = index;
             if (text[index] === "-") index++;
             while (index < text.length && "0123456789".includes(text[index])) index++;
-            if (index - i === 0) throw unexpectedChar();
+            if (!/^-?\d+$/.test(text.slice(i, index))) throw unexpectedChar();
 
-            if (type === "L" && (text[index] === "l" || text[index] === "L")) {
+            const integer = BigInt(text.slice(i, index));
+            const bound = type === 'B' ? 128n : type === 'I' ? 2147483648n : 1n << 63n;
+            if (integer < -bound || integer >= bound) throw new Error('数组元素超出 NBT 类型范围');
+
+            if (type === "L") {
                 array.push(BigInt(text.slice(i, index)));
-                index++;
+                if (text[index] === "l" || text[index] === "L") index++;
             } else if(type === "B" && (text[index] === "b" || text[index] === "B")) {
                 array.push(Number(text.slice(i, index)));
                 index++;
@@ -345,5 +344,8 @@ export function parse(text: string, options: ParseOptions = {}): nbt.Tag {
         throw unexpectedEnd();
     }
 
-    return readValue();
+    const result = readValue();
+    skipWhitespace();
+    if (index !== text.length) throw unexpectedChar();
+    return result;
 }
